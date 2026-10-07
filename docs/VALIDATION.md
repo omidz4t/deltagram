@@ -267,3 +267,21 @@ are local rendering checks, not live transport or cross-client receipt tests.
 One check means Core reports sent; two checks require Core's read state or a
 recorded receipt. A recipient who disables receipts cannot provide a reliable
 seen indication. Release compilation uses four jobs and preserves build caches.
+
+
+## Experimental profile sidebar — 2026-10-07
+
+Settings → Advanced → Experimental settings → Interface contains **Show
+profiles instead of folders**, also searchable by “profiles.” It is off by
+default and uses the existing persistent experimental options store. Enabling
+it immediately places profile shortcuts in the vertical folder strip; disabling
+it restores the existing folder/sidebar behavior. Each shortcut uses Core's
+photo, display name and color, and the selected profile has an active marker.
+Configured profiles switch through the backend; an unconfigured profile opens
+account setup. No folder, message or account data is changed by the toggle.
+
+A disposable Core account fixture with mail IO suppressed checked the actual
+settings row, repeated on/off toggling without restart, switching between
+configured profiles, photos/initials, active colors, a narrow window, and
+setting/selection persistence after reopening the client. The release build
+uses four GUI compiler jobs and retains incremental build records and caches.

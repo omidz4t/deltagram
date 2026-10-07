@@ -8,6 +8,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_filters_menu.h"
 
 #include "menu/menu_mark_as_read.h"
+#include "delta/delta_bridge.h"
+#include "data/data_changes.h"
+#include <QImageReader>
+#include <QPainterPath>
 #include "mainwindow.h"
 #include "window/window_session_controller.h"
 #include "window/window_controller.h"
@@ -53,6 +57,64 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Window {
 namespace {
 
+base::options::toggle ProfilesSidebar({
+	.id = kOptionProfilesSidebar,
+	.name = "Show profiles instead of folders",
+	.description = "Show profile avatars in the left sidebar. Click a profile to switch accounts.",
+	.scope = [] { return Delta::Active(); },
+});
+
+class ProfileShortcut final : public Ui::RippleButton {
+public:
+	ProfileShortcut(QWidget *parent, QString name, QImage image, QColor color, bool active)
+	: Ui::RippleButton(parent, st::windowFiltersButton.ripple)
+	, _name(std::move(name))
+	, _image(std::move(image))
+	, _color(color.isValid() ? color : QColor(90, 143, 199))
+	, _active(active) {
+		setAccessibleName(_name);
+		setToolTip(_name);
+		setFocusPolicy(Qt::StrongFocus);
+	}
+	int resizeGetHeight(int) override { return 76; }
+	QString accessibilityName() override { return _name; }
+private:
+	void paintEvent(QPaintEvent*) override {
+		auto p = QPainter(this);
+		p.setRenderHint(QPainter::Antialiasing);
+		p.setRenderHint(QPainter::SmoothPixmapTransform);
+		if (_active) {
+			p.fillRect(rect(), st::windowFiltersButton.textBgActive);
+			p.fillRect(0, 8, 3, height() - 16, _color);
+		}
+		paintRipple(p, 0, 0);
+		const auto avatar = QRect((width() - 36) / 2, 8, 36, 36);
+		p.setPen(Qt::NoPen);
+		p.setBrush(_color);
+		p.drawEllipse(avatar);
+		if (!_image.isNull()) {
+			p.save();
+			auto clip = QPainterPath();
+			clip.addEllipse(avatar);
+			p.setClipPath(clip);
+			const auto side = std::min(_image.width(), _image.height());
+			p.drawImage(avatar, _image, QRect((_image.width() - side) / 2,
+				(_image.height() - side) / 2, side, side));
+			p.restore();
+		} else {
+			p.setPen(Qt::white);
+			p.drawText(avatar, Qt::AlignCenter, _name.left(1).toUpper());
+		}
+		p.setPen(_active ? st::windowFiltersButton.textFgActive : st::windowFiltersButton.textFg);
+		p.drawText(QRect(4, 48, width() - 8, 22), Qt::AlignCenter,
+			p.fontMetrics().elidedText(_name, Qt::ElideRight, width() - 8));
+	}
+	QString _name;
+	QImage _image;
+	QColor _color;
+	bool _active = false;
+};
+
 // The folder tabs container, exposed as a list to screen readers.
 class TabListLayout final : public Ui::VerticalLayout {
 public:
@@ -94,6 +156,10 @@ public:
 };
 
 } // namespace
+
+bool ProfilesSidebarEnabled() {
+	return Delta::Active() && ProfilesSidebar.value();
+}
 
 FiltersMenu::FiltersMenu(
 	not_null<Ui::RpWidget*> parent,
@@ -151,6 +217,16 @@ void FiltersMenu::setup() {
 		_container->resizeToWidth(width);
 		_container->move(0, 0);
 	}, _outer.lifetime());
+
+	if (ProfilesSidebarEnabled()) {
+		_menu.setClickedCallback([=] { _session->widget()->showMainMenu(); });
+		_session->session().changes().peerUpdates(
+			_session->session().user(),
+			Data::PeerUpdate::Flag::Photo | Data::PeerUpdate::Flag::Name
+		) | rpl::on_next([=] { refreshProfiles(); }, _outer.lifetime());
+		refreshProfiles();
+		return;
+	}
 
 	auto premium = Data::AmPremiumValue(&_session->session());
 
@@ -343,6 +419,45 @@ bool FiltersMenu::listFocused() const {
 		}
 	}
 	return false;
+}
+
+void FiltersMenu::refreshProfiles() {
+	const auto revision = ++_profilesRevision;
+	Delta::ListProfiles(crl::guard(&_outer, [=](QJsonArray accounts) {
+		if (revision != _profilesRevision) {
+			return;
+		}
+		delete _profileList;
+		_profileList = _container->add(object_ptr<Ui::VerticalLayout>(_container));
+		for (const auto &value : accounts) {
+			const auto account = value.toObject();
+			const auto id = account.value(u"id"_q).toInt();
+			const auto selected = account.value(u"selected"_q).toBool();
+			const auto configured = account.value(u"kind"_q).toString() == u"Configured"_q;
+			auto name = account.value(u"displayName"_q).toString().trimmed();
+			if (name.isEmpty()) {
+				name = u"Profile"_q;
+			}
+			const auto path = account.value(u"profileImage"_q).toString();
+			auto reader = QImageReader(path);
+			reader.setAutoTransform(true);
+			const auto button = _profileList->add(object_ptr<ProfileShortcut>(
+				_profileList, name, path.isEmpty() ? QImage() : reader.read(),
+				QColor(account.value(u"color"_q).toString()), selected));
+			button->setClickedCallback([=] {
+				if (!configured) {
+					_session->widget()->showDeltaAddProfile();
+				} else if (!selected) {
+					Delta::SwitchProfile(id, crl::guard(&_outer, [=](QString error) {
+						if (!error.isEmpty()) {
+							_session->show(Ui::MakeInformBox(error));
+						}
+						refreshProfiles();
+					}));
+				}
+			});
+		}
+	}));
 }
 
 void FiltersMenu::refresh() {

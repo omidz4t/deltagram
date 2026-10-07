@@ -23,6 +23,10 @@ sources without nested Git history, accounts, binaries or local diagnostics.
 
 For sharing and scanning invites, see [Invite QR codes](docs/QR-CODES.md).
 
+To put profiles in the folder sidebar, enable **Show profiles instead of folders**
+in **Settings → Advanced → Experimental settings → Interface**. Click a profile
+to switch; the setting is off by default and persists across restarts.
+
 ## License
 
 Deltagram is free software licensed under the **GNU General Public License,

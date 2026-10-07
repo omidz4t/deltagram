@@ -51,6 +51,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "webview/webview_embed.h"
 #include "window/main_window.h"
 #include "window/window_filters_favorite.h"
+#include "window/window_filters_menu.h"
 #include "window/window_peer_menu.h"
 #include "window/window_session_controller.h"
 #include "window/window_controller.h"
@@ -442,6 +443,7 @@ void SetupExperimental(
 		{
 			u"Interface"_q,
 			{
+				Window::kOptionProfilesSidebar,
 				Core::kOptionFractionalScalingEnabled,
 				Core::kOptionHighDpiDownscale,
 				Ui::GL::kOptionUseQtRhi,

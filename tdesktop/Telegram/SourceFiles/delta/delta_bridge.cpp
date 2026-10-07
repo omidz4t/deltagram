@@ -1412,9 +1412,15 @@ public:
 			if (guard.expired()) {
 				return;
 			}
-			done(HasError(reply)
-				? QJsonArray()
-				: reply.value(u"result"_q).toArray());
+			auto accounts = QJsonArray();
+			if (!HasError(reply)) {
+				for (const auto &value : reply.value(u"result"_q).toArray()) {
+					auto account = value.toObject();
+					account.insert(u"selected"_q, account.value(u"id"_q).toInt() == _accountId);
+					accounts.append(account);
+				}
+			}
+			done(accounts);
 		});
 	}
 

@@ -1667,8 +1667,16 @@ SessionController::SessionController(
 		closeFolder();
 	}, lifetime());
 
+	base::options::lookup<bool>(kOptionProfilesSidebar).changes(
+	) | rpl::on_next([=] {
+		crl::on_main(this, [=] { toggleFiltersMenu(false); });
+	}, lifetime());
+
 	const auto processFiltersMenu = [this] {
-		if (SessionNavigation::session().data().chatsFilters().has()) {
+		if (ProfilesSidebarEnabled()) {
+			content()->toggleFiltersMenu(false);
+			toggleFiltersMenu(true);
+		} else if (SessionNavigation::session().data().chatsFilters().has()) {
 			const auto isHorizontal
 				= Core::App().settings().chatFiltersHorizontal()
 					|| !enoughSpaceForFilters();
@@ -1682,7 +1690,8 @@ SessionController::SessionController(
 	rpl::merge(
 		enoughSpaceForFiltersValue() | rpl::skip(1) | rpl::to_empty,
 		Core::App().settings().chatFiltersHorizontalChanges() | rpl::to_empty,
-		session->data().chatsFilters().changed()
+		session->data().chatsFilters().changed(),
+		base::options::lookup<bool>(kOptionProfilesSidebar).changes()
 	) | rpl::on_next([=] {
 		if (!_filtersActivated) {
 			processFiltersMenu();
@@ -1690,6 +1699,7 @@ SessionController::SessionController(
 		checkOpenedFilter();
 		crl::on_main(this, processFiltersMenu);
 	}, lifetime());
+	crl::on_main(this, processFiltersMenu);
 
 	session->data().itemIdChanged(
 	) | rpl::on_next([=](Data::Session::IdChange change) {
