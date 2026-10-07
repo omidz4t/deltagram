@@ -7,6 +7,7 @@
 - **fix**: restore desktop cursor themes on Linux (`384ea9f`)
 - **fix**: open the profile editor directly from account settings (`001fee5`)
 - **fix**: restore native voice message playback (`2e8586b`)
+- **fix**: open channel photos in the native viewer
 
 ## 0.2.0 (2026-10-07)
 

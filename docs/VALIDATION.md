@@ -238,9 +238,9 @@ Channel information uses the donor's modal-width threshold: narrow windows
 show a navigation page, and wider windows show a centered modal over chat
 history. Resizing changes between these presentations in both directions.
 The More menu opens toward the inside of the panel. Clicking a channel photo
-opens the original local Core image in an aspect-preserving large preview;
-the preview width is limited to the available window width. Photo changes
-also update the preview's source. No server photo or theme request is added.
+opens the local Core image in Telegram Desktop’s native media viewer, with
+zoom, copy and save controls. Photo changes update the image used by the
+viewer. Core accounts do not request Telegram profile-photo history.
 
 A disposable offline Core profile verified modal rendering, transition to a
 380-pixel-wide page and back to a 900-pixel-wide modal, header visibility in
@@ -328,3 +328,16 @@ fresh client launch were checked. Playback used a null audio output in the
 virtual display; physical speakers, microphone capture and live mail delivery
 were not tested. Offline tests and the packaged GUI/Core/WebKit/cursor checks
 passed. Release compilation retained the incremental build and used four jobs.
+
+
+## Native channel photo viewer — 2026-10-07
+
+Channel avatar clicks now pass the local image through the donor’s in-memory
+photo loader and open the standard media viewer instead of a custom preview
+box. This supplies the image dimensions and content required by the viewer.
+The donor profile-photo history lookup is disabled for Core accounts.
+
+A disposable Core channel with mail IO suppressed checked wide modal and narrow
+page avatar clicks, full-image rendering, zoom, copy, saving a valid JPEG and
+Escape returning to channel info. The portable GUI/Core/WebKit/cursor checks,
+offline tests and source audit passed. No real account data was used.

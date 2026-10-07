@@ -8,9 +8,11 @@ This file is part of Delta Tel, a Telegram Desktop based Delta Chat client.
 #include "boxes/peer_list_controllers.h"
 #include "data/data_thread.h"
 #include "data/data_peer.h"
+#include "data/data_photo.h"
 #include "data/data_peer_id.h"
 #include "data/data_session.h"
 #include "ui/controls/userpic_button.h"
+#include "ui/image/image_location_factory.h"
 #include "styles/style_info.h"
 #include "ui/widgets/popup_menu.h"
 #include "ui/boxes/confirm_box.h"
@@ -455,18 +457,14 @@ void FillChannelInfo(
 			reader.setAutoTransform(true);
 			const auto image = reader.read();
 			if (image.isNull()) return;
-			controller->show(Box([=](not_null<Ui::GenericBox*> preview) {
-				preview->setTitle(rpl::single(*nameValue));
-				preview->setWidth(std::min(640, std::max(0, box->window()->width() - 32)));
-				const auto canvas = preview->addRow(object_ptr<Ui::FixedHeightWidget>(preview, 480), style::margins());
-				canvas->paintRequest() | rpl::on_next([=] {
-					QPainter painter(canvas);
-					const auto size = image.size().scaled(canvas->size(), Qt::KeepAspectRatio);
-					painter.drawImage(QRect(QPoint((canvas->width() - size.width()) / 2,
-						(canvas->height() - size.height()) / 2), size), image);
-				}, canvas->lifetime());
-				preview->addButton(tr::lng_close(), [=] { preview->closeBox(); });
-			}), Ui::LayerOption::KeepOther);
+			const auto id = peer->userpicPhotoId();
+			const auto fullPhoto = session->data().photo(
+				(id && id != PeerData::kUnknownPhotoId)
+					? id
+					: PhotoId(0x7000000000000000ULL | uint64(userId)));
+			const auto ready = Images::FromImageInMemory(image, "JPG");
+			fullPhoto->updateImages({}, ready, ready, ready, {}, {}, 0);
+			controller->openPhoto(fullPhoto, peer);
 		});
 		const auto nameStyle = header->lifetime().make_state<style::FlatLabel>(st::infoProfileCover.name);
 		nameStyle->align = style::al_center;
