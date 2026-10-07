@@ -397,7 +397,10 @@ bool audioCheckError();
 } // namespace Player
 } // namespace Media
 
-VoiceWaveform audioCountWaveform(const Core::FileLocation &file, const QByteArray &data);
+VoiceWaveform audioCountWaveform(
+	const Core::FileLocation &file,
+	const QByteArray &data,
+	crl::time *duration = nullptr);
 
 namespace Media {
 namespace Audio {

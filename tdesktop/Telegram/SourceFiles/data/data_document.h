@@ -92,6 +92,8 @@ struct SongData : public DocumentAdditionalData {
 struct VoiceData : public DocumentAdditionalData {
 	~VoiceData();
 
+	crl::time localDuration = 0;
+
 	VoiceWaveform waveform;
 	char wavemax = 0;
 };

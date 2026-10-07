@@ -3092,6 +3092,13 @@ void ApplyMessageData(not_null<HistoryItem*> item) {
 	const auto data = CoreMessages.value(item->id.bare);
 	const auto path = data.value(u"file"_q).toString();
 	const auto mime = data.value(u"fileMime"_q).toString();
+	if (const auto media = item->media()) {
+		if (const auto document = media->document();
+			document && document->isVoiceMessage()
+			&& !path.isEmpty() && QFileInfo::exists(path)) {
+			document->setLocation(Core::FileLocation(path));
+		}
+	}
 	if (LooksLikeVideo(data.value(u"viewType"_q).toString(), mime, path)
 		&& !path.isEmpty() && QFileInfo::exists(path)) {
 		const auto id = DocumentId(0x6000000000000000ULL | uint64(item->id.bare));

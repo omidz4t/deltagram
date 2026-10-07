@@ -1921,11 +1921,12 @@ bool DocumentData::isSilentVideo() const {
 }
 
 crl::time DocumentData::duration() const {
-	return std::max(_duration, crl::time());
+	const auto local = voice() ? voice()->localDuration : crl::time();
+	return (_duration > 0) ? _duration : local;
 }
 
 bool DocumentData::hasDuration() const {
-	return _duration >= 0;
+	return _duration >= 0 || (voice() && voice()->localDuration > 0);
 }
 
 bool DocumentData::isImage() const {

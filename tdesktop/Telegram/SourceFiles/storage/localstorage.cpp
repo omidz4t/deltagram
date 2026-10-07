@@ -868,13 +868,17 @@ public:
 	void process() override {
 		if (!_doc) return;
 
-		_waveform = audioCountWaveform(_loc, _data);
+		_waveform = audioCountWaveform(_loc, _data, &_duration);
 		_wavemax = _waveform.empty()
 			? char(0)
 			: *ranges::max_element(_waveform);
 	}
 	void finish() override {
 		if (const auto voice = _doc ? _doc->voice() : nullptr) {
+			if (_duration > 0 && !_doc->duration()) {
+				voice->localDuration = _duration;
+				_doc->owner().notifyDocumentLayoutChanged(_doc);
+			}
 			if (!_waveform.isEmpty()) {
 				voice->waveform = _waveform;
 				voice->wavemax = _wavemax;
@@ -901,6 +905,7 @@ protected:
 	Core::FileLocation _loc;
 	QByteArray _data;
 	VoiceWaveform _waveform;
+	crl::time _duration = 0;
 	char _wavemax;
 
 };

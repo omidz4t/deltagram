@@ -43,7 +43,7 @@ are not copied here. Deltagram evidence comes from [PROGRESS.md](PROGRESS.md),
 | Delivery and read indicators | 🟡 Partial | Pending, server-delivered and read-receipt transitions checked in an offline fixture; Core state controls message and chat-list checks. Live transport and multi-recipient receipt behavior need validation. |
 | Quotes and replies | 🟡 Partial | Core quote mapping corrected; complete create/display/jump behavior needs live conversation checks. |
 | Message editing, deletion and chat archiving | 🟡 Partial | Core paths exist; received-deletion regressions passed, but two-device UI behavior needs checking. |
-| Voice messages | 🟡 Partial | Sending is reported working; playback bubbles remain unfinished. |
+| Voice messages | 🟡 Partial | Native waveform, duration, play/pause and seeking are implemented; local attachment playback is verified. Microphone recording and live cross-client delivery still need broader testing. |
 | Multiple profiles | 🟡 Partial | Add/delete/order paths exist; replacing the complete chat list after switching remains unfinished. |
 | Profile and group photos | 🟡 Partial | Settings image selection/crop/save and account avatar colors checked locally with Core; group checks recorded. Complete camera workflows and live photo distribution need checking. |
 | Onboarding and relay settings | 🟡 Partial | Core transport configuration and backup restore paths exist; full live onboarding needs validation. |

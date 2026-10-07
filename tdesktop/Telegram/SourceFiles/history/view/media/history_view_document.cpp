@@ -1708,7 +1708,9 @@ bool Document::updateStatusText() const {
 		}
 	}
 
-	if (statusSize != _statusSize) {
+	if (statusSize != _statusSize
+		|| (_data->isVoiceMessage()
+			&& statusSize == Ui::FileStatusSizeLoaded)) {
 		setStatusSize(statusSize, realDuration);
 	}
 	if (_data->uploading() && _data->uploadingData->preparing) {

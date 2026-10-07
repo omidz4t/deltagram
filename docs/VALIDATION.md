@@ -309,3 +309,22 @@ name and bio controls, instead of the donor's empty Stories profile page. The
 click path, name editor and adaptive page/modal layout were checked in a
 configured disposable Core profile at wide and narrow window widths. The
 portable GUI/Core/WebKit/cursor checks and offline project tests passed.
+
+## Native voice playback — 2026-10-07
+
+Core voice attachments now expose their existing local file to the donor player.
+The background waveform pass also supplies a fallback duration when Core has
+none; an existing positive duration remains authoritative. Waveform counting
+accounts for the bytes in each decoded sample, so 16-bit audio spans the full
+waveform and seeking area. The UI refreshes the duration after analysis without
+waiting for playback or changing Core's stored message.
+
+A disposable Core fixture with mail IO suppressed sent and forwarded an
+eight-second Ogg/Opus attachment whose reported duration was zero. The previous
+build displayed `00:00` and a flat waveform. The updated client displayed
+`00:08`, the full waveform, advancing elapsed time, native play/pause controls,
+and seeking to the expected position. Original and forwarded bubbles and a
+fresh client launch were checked. Playback used a null audio output in the
+virtual display; physical speakers, microphone capture and live mail delivery
+were not tested. Offline tests and the packaged GUI/Core/WebKit/cursor checks
+passed. Release compilation retained the incremental build and used four jobs.

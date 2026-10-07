@@ -1558,11 +1558,13 @@ public:
 		QVector<uint16> peaks;
 		peaks.reserve(Media::Player::kWaveformSamplesCount);
 
-		auto fmt = format();
+		const auto fmt = format();
+		const auto bytesPerSample = (fmt == AL_FORMAT_MONO8
+			|| fmt == AL_FORMAT_STEREO8) ? 1 : 2;
 		auto peak = uint16(0);
 		auto callback = [&](uint16 sample) {
 			accumulate_max(peak, sample);
-			sumbytes += Media::Player::kWaveformSamplesCount;
+			sumbytes += Media::Player::kWaveformSamplesCount * bytesPerSample;
 			if (sumbytes >= countbytes) {
 				sumbytes -= countbytes;
 				peaks.push_back(peak);
@@ -1625,10 +1627,14 @@ private:
 
 VoiceWaveform audioCountWaveform(
 		const Core::FileLocation &file,
-		const QByteArray &data) {
+		const QByteArray &data,
+		crl::time *duration) {
 	Media::FFMpegWaveformCounter counter(file, data);
 	const auto positionMs = crl::time(0);
 	if (counter.open(positionMs)) {
+		if (duration) {
+			*duration = counter.duration();
+		}
 		return counter.waveform();
 	}
 	return VoiceWaveform();
