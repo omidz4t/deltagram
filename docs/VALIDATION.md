@@ -301,3 +301,11 @@ requires antialiased alpha pixels, rejecting the old monochrome X11 fallback.
 Core RPC, WebKit, GUI startup and keyboard checks also pass. These checks cover
 the bundled fallback; the user's particular desktop cursor theme remains to be
 confirmed on that desktop.
+
+## Direct account editing — 2026-10-07
+
+Settings → My Account opens the existing profile editor directly, with photo,
+name and bio controls, instead of the donor's empty Stories profile page. The
+click path, name editor and adaptive page/modal layout were checked in a
+configured disposable Core profile at wide and narrow window widths. The
+portable GUI/Core/WebKit/cursor checks and offline project tests passed.

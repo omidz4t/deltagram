@@ -413,8 +413,12 @@ void BuildSectionButtons(SectionBuilder &builder) {
 			.title = tr::lng_settings_my_account(),
 			.icon = { &st::menuIconProfile },
 			.onClick = [=] {
-				controller->showSection(
-					Info::Stories::MakeMyProfile(session->user()));
+				if (Delta::Active()) {
+					showOther(InformationId());
+				} else {
+					controller->showSection(
+						Info::Stories::MakeMyProfile(session->user()));
+				}
 			},
 			.keywords = { u"profile"_q, u"edit"_q, u"information"_q },
 		});
