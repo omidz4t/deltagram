@@ -38,8 +38,8 @@ are not copied here. Deltagram evidence comes from [PROGRESS.md](PROGRESS.md),
 
 | Capability | Status | Remaining work or validation |
 | --- | --- | --- |
-| Text, images, files, videos and forwarding | 🟡 Partial | MP4 sending, GUI forwarding and local playback checked with Core, including silent videos. Fresh cross-client delivery and download checks are needed. |
-| Delivery and read indicators | 🟡 Partial | Pending, server-delivered and read-receipt transitions checked in an offline fixture. Live transport and multi-recipient receipt behavior need validation. |
+| Text, images, files, videos and forwarding | 🟡 Partial | MP4 sending, GUI forwarding and local playback checked with Core, including silent videos and forwarded labels in Saved Messages. Fresh cross-client delivery and download checks are needed. |
+| Delivery and read indicators | 🟡 Partial | Pending, server-delivered and read-receipt transitions checked in an offline fixture; Core state controls message and chat-list checks. Live transport and multi-recipient receipt behavior need validation. |
 | Quotes and replies | 🟡 Partial | Core quote mapping corrected; complete create/display/jump behavior needs live conversation checks. |
 | Message editing, deletion and chat archiving | 🟡 Partial | Core paths exist; received-deletion regressions passed, but two-device UI behavior needs checking. |
 | Voice messages | 🟡 Partial | Sending is reported working; playback bubbles remain unfinished. |

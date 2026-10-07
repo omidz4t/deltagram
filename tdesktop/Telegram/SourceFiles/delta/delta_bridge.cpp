@@ -925,12 +925,14 @@ public:
 								if (ChannelInfos.value(chatId).value(u"chatType"_q).toString() == u"OutBroadcast"_q) {
 									ChannelViews.insert(msgId, count.value(u"result"_q).toInt());
 								}
-								if (const auto item = _session->data().message(peerFromUser(UserId(chatId)), MsgId(msgId))) {
-									_session->data().notifyItemDataChange(item);
-									_session->data().requestItemResize(item);
-								}
 							}
 							done(one);
+							// Refresh after the callback has applied Core's new state.
+							if (const auto item = _session->data().message(
+									peerFromUser(UserId(peerUserForChat(chatId))), MsgId(msgId))) {
+								_session->data().notifyItemDataChange(item);
+								_session->data().requestItemViewRefresh(item);
+							}
 						});
 					} else {
 						done(one);
@@ -2621,6 +2623,7 @@ private:
 			|| kind == u"MsgDelivered"_q
 			|| kind == u"MsgFailed"_q
 			|| kind == u"MsgRead"_q
+			|| kind == u"MsgReadCountChanged"_q
 			|| kind == u"MsgsNoticed"_q
 			|| kind == u"ChatModified"_q
 			|| kind == u"ChatlistChanged"_q
@@ -3099,6 +3102,8 @@ void ApplyMessageData(not_null<HistoryItem*> item) {
 		}
 		item->setLocalVideo(document, data.value(u"text"_q).toString());
 	}
+	item->history()->owner().notifyItemDataChange(item);
+	item->history()->updateChatListEntry();
 	item->history()->owner().requestItemViewRefresh(item);
 }
 

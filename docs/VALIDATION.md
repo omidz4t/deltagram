@@ -249,3 +249,21 @@ return to channel history. The GUI compiled with four jobs using the preserved
 incremental build. These checks cover local window navigation and rendering;
 physical multi-monitor placement and platform-specific window scaling remain
 unverified.
+
+## Forward labels and receipt refresh — 2026-10-07
+
+Core-forwarded MP4s now retain the forwarded header in Saved Messages as well
+as regular chats. The donor's Saved Messages sender layout no longer hides the
+header or moves outgoing Core messages to the incoming side. Delivery state
+from Core takes precedence over temporary donor sending flags in both the
+message and chat-list indicators. Receipt callbacks refresh the view after
+applying the message state, including the distinct Saved Messages peer mapping;
+subsequent group receipt events also refresh the chat list.
+
+A disposable Core account with mail IO suppressed verified attachment bytes,
+forward labels in both chat types, and video indicator transitions using seeded
+pending/delivered states and a seeded receipt with matching Core events. These
+are local rendering checks, not live transport or cross-client receipt tests.
+One check means Core reports sent; two checks require Core's read state or a
+recorded receipt. A recipient who disables receipts cannot provide a reliable
+seen indication. Release compilation uses four jobs and preserves build caches.

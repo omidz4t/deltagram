@@ -5817,6 +5817,9 @@ bool Message::displayFromName() const {
 bool Message::displayForwardedFrom() const {
 	const auto item = data();
 	if (const auto forwarded = item->Get<HistoryMessageForwarded>()) {
+		if (Delta::Active()) {
+			return true;
+		}
 		if (forwarded->story) {
 			return true;
 		} else if (item->showForwardsFromSender(forwarded)) {
@@ -5843,6 +5846,9 @@ bool Message::hasOutLayout() const {
 	const auto item = data();
 	if (item->history()->peer->isUser()
 		&& Delta::IsChannel(peerToUser(item->history()->peer->id).bare)) return false;
+	if (Delta::Active()) {
+		return item->out();
+	}
 	if (item->history()->peer->isSelf()) {
 		if (const auto forwarded = item->Get<HistoryMessageForwarded>()) {
 			if (context() == Context::ShortcutMessages) {

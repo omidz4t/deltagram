@@ -846,7 +846,7 @@ void PaintRow(
 			const auto pending = delivery
 				&& (*delivery == Delta::DeliveryState::Pending
 					|| *delivery == Delta::DeliveryState::Failed);
-			if (!item->isSending() && !item->hasFailed() && !pending) {
+			if (delivery ? !pending : (!item->isSending() && !item->hasFailed())) {
 				if (item->unread(thread)) {
 					return &ThreeStateIcon(
 						st::dialogsSentIcon,

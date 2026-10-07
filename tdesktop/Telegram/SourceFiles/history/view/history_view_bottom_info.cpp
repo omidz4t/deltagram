@@ -716,9 +716,10 @@ BottomInfo::Data BottomInfoDataFromMessage(not_null<Message*> message) {
 	const auto delivery = Delta::Active()
 		? Delta::MessageDelivery(item->id.bare)
 		: std::nullopt;
-	if (item->isSending() || item->hasFailed()
-		|| (delivery && (*delivery == Delta::DeliveryState::Pending
-			|| *delivery == Delta::DeliveryState::Failed))) {
+	if (delivery
+		? (*delivery == Delta::DeliveryState::Pending
+			|| *delivery == Delta::DeliveryState::Failed)
+		: (item->isSending() || item->hasFailed())) {
 		result.flags |= Flag::Sending;
 	}
 	if (item->isEphemeral()
