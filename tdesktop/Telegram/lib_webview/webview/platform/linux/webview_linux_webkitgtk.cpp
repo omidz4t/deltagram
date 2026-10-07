@@ -1380,7 +1380,10 @@ bool Instance::create(Config config) {
 		webkit_web_view_set_is_muted(_webview, true);
 	}
 	if (gtk_window_set_child) {
-		if (gtk_graphics_offload_new) {
+		// Keep software frames in the normal GTK repaint path. Offloading
+		// introduces a separate surface although Cairo cannot accelerate it.
+		if (gtk_graphics_offload_new
+			&& qEnvironmentVariable("GSK_RENDERER") != u"cairo"_q) {
 			gtk_window_set_child(
 				GTK_WINDOW(_window),
 				gtk_graphics_offload_new(GTK_WIDGET(_webview)));

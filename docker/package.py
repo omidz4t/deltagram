@@ -117,6 +117,16 @@ for notice in (debian / 'usr/share/doc').glob('*/copyright'):
 <fontconfig>
  <dir prefix="relative">usr/share/fonts</dir>
  <dir>/usr/share/fonts</dir><dir>/usr/local/share/fonts</dir>
+ <!-- Generic CSS families must not resolve to an arbitrary host font. -->
+ <alias><family>sans-serif</family><prefer><family>DejaVu Sans</family></prefer></alias>
+ <alias><family>serif</family><prefer><family>DejaVu Serif</family></prefer></alias>
+ <alias><family>monospace</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>
+ <alias><family>Arial</family><prefer><family>DejaVu Sans</family></prefer></alias>
+ <alias><family>Times New Roman</family><prefer><family>DejaVu Serif</family></prefer></alias>
+ <alias><family>Times</family><prefer><family>DejaVu Serif</family></prefer></alias>
+ <alias><family>Courier New</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>
+ <alias><family>Courier</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>
+ <alias><family>system-ui</family><prefer><family>DejaVu Sans</family></prefer></alias>
  <cachedir prefix="xdg">fontconfig</cachedir>
 </fontconfig>
 ''')

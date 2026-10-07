@@ -377,3 +377,17 @@ full histories. Delaying a history-ID reply for fifteen seconds while
 switching away and back preserved the correct messages without reading
 one profile's message IDs from the other. This covers local history loading
 and cancellation; live server synchronization was not exercised.
+
+### Apps software rendering and font fallback
+
+The portable runtime maps generic CSS families and common web font names to
+bundled DejaVu fonts. This prevents arbitrary host fonts from changing glyphs
+and monospace column widths. The GTK WebView skips graphics offloading when
+using the Cairo renderer, keeping software frames in GTK's normal repaint path.
+
+Validation: `make test`, the incremental four-job release build, and the offline
+portable WebKit canvas/startup/input checks passed. Fontconfig resolved serif,
+monospace, and Times New Roman to the intended bundled families. The actual Apps
+window loaded and was resized through four sizes on an X11 virtual display,
+without EGL/GBM failures or an unresponsive web process. This virtual-display
+check does not reproduce every desktop compositor's flicker behavior.
