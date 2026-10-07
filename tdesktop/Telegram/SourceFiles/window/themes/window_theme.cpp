@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "window/themes/window_theme.h"
 
+#include "delta/delta_bridge.h"
+
 #include "window/themes/window_theme_preview.h"
 #include "window/themes/window_themes_chat.h"
 #include "window/themes/window_themes_embedded.h"
@@ -623,6 +625,10 @@ void ChatBackground::refreshThemeWatcher() {
 }
 
 void ChatBackground::checkUploadWallPaper() {
+	// Global backgrounds are local preferences, never a server upload.
+	if (Delta::Active()) {
+		return;
+	}
 	if (!_session) {
 		_wallPaperUploadLifetime = rpl::lifetime();
 		_wallPaperUploadId = FullMsgId();

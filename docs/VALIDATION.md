@@ -212,3 +212,21 @@ release checks exercise GUI startup, keyboard input, Core RPC and sandboxed
 WebKit JavaScript. The bundled Qt FFmpeg media plugin also passed image and
 video-frame QR decoding without a host Qt or Nix installation. Physical camera
 capture and registration with a real host desktop portal remain unverified.
+
+
+## General chat wallpaper — 2026-10-07
+
+The per-chat wallpaper action is removed from the chat menu. General wallpaper
+remains under Settings → Chat Settings → Chat wallpaper, with a local gallery
+and image-file selection. The gallery uses bundled backgrounds and the current
+custom image instead of requesting a Telegram catalog. Applying a general
+wallpaper saves it locally without uploading or installing it on a server.
+Starting the donor's unauthenticated UI placeholder no longer resets global
+preferences before Core profiles open.
+
+A disposable offline Core profile verified gallery rendering and applying a
+bundled background, then selecting and applying a custom PNG. The same custom
+background appeared in another chat and after switching profiles and restarting
+the GUI. The chat menu contained no wallpaper action. The release GUI compiled
+with four jobs and preserved its incremental records. Full combinations of
+day/night themes, tiling, blur, and imported theme files remain unverified.

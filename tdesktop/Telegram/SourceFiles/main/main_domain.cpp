@@ -397,7 +397,9 @@ bool Domain::removePasscodeIfEmpty() {
 	if (_accounts.size() != 1 || _active.current()->sessionExists()) {
 		return false;
 	}
-	Local::reset();
+	// The donor account is an unauthenticated UI placeholder for Core.
+	// Keep global preferences when it starts or becomes empty; its auth
+	// state does not represent the lifecycle of Core profiles.
 
 	// We completely logged out, remove the passcode if it was there.
 	if (Core::App().passcodeLocked()) {

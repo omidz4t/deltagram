@@ -55,9 +55,10 @@ if ! DISPLAY=:99 python /verify-window.py; then
   exit 1
 fi
 if grep -Eq 'Fontconfig warning|error: empty dic file|Hash Manager Error|App info not found|Failed to execute child process.*update-desktop-database' /tmp/gui.log; then exit 1; fi
-test -f /tmp/home/.local/share/applications/org.deltagram.desktop.desktop
 HOME=/tmp/home python - <<'DESKTOP'
 import ctypes
+from pathlib import Path
+assert (Path.home() / '.local/share/applications/org.deltagram.desktop.desktop').is_file()
 gio = ctypes.CDLL('libgio-2.0.so.0')
 gio.g_desktop_app_info_new.argtypes = [ctypes.c_char_p]
 gio.g_desktop_app_info_new.restype = ctypes.c_void_p

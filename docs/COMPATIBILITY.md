@@ -68,7 +68,7 @@ They are **unverified**, rather than assumed to work because the donor UI has th
 | Attachments | ❓ Unverified | Staging, multiple files/images/videos and image editing before send. |
 | Notifications | ❓ Unverified | Background delivery and unread indicators for inactive profiles. |
 | Accessibility and localization | ❓ Unverified | Screen readers, keyboard navigation and RTL layouts. |
-| Appearance | ❓ Unverified | Custom wallpaper persistence across profiles. |
+| Appearance | 🟡 Partial | General wallpaper: local gallery and custom images in Settings → Chat Settings. Custom-image persistence checked across chats, profiles and restart; per-chat wallpaper is unavailable and removed from the chat menu. Full day/night combinations remain unverified. |
 | External integration | ❓ Unverified | Camera capture and sharing into/out of the application. |
 | Email presentation | ❓ Unverified | Mailing lists, sender identity and HTML mail display/search. |
 | Message content | ❓ Unverified | Stickers, copying links and complete media rendering. |

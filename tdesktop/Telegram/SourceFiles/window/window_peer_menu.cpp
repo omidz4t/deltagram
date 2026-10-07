@@ -1469,6 +1469,9 @@ void Filler::addCreateTodoList() {
 }
 
 void Filler::addThemeEdit() {
+	if (Delta::Active()) {
+		return;
+	}
 	if (_peer->isVerifyCodes() || _peer->isRepliesChat()) {
 		return;
 	}

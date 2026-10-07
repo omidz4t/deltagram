@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "boxes/background_box.h"
 
+#include "delta/delta_bridge.h"
+
 #include "lang/lang_keys.h"
 #include "ui/effects/round_checkbox.h"
 #include "ui/image/image.h"
@@ -432,6 +434,10 @@ BackgroundBox::Inner::Inner(
 }
 
 void BackgroundBox::Inner::requestPapers() {
+	if (Delta::Active()) {
+		updatePapers();
+		return;
+	}
 	if (forChannel()) {
 		_session->data().cloudThemes().refreshChatThemes();
 		return;
@@ -531,6 +537,27 @@ void BackgroundBox::Inner::sortPapers() {
 }
 
 void BackgroundBox::Inner::updatePapers() {
+	if (Delta::Active() && !_forPeer) {
+		_over = _overDown = Selection();
+		_papers.clear();
+		auto current = Window::Theme::Background()->paper();
+		if (Data::IsCustomWallPaper(current)) {
+			current.setLocalImageAsThumbnail(std::make_shared<Image>(
+				Window::Theme::Background()->createCurrentImage()));
+			_papers.push_back({ std::move(current) });
+		}
+		auto original = Data::Legacy1DefaultWallPaper();
+		original.setLocalImageAsThumbnail(std::make_shared<Image>(
+			u":/gui/art/bg_initial.jpg"_q));
+		_papers.push_back({ std::move(original) });
+		auto paper = Data::DefaultWallPaper();
+		paper.setLocalImageAsThumbnail(std::make_shared<Image>(
+			u":/gui/art/bg_thumbnail.png"_q));
+		_papers.push_back({ std::move(paper) });
+		sortPapers();
+		resizeToContentAndPreload();
+		return;
+	}
 	if (forChannel()) {
 		if (_session->data().cloudThemes().chatThemes().empty()) {
 			return;

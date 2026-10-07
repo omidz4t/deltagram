@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "boxes/background_preview_box.h"
 
+#include "delta/delta_bridge.h"
+
 #include "base/unixtime.h"
 #include "boxes/peers/edit_peer_color_box.h"
 #include "boxes/premium_preview_box.h"
@@ -824,7 +826,8 @@ void BackgroundPreviewBox::applyForPeer(bool both) {
 }
 
 void BackgroundPreviewBox::applyForEveryone() {
-	const auto install = (_paper.id() != Window::Theme::Background()->id())
+	const auto install = !Delta::Active()
+		&& (_paper.id() != Window::Theme::Background()->id())
 		&& Data::IsCloudWallPaper(_paper);
 	_controller->content()->setChatBackground(_paper, std::move(_full));
 	if (install) {
