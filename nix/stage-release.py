@@ -64,6 +64,9 @@ def stage():
     subprocess.run(["cc", "-shared", "-fPIC", "-Os", str(ROOT / "nix/spawnfix.c"),
                     "-ldl", "-o", str(lib / "libspawnfix.so")], check=True)
     dependencies(lib / "libspawnfix.so", lib)
+    subprocess.run(["cc", "-shared", "-fPIC", "-Os", str(ROOT / "nix/webkitfix.c"),
+                    "-ldl", "-o", str(lib / "libwebkitfix.so")], check=True)
+    dependencies(lib / "libwebkitfix.so", lib)
     plugins = Path(output("pkg-config", "--variable=libdir", "Qt6Core")) / "qt-6/plugins"
     plugin_roots = [plugins] + [Path(p) for p in os.environ.get(
         "DELTA_TEL_EXTRA_QT_PLUGIN_ROOTS", "").split(":") if p]

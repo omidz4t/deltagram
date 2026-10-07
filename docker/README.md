@@ -29,7 +29,7 @@ compressed image. Normal exit cleans up the extracted image. Diagnostic options:
 ```sh
 ./dist/deltagram --bundle-version
 ./dist/deltagram --bundle-rpc --version
-bash docker/verify.sh              # isolated Debian GUI, keyboard and RPC check
+bash docker/verify.sh              # isolated Debian WebKit, GUI, keyboard and RPC checks
 DELTA_TEST_IMAGE=ubuntu:22.04 bash docker/verify.sh # same checks on another image
 ```
 
@@ -84,3 +84,16 @@ and Nix caches. All artifacts remain ignored and no publishing occurs.
 Format references: [AppImage portability concepts](https://docs.appimage.org/introduction/concepts.html),
 [RPM spec files](https://rpm.org/docs/4.20.x/manual/spec.html), and
 [Arch package metadata](https://man.archlinux.org/man/PKGINFO.5.en).
+
+## WebKit runtime
+
+The portable executable includes WebKitGTK's network, web and GPU processes,
+injected bundle and bubblewrap. Production WebKitGTK uses absolute helper paths;
+the runtime shim redirects those paths into the extracted bundle and makes that
+bundle available read-only inside WebKit's sandbox. WebKit's namespace, seccomp
+and IPC settings remain enabled.
+
+Verification loads an offline HTML page and requires its JavaScript to update a
+window title, in addition to the Qt keyboard and Core RPC checks. This exercises
+real WebKit subprocess startup without contacting a server. `Telegram.stripped`
+is the GUI executable alone; use `deltagram` for the complete portable runtime.

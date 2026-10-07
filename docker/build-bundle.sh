@@ -8,7 +8,7 @@ apt-get "${apt_options[@]}" update
 apt-get "${apt_options[@]}" -y --download-only --reinstall --no-install-recommends install \
   libc6 musl-dev binutils patchelf squashfs-tools python3 \
   libwebkitgtk-6.0-4 libgtk-4-1 libegl1 libglx0 libgl1 libopengl0 libgbm1 libxkbcommon-x11-0 \
-  glib-networking ca-certificates fonts-dejavu-core xvfb xauth \
+  glib-networking libglib2.0-bin ca-certificates fonts-dejavu-core xvfb xauth \
   libbz2-1.0 libselinux1 libpcre2-8-0 libaudit1 libcap2 libcap-ng0 \
   libsystemd0 liblzma5 libzstd1 zlib1g libmd0 libbsd0 libnettle8t64 libgmp10
 for package in /build/archives/*.deb; do dpkg-deb -x "$package" /build/debian; done

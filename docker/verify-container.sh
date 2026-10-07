@@ -28,6 +28,15 @@ sleep 2
 kill -0 "$DISPLAY_PID" || { cat /tmp/xvfb.log; exit 1; }
 mkdir -p /tmp/home /tmp/run
 chmod 700 /tmp/run
+HOME=/tmp/home XDG_RUNTIME_DIR=/tmp/run DISPLAY=:99 GSK_RENDERER=cairo \
+ "$BUNDLE" --bundle-webview-test 'data:text/html,<script>document.title="Deltagram WebView JavaScript passed"</script>' > /tmp/webview.log 2>&1 &
+WEBVIEW_PID=$!
+if ! DISPLAY=:99 python /verify-webview.py; then
+  cat /tmp/webview.log
+  exit 1
+fi
+kill "$WEBVIEW_PID"
+wait "$WEBVIEW_PID" || test "$?" -eq 143
 FONTCONFIG_PATH=/test-deps/etc/fonts FONTCONFIG_FILE=/missing-host-fonts.conf \
  XKB_CONFIG_ROOT=/missing-host-keyboard-root XLOCALEDIR=/missing-host-locale \
  HOME=/tmp/home XDG_RUNTIME_DIR=/tmp/run DISPLAY=:99 \
@@ -48,4 +57,4 @@ fi
 if grep -q 'Fontconfig warning' /tmp/gui.log; then exit 1; fi
 kill "$APP_PID"
 wait "$APP_PID" || test "$?" -eq 143
-printf 'GUI startup, keyboard input and Core RPC checks passed.\n'
+printf 'WebKit JavaScript, GUI startup and keyboard input checks passed.\n'

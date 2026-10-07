@@ -44,6 +44,10 @@ queue = [available[name] for name in (
     'libwebkitgtk-6.0.so.4', 'libgtk-4.so.1', 'libEGL.so.1', 'libGLX.so.0',
     'libGL.so.1', 'libgbm.so.1', 'libc.so.6', 'libresolv.so.2',
     'libxkbcommon.so.0', 'libxkbcommon-x11.so.0')]
+bwrap = debian / 'usr/bin/bwrap'
+assert bwrap.is_file(), 'Missing WebKit sandbox launcher'
+copy(bwrap, app / 'usr/bin/bwrap')
+queue.append(bwrap)
 webkit = debian / 'usr/lib/x86_64-linux-gnu/webkitgtk-6.0'
 for path in webkit.rglob('*'):
     if path.is_file():
@@ -84,6 +88,11 @@ assert (lib / 'ld-linux-x86-64.so.2.real').is_file()
 for folder in ('usr/share/fonts', 'usr/share/glib-2.0/schemas', 'usr/share/webkitgtk-6.0', 'usr/share/X11/xkb', 'usr/share/X11/locale'):
     if (debian / folder).exists():
         shutil.copytree(debian / folder, app / folder, symlinks=False, dirs_exist_ok=True)
+# Downloaded debs do not run the trigger that compiles GSettings schemas.
+subprocess.run([str(debian / 'usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2'),
+    '--library-path', str(debian / 'usr/lib/x86_64-linux-gnu'),
+    str(debian / 'usr/bin/glib-compile-schemas'),
+    str(app / 'usr/share/glib-2.0/schemas')], check=True)
 certificates = sorted((debian / 'usr/share/ca-certificates').rglob('*.crt'))
 assert certificates, 'Missing CA trust store'
 (app / 'usr/share/ca-bundle.crt').write_bytes(b'\n'.join(path.read_bytes() for path in certificates))
@@ -118,7 +127,7 @@ set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$HERE/../../../.." && pwd)
 exec "$ROOT/telegram-lib/ld-linux-x86-64.so.2.real" \\
-  --library-path "$ROOT/telegram-lib" --argv0 "$0" "$0.real" "$@"
+  --library-path "$ROOT/telegram-lib" --preload "$ROOT/telegram-lib/libwebkitfix.so" --argv0 "$0" "$0.real" "$@"
 ''')
     helper.chmod(0o755)
 (app / 'deltagram.desktop').write_text('''[Desktop Entry]

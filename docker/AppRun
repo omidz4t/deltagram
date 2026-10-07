@@ -15,6 +15,7 @@ export DELTA_TEL_WRAPPER="$HERE/AppRun"
 export SSL_CERT_FILE="$HERE/usr/share/ca-bundle.crt"
 export WEBKIT_EXEC_PATH="$HERE/usr/lib/x86_64-linux-gnu/webkitgtk-6.0"
 export WEBKIT_INSPECTOR_RESOURCES_PATH="$HERE/usr/share/webkitgtk-6.0"
+export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export GIO_MODULE_DIR="$HERE/usr/lib/x86_64-linux-gnu/gio/modules"
 export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export SPA_PLUGIN_DIR="$HERE/telegram-lib/spa-0.2"
@@ -28,13 +29,20 @@ if [ "${1:-}" = --bundle-rpc ]; then
   shift
   exec "$DELTA_RPC_LDSO" --library-path "$DELTA_RPC_LIB" "$DELTA_TEL_RPC" "$@"
 fi
+if [ "${1:-}" = --bundle-webview-test ]; then
+  shift
+  exec "$HERE/telegram-lib/ld-linux-x86-64.so.2.real" \
+    --library-path "$HERE/telegram-lib" \
+    --preload "$HERE/telegram-lib/libwebkitfix.so" \
+    "$WEBKIT_EXEC_PATH/MiniBrowser" "$@"
+fi
 WORKDIR="${DELTA_TEL_WORKDIR:-${XDG_DATA_HOME:-$HOME/.local/share}/deltagram/desktop}"
 mkdir -p "$WORKDIR"
 if [ "${1:-}" = -webviewhelper ]; then
   exec "$HERE/telegram-lib/ld-linux-x86-64.so.2.real" \
     --library-path "$HERE/telegram-lib:/usr/lib/x86_64-linux-gnu:/usr/lib:/usr/lib64" \
-    --preload "$HERE/telegram-lib/libspawnfix.so" "$HERE/Telegram" "$@"
+    --preload "$HERE/telegram-lib/libspawnfix.so:$HERE/telegram-lib/libwebkitfix.so" "$HERE/Telegram" "$@"
 fi
 exec "$HERE/telegram-lib/ld-linux-x86-64.so.2.real" \
   --library-path "$HERE/telegram-lib:/usr/lib/x86_64-linux-gnu:/usr/lib:/usr/lib64" \
-  --preload "$HERE/telegram-lib/libspawnfix.so" "$HERE/Telegram" -workdir "$WORKDIR" "$@"
+  --preload "$HERE/telegram-lib/libspawnfix.so:$HERE/telegram-lib/libwebkitfix.so" "$HERE/Telegram" -workdir "$WORKDIR" "$@"

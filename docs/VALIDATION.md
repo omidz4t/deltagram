@@ -143,3 +143,13 @@ semantics.
 
 The updated `dist/deltagram` passed the isolated Debian GUI startup, keyboard
 input and bundled Core RPC checks with network access disabled.
+
+## Portable WebKit regression — 2026-10-07
+
+The isolated runtime check now loads an offline HTML page with bundled
+WebKitGTK and requires JavaScript to set the browser window title. This catches
+missing private subprocesses and injected modules that a Qt startup check does
+not exercise. The portable runtime relocates WebKit's production helper paths
+and preserves its sandbox configuration. This check covers basic HTML and
+JavaScript; network access, WebRTC and application-specific WebViews require
+separate validation.
