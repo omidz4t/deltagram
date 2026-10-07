@@ -99,6 +99,28 @@ assert segments, 'Could not find the profile creation button'
 button_y = sum(segments[-1]) // 2
 print("Window and button geometry:", px.value, py.value, width.value, height.value, button_y, flush=True)
 test.XTestFakeMotionEvent(display, -1, px.value + width.value // 2, button_y, 0)
+x.XFlush(display)
+time.sleep(0.5)
+# A missing Xcursor theme falls back to the monochrome X11 font cursor.
+# Inspect the cursor that Qt actually installed on the clickable button.
+class CursorImage(c.Structure):
+    _fields_ = [('x', c.c_short), ('y', c.c_short),
+                ('width', c.c_ushort), ('height', c.c_ushort),
+                ('xhot', c.c_ushort), ('yhot', c.c_ushort),
+                ('serial', c.c_ulong), ('pixels', c.POINTER(c.c_ulong))]
+fixes = c.CDLL('/test-deps/usr/lib/x86_64-linux-gnu/libXfixes.so.3')
+fixes.XFixesGetCursorImage.argtypes = [c.c_void_p]
+fixes.XFixesGetCursorImage.restype = c.POINTER(CursorImage)
+cursor = fixes.XFixesGetCursorImage(display)
+assert cursor, 'Cannot inspect Qt cursor'
+try:
+    pixels = cursor.contents.pixels
+    assert any(0 < ((pixels[i] >> 24) & 255) < 255
+               for i in range(cursor.contents.width * cursor.contents.height)), \
+        'Qt fell back to a monochrome cursor instead of the bundled theme'
+finally:
+    x.XFree(cursor)
+print('Themed cursor rendering passed', flush=True)
 test.XTestFakeButtonEvent(display, 1, 1, 0)
 test.XTestFakeButtonEvent(display, 1, 0, 0)
 x.XFlush(display)

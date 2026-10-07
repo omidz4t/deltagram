@@ -352,6 +352,19 @@ void Launcher::init() {
 	QApplication::setFallbackSessionManagementEnabled(false);
 #endif // Qt < 6.0.0
 
+#ifdef Q_OS_LINUX
+	// Nix's Xcursor defaults point into its build-time store. Resolve the
+	// desktop's themes also when launching the standalone GUI executable.
+	if (qEnvironmentVariableIsEmpty("XCURSOR_PATH")) {
+		auto paths = QStringList{ qEnvironmentVariable("HOME") + u"/.icons"_q };
+		for (const auto &location : QStandardPaths::standardLocations(
+				QStandardPaths::GenericDataLocation)) {
+			paths.push_back(location + u"/icons"_q);
+		}
+		paths.push_back(u"/usr/share/pixmaps"_q);
+		qputenv("XCURSOR_PATH", paths.join(':').toLocal8Bit());
+	}
+#endif // Q_OS_LINUX
 	initHook();
 }
 

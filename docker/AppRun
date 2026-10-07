@@ -17,6 +17,16 @@ export WEBKIT_EXEC_PATH="$HERE/usr/lib/x86_64-linux-gnu/webkitgtk-6.0"
 export WEBKIT_INSPECTOR_RESOURCES_PATH="$HERE/usr/share/webkitgtk-6.0"
 export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export GIO_MODULE_DIR="$HERE/usr/lib/x86_64-linux-gnu/gio/modules"
+# The Nix-built Xcursor library cannot rely on its build-time icon paths.
+# Prefer the desktop's cursor theme; use bundled cursors only as a fallback.
+CURSOR_PATH="${XCURSOR_PATH:+$XCURSOR_PATH:}${XDG_DATA_HOME:-$HOME/.local/share}/icons:$HOME/.icons"
+OLD_IFS=$IFS
+IFS=:
+for folder in ${XDG_DATA_DIRS:-/usr/local/share:/usr/share}; do
+  CURSOR_PATH="$CURSOR_PATH:$folder/icons"
+done
+IFS=$OLD_IFS
+export XCURSOR_PATH="$CURSOR_PATH:/usr/local/share/icons:/usr/share/icons:/usr/share/pixmaps:$HERE/usr/share/icons"
 export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export SPA_PLUGIN_DIR="$HERE/telegram-lib/spa-0.2"
 export PIPEWIRE_MODULE_DIR="$HERE/telegram-lib/pipewire-0.3"

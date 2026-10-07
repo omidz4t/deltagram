@@ -88,6 +88,16 @@ assert (lib / 'ld-linux-x86-64.so.2.real').is_file()
 for folder in ('usr/share/fonts', 'usr/share/glib-2.0/schemas', 'usr/share/webkitgtk-6.0', 'usr/share/X11/xkb', 'usr/share/X11/locale'):
     if (debian / folder).exists():
         shutil.copytree(debian / folder, app / folder, symlinks=False, dirs_exist_ok=True)
+# Qt's pointing-hand cursor needs themed Xcursor images outside the Nix store.
+# Ship only the small cursor theme, not the full desktop icon collection.
+cursors = debian / 'usr/share/icons/Adwaita/cursors'
+assert (cursors / 'hand2').is_file(), 'Missing fallback pointing-hand cursor'
+shutil.copytree(cursors, app / 'usr/share/icons/Adwaita/cursors', symlinks=True)
+copy(debian / 'usr/share/icons/Adwaita/index.theme',
+     app / 'usr/share/icons/Adwaita/index.theme')
+# Debian normally creates this through update-alternatives, absent in a deb export.
+(app / 'usr/share/icons/default').mkdir()
+(app / 'usr/share/icons/default/index.theme').write_text('[Icon Theme]\nInherits=Adwaita\n')
 # Downloaded debs do not run the trigger that compiles GSettings schemas.
 subprocess.run([str(debian / 'usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2'),
     '--library-path', str(debian / 'usr/lib/x86_64-linux-gnu'),

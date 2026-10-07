@@ -285,3 +285,19 @@ settings row, repeated on/off toggling without restart, switching between
 configured profiles, photos/initials, active colors, a narrow window, and
 setting/selection persistence after reopening the client. The release build
 uses four GUI compiler jobs and retains incremental build records and caches.
+
+## Linux cursor themes — 2026-10-07
+
+The portable launcher now searches the user's and desktop's cursor theme paths
+before a bundled Adwaita cursor fallback. Existing XCURSOR_PATH, XCURSOR_THEME
+and XCURSOR_SIZE choices are retained. The standalone GUI also resolves desktop
+icon paths when XCURSOR_PATH is unset. Clickable controls retain the donor's
+standard Qt pointing-hand cursor; no custom cursor bitmap replaces it.
+
+The previous portable runtime could not load a themed hand cursor. The updated
+runtime successfully loads the fallback hand image. In the isolated Debian GUI
+check, XFixes inspects the cursor Qt installed over the onboarding button and
+requires antialiased alpha pixels, rejecting the old monochrome X11 fallback.
+Core RPC, WebKit, GUI startup and keyboard checks also pass. These checks cover
+the bundled fallback; the user's particular desktop cursor theme remains to be
+confirmed on that desktop.
