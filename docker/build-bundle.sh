@@ -38,7 +38,7 @@ if /build/debian/usr/bin/readelf -l /build/launcher | grep -q INTERP; then
 fi
 /build/debian/usr/bin/python3 - <<'PY'
 import hashlib, pathlib, shutil, struct
-version = pathlib.Path('/input/Telegram.version').read_text().strip()
+version = pathlib.Path('/input/deltagram.version').read_text().strip()
 target = pathlib.Path('/output') / '.deltagram.tmp'
 with target.open('wb') as out:
     for name in ('/build/launcher', '/runtime/runtime-x86_64', '/build/payload.squashfs'):

@@ -16,7 +16,7 @@ def copy(origin, target):
     shutil.copy2(origin, target, follow_symlinks=True)
     target.chmod(target.stat().st_mode | 0o200)
 
-for name in ('Telegram', 'Telegram.version'):
+for name in ('Telegram', 'deltagram.version'):
     copy(source / name, app / name)
 shutil.copytree(source / 'licenses', app / 'licenses', symlinks=False)
 copy('/builder/AppRun', app / 'AppRun')

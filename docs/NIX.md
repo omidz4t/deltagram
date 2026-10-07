@@ -35,7 +35,7 @@ executable and requires no Nix installation on the receiving machine. See the
 [release guide](../docker/README.md) for platform requirements and verification.
 
 Intermediate GUI outputs remain in `data/tdesktop-release/bin/Telegram` and
-`Telegram.stripped`; these are not the portable user-facing release. Runtime
+`deltagram.stripped`; these are not the portable user-facing release. Runtime
 staging and container downloads stay in `data/release-stage` and
 `data/container-build`. No manual copy into an older dist bundle is needed.
 

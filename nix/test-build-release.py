@@ -53,7 +53,7 @@ class ReleaseModeTest(unittest.TestCase):
                     env['DELTA_TEL_BUMP_VERSION'] = bump
                 subprocess.run(['bash', str(root / 'nix/build-release.sh')],
                                env=env, check=True, capture_output=True)
-                self.assertEqual((release / 'bin/Telegram.version').read_text(), expected + '\n')
+                self.assertEqual((release / 'bin/deltagram.version').read_text(), expected + '\n')
                 self.assertIn('--target Telegram -j 4', (release / 'arguments').read_text())
                 for name in records:
                     self.assertEqual((release / name).read_text(), 'preserved incremental record')

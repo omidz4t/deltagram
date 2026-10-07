@@ -24,7 +24,7 @@ export PIPEWIRE_CONFIG_PREFIX="$HERE/telegram-lib/pipewire-conf"
 export QT_XCB_GL_INTEGRATION="${QT_XCB_GL_INTEGRATION:-none}"
 export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}"
 unset LD_LIBRARY_PATH
-if [ "${1:-}" = --bundle-version ]; then cat "$HERE/Telegram.version"; exit; fi
+if [ "${1:-}" = --bundle-version ]; then cat "$HERE/deltagram.version"; exit; fi
 if [ "${1:-}" = --bundle-rpc ]; then
   shift
   exec "$DELTA_RPC_LDSO" --library-path "$DELTA_RPC_LIB" "$DELTA_TEL_RPC" "$@"

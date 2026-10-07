@@ -88,6 +88,7 @@ jobs:
           restore-keys: |
             compile-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/build-release.sh') }}-
             compile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/context-sources.sh', 'nix/build-release.sh', 'nix/build-rpc.sh') }}-
+            compile-v2-${{ runner.os }}-${{ runner.arch }}-
       - name: Restore pinned Core and Rust cache
         id: rust-cache
         if: steps.build.outputs.required == 'true'
@@ -139,12 +140,12 @@ jobs:
           bash docker/package-formats.sh
           python3 scripts/ci-release.py --source-archive
           mkdir -p data/release-upload
-          cp data/tdesktop-release/bin/Telegram.stripped data/release-upload/
-          cp data/tdesktop-release/bin/Telegram.version data/release-upload/
+          cp data/tdesktop-release/bin/deltagram.stripped data/release-upload/
+          cp data/tdesktop-release/bin/deltagram.version data/release-upload/
           cp data/release-plan/notes.md data/release-upload/RELEASE-NOTES.md
           find dist -type f -exec cp '{}' data/release-upload/ \;
           cd data/release-upload
-          sha256sum Telegram.stripped > Telegram.stripped.sha256
+          sha256sum deltagram.stripped > deltagram.stripped.sha256
       - name: Upload verified release assets
         if: steps.plan.outputs.publish == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

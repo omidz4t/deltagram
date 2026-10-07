@@ -27,7 +27,7 @@ Core and the Qt client, checks RPC, verifies the portable executable, and create
 packages. It publishes a draft only after uploading all assets, then marks the
 release as an experimental prerelease. Failed builds do not publish a release.
 
-Assets include `Telegram.stripped`, the portable `deltagram` executable, Debian,
+Assets include `deltagram.stripped`, the portable `deltagram` executable, Debian,
 RPM and Arch packages, release notes, checksums and a matching source archive.
 Use `deltagram-VERSION-source.tar.gz` for the exact prepared build sources;
 GitHub's default source archives reflect the tagged input commit, whose checked-in

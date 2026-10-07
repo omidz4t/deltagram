@@ -40,9 +40,9 @@ def dependencies(binary, destination):
 
 
 def stage():
-    gui = RELEASE / "bin/Telegram.stripped"
+    gui = RELEASE / "bin/deltagram.stripped"
     rpc = TARGET / "debug/deltachat-rpc-server"
-    for required in (gui, rpc, RELEASE / "bin/Telegram.version"):
+    for required in (gui, rpc, RELEASE / "bin/deltagram.version"):
         if not required.is_file():
             raise SystemExit(f"Missing release input: {required}. Build the release first.")
     # This directory is disposable packaging output, never an incremental tree.
@@ -52,7 +52,7 @@ def stage():
     lib = DEST / "telegram-lib"
     lib.mkdir(parents=True)
     copy(gui, DEST / "Telegram")
-    copy(RELEASE / "bin/Telegram.version", DEST / "Telegram.version")
+    copy(RELEASE / "bin/deltagram.version", DEST / "deltagram.version")
     dependencies(gui, lib)
     loader = Path(output("patchelf", "--print-interpreter", str(gui)))
     copy(loader, lib / "ld-linux-x86-64.so.2.real")

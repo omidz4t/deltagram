@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Size-optimised, stripped build of the Delta Chat client.
 # Usage: ./nix/develop.sh --command bash nix/build-release.sh
-# Output: $RELEASE_DIR/bin/Telegram and the stripped copy $RELEASE_DIR/bin/Telegram.stripped
+# Output: $RELEASE_DIR/bin/Telegram and the stripped copy $RELEASE_DIR/bin/deltagram.stripped
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -33,12 +33,12 @@ fi
 VERSION=$(awk '$1 == "AppVersionStr" { print $2 }' "$ROOT/tdesktop/Telegram/build/version")
 echo "Building Delta Tel $VERSION"
 cmake --build "$RELEASE_DIR" --target Telegram -j "$JOBS"
-strip --strip-all -o "$RELEASE_DIR/bin/Telegram.stripped" "$RELEASE_DIR/bin/Telegram"
-printf '%s\n' "$VERSION" > "$RELEASE_DIR/bin/Telegram.version"
-ls -la "$RELEASE_DIR/bin/Telegram" "$RELEASE_DIR/bin/Telegram.stripped"
+strip --strip-all -o "$RELEASE_DIR/bin/deltagram.stripped" "$RELEASE_DIR/bin/Telegram"
+printf '%s\n' "$VERSION" > "$RELEASE_DIR/bin/deltagram.version"
+ls -la "$RELEASE_DIR/bin/Telegram" "$RELEASE_DIR/bin/deltagram.stripped"
 
 if [[ "${DELTA_TEL_PACK_UPX:-0}" == 1 ]] && command -v upx >/dev/null; then
-  cp "$RELEASE_DIR/bin/Telegram.stripped" "$RELEASE_DIR/bin/Telegram.packed"
-  upx --best --lzma -q "$RELEASE_DIR/bin/Telegram.packed"
-  ls -la "$RELEASE_DIR/bin/Telegram.packed"
+  cp "$RELEASE_DIR/bin/deltagram.stripped" "$RELEASE_DIR/bin/deltagram.packed"
+  upx --best --lzma -q "$RELEASE_DIR/bin/deltagram.packed"
+  ls -la "$RELEASE_DIR/bin/deltagram.packed"
 fi

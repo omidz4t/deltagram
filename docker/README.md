@@ -102,5 +102,5 @@ and IPC settings remain enabled.
 
 Verification loads an offline HTML page and requires its JavaScript to update a
 window title, in addition to the Qt keyboard and Core RPC checks. This exercises
-real WebKit subprocess startup without contacting a server. `Telegram.stripped`
+real WebKit subprocess startup without contacting a server. `deltagram.stripped`
 is the GUI executable alone; use `deltagram` for the complete portable runtime.
