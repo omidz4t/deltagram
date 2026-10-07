@@ -23,6 +23,13 @@ def copy(source, target):
     target.chmod(target.stat().st_mode | 0o200)
 
 
+def writable_tree(root):
+    """Make disposable copies writable without changing immutable Nix inputs."""
+    for path in [root, *root.rglob('*')]:
+        if not path.is_symlink():
+            path.chmod(path.stat().st_mode | (0o700 if path.is_dir() else 0o200))
+
+
 def dependencies(binary, destination):
     listing = output("ldd", str(binary))
     if "not found" in listing:
@@ -40,6 +47,7 @@ def stage():
             raise SystemExit(f"Missing release input: {required}. Build the release first.")
     # This directory is disposable packaging output, never an incremental tree.
     if DEST.exists():
+        writable_tree(DEST)
         shutil.rmtree(DEST)
     lib = DEST / "telegram-lib"
     lib.mkdir(parents=True)
@@ -75,6 +83,7 @@ def stage():
         if not source.is_dir():
             raise SystemExit(f"Missing PipeWire runtime: {source}")
         shutil.copytree(source, lib / name, symlinks=False)
+        writable_tree(lib / name)
         for plugin in (lib / name).rglob("*.so"):
             dependencies(plugin, lib)
     # Keep license notices alongside the embedded components.
