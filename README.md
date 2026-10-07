@@ -54,8 +54,10 @@ See [development details](docs/DEVELOPMENT.md) for limits and overrides.
 Version preparation is documented in [the release guide](docs/RELEASING.md);
 release notes are in [CHANGELOG.md](CHANGELOG.md).
 
-The GitHub Actions build workflow is retained but currently disabled. Builds use
-flake.lock. Telegram conference encryption is
+GitHub Actions automatically builds and publishes experimental releases from
+Conventional Commits on `main`, starting with `0.1.0`. See the
+[release guide](docs/RELEASING.md) for artifacts and version rules. Builds use
+`flake.lock`. Telegram conference encryption is
 excluded; messaging encryption remains in Chatmail Core. See
 [development details](docs/DEVELOPMENT.md) for CI and optional GUI test tools.
 

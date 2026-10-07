@@ -66,5 +66,5 @@ compatibility with every graphics driver and Linux distribution.
 
 The dependency closure supplies tg_owt and tlottie from pinned nixpkgs.
 Telegram tde2e is excluded and conference attempts are refused; Chatmail Core
-handles messaging encryption. The GitHub Actions workflow is retained but
-currently disabled. Release commands do not publish files or upload binaries.
+handles messaging encryption. GitHub Actions builds and publishes experimental releases on `main`; see
+[the release guide](RELEASING.md). Local release commands only create artifacts.

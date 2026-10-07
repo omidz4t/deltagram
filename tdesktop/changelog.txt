@@ -1,3 +1,7 @@
+0.1.0 beta (07.10.26)
+
+- Initial experimental Deltagram release.
+
 7.2.42 beta (07.10.26)
 
 - Establish the experimental Deltagram release baseline.

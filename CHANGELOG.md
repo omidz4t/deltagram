@@ -1,10 +1,11 @@
 # Changelog
 
-<!-- release-commit: f3f7066f184ff80b7582ecc97bb44eefc7cdaf55 -->
+<!-- release-commit: ae43708686a5f26a2a5d6e9194e6aecbb20aa104 -->
 
-## 7.2.42 (2026-10-07)
+## 0.1.0 (2026-10-07)
 
-- Establish the Deltagram release baseline after the signed source history squash.
-- Experimental Qt client, Chatmail Core integration, local Nix builds and portable Linux packaging.
+- Initial experimental release of the native Qt client with Chatmail Core.
+- Profile photos, video attachments, forwarding and delivery indicators.
+- Reproducible local builds and automated Linux release packaging.
 
 Earlier Telegram donor changes remain in `tdesktop/changelog.txt`.

@@ -232,16 +232,18 @@ available; it is not required for portable packaging.
 ## Continuous integration
 
 The workflow in [`.github/workflows/build.yml`](../.github/workflows/build.yml)
-is retained, with GitHub Actions currently disabled. When enabled, it:
+runs on pushes to `main`, pull requests and manual dispatch. It:
 
 1. Runs offline regressions, shell syntax checks and the source audit before downloading the toolchain.
 2. Restores dependency and compiler caches, then initializes Core and the dependency shell.
 3. Builds Core RPC and the Qt release sequentially, with four GUI compiler jobs.
 4. Runs the Qt/Core RPC smoke test and reports compiler cache statistics.
-5. Packages and verifies the portable executable when `package` is selected in a manual workflow dispatch.
+5. Packages and verifies release assets when Conventional Commits require a release.
+6. Publishes an experimental GitHub release after all build and packaging checks pass.
 
-Routine pushes and pull requests compile and validate RPC without portable
-packaging. CI omits the Desktop reference clone and separate dependency
+Pull requests compile and validate RPC. Pushes to `main` with release-worthy
+commits also publish packages; documentation-only pushes run offline checks.
+Manual dispatch with `publish` disabled runs a build without publication. CI omits the Desktop reference clone and separate dependency
 `buildEnv` construction. It uses the runner's existing `/nix` installation through
 `DELTA_TEL_USE_SYSTEM_NIX=1`; local builds retain the project-local store.
 
@@ -258,9 +260,10 @@ precompiled headers. These settings relax macro checks within PCH and can retain
 the original date in cached build-date strings. Compiler flags, header content
 and the toolchain remain part of cache validation.
 
-The workflow grants read-only repository permissions and pins third-party
-actions to commit IDs. It does not commit source changes or publish release
-artifacts.
+Build jobs have read-only repository permissions; only the publishing job can
+write release assets. Actions are pinned to commit IDs. CI prepares version files
+in its workspace without creating commits. Source commits must be signed by
+contributors. See [release preparation](RELEASING.md).
 
 ## Messaging and calling boundaries
 

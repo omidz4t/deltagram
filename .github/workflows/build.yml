@@ -1,4 +1,4 @@
-name: Build
+name: Build and release
 
 on:
   push:
@@ -6,49 +6,80 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
-      package:
-        description: Build and verify the portable executable after compilation
+      publish:
+        description: Publish a release when Conventional Commits require one
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   linux:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 360
+    outputs:
+      publish: ${{ steps.plan.outputs.publish }}
+      version: ${{ steps.plan.outputs.version }}
     env:
       DELTA_TEL_USE_SYSTEM_NIX: '1'
       DELTA_TEL_JOBS: '4'
       DELTA_TEL_CONTEXT_CORE_ONLY: '1'
       CCACHE_MAXSIZE: 5G
-      # GCC/CMake uses -include for PCH. These settings enable its caching.
       CCACHE_SLOPPINESS: pch_defines,time_macros
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
-      - name: Offline tests and source audit (before toolchain downloads)
+      - name: Offline tests and publication audit
         run: |
           python3 nix/test-bump-version.py
           python3 nix/test-build-release.py
           python3 -m unittest discover -s scripts -p 'test_*.py'
           for script in nix/*.sh docker/*.sh; do bash -n "$script"; done
           python3 nix/audit-source.py
+      - name: Plan release
+        id: plan
+        env:
+          PUBLISH: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && (github.event_name == 'push' || inputs.publish) }}
+        run: |
+          if [[ "$PUBLISH" == true ]]; then
+            python3 scripts/ci-release.py
+          else
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Decide whether compilation is needed
+        id: build
+        env:
+          REQUIRED: ${{ steps.plan.outputs.publish == 'true' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.publish) }}
+        run: echo "required=$REQUIRED" >> "$GITHUB_OUTPUT"
+      - name: Free unused runner SDK space
+        if: steps.build.outputs.required == 'true'
+        run: |
+          sudo python3 - <<'PY'
+          import pathlib, shutil
+          for name in ('/usr/local/lib/android', '/usr/share/dotnet', '/opt/ghc'):
+              path = pathlib.Path(name)
+              if path.is_dir() and not path.is_symlink():
+                  shutil.rmtree(path)
+          PY
+          sudo docker image prune --all --force
+          df -h .
       - uses: cachix/install-nix-action@b85815f71a6de0ddee80b8a80a98d43f4bcc66c7 # v31
+        if: steps.build.outputs.required == 'true'
       - name: Restore pinned Nix toolchain
+        if: steps.build.outputs.required == 'true'
         uses: nix-community/cache-nix-action@b16f249a0248efec86dd9d4224cb75f1ffa48bcc
         with:
           primary-key: nix-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
-          # Only main populates shared caches; PRs can restore them.
           save: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
-          # No garbage collection: compiled programs reference store libraries.
       - name: Restore compiler and Rust caches
+        if: steps.build.outputs.required == 'true'
         uses: actions/cache@3edfce9056124e459a23f683a21433670d47daca
         with:
           path: |
@@ -59,11 +90,13 @@ jobs:
           key: compile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/context-sources.sh', 'nix/build-release.sh', 'nix/build-rpc.sh') }}-${{ github.sha }}
           restore-keys: |
             compile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/context-sources.sh', 'nix/build-release.sh', 'nix/build-rpc.sh') }}-
-      - name: Initialize Core sources and dependency shell
+      - name: Initialize Core and dependency shell
+        if: steps.build.outputs.required == 'true'
         run: |
           bash nix/init-context.sh
           ./nix/develop.sh --command true
-      - name: Build Core RPC and Qt release, then smoke-test RPC
+      - name: Compile and smoke-test
+        if: steps.build.outputs.required == 'true'
         run: |
           ./nix/develop.sh --command bash -euo pipefail -c '
             ccache --zero-stats
@@ -72,12 +105,62 @@ jobs:
             bash nix/test-rpc.sh
             ccache --show-stats
           '
-      - name: Package and verify portable executable (manual opt-in)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.package }}
+      - name: Package release assets and matching source
+        if: steps.plan.outputs.publish == 'true'
         run: |
           ./nix/develop.sh --command python3 nix/stage-release.py
           bash docker/build.sh
           bash docker/verify.sh
+          bash docker/package-formats.sh
+          python3 scripts/ci-release.py --source-archive
+          mkdir -p data/release-upload
+          cp data/tdesktop-release/bin/Telegram.stripped data/release-upload/
+          cp data/tdesktop-release/bin/Telegram.version data/release-upload/
+          cp data/release-plan/notes.md data/release-upload/RELEASE-NOTES.md
+          find dist -type f -exec cp '{}' data/release-upload/ \;
+          cd data/release-upload
+          sha256sum Telegram.stripped > Telegram.stripped.sha256
+      - name: Upload verified release assets
+        if: steps.plan.outputs.publish == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ steps.plan.outputs.version }}
+          path: data/release-upload/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
       - name: Cache and disk usage
         if: always()
         run: du -sh data/ccache data/cargo-target /nix/store 2>/dev/null || true
+
+  publish:
+    needs: linux
+    if: needs.linux.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-${{ needs.linux.outputs.version }}
+          path: release-assets
+      - name: Publish experimental release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.linux.outputs.version }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          if gh release view "v$RELEASE_VERSION" --json isDraft > existing-release.json 2>/dev/null; then
+            if ! python3 -c 'import json; raise SystemExit(0 if json.load(open("existing-release.json"))["isDraft"] else 1)'; then
+              echo 'Release already published; preserving its assets.'
+              exit 0
+            fi
+          else
+            gh release create "v$RELEASE_VERSION" --draft \
+              --target "$SOURCE_COMMIT" --title "Deltagram $RELEASE_VERSION" \
+              --notes-file release-assets/RELEASE-NOTES.md --prerelease
+          fi
+          gh release upload "v$RELEASE_VERSION" release-assets/* --clobber
+          gh release edit "v$RELEASE_VERSION" --draft=false --prerelease \
+            --target "$SOURCE_COMMIT" --notes-file release-assets/RELEASE-NOTES.md
