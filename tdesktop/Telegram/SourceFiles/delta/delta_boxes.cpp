@@ -41,6 +41,12 @@ This file is part of Delta Tel, a Telegram Desktop based Delta Chat client.
 #include "styles/style_boxes.h"
 #include "styles/style_settings.h"
 #include "styles/style_widgets.h"
+#include "settings/settings_common.h"
+#include "ui/widgets/box_content_divider.h"
+#include "ui/widgets/scroll_area.h"
+#include "window/section_memento.h"
+#include "window/section_widget.h"
+#include <QtGui/QKeyEvent>
 
 #include <QtCore/QDir>
 #include <QtCore/QHash>
@@ -377,121 +383,327 @@ void ShowChannelSubscribers(not_null<Main::Session*> session, int userId, Fn<voi
 	}), Ui::LayerOption::KeepOther);
 }
 
-void ShowChannelInfo(not_null<Main::Session*> session, int userId) {
-	Ui::show(Box([=](not_null<Ui::GenericBox*> box) {
-		box->setTitle(rpl::single(u"Channel Info"_q));
-		const auto status = box->addRow(object_ptr<Ui::FlatLabel>(box, u"Loading…"_q, st::aboutLabel), st::boxRowPadding);
-		const auto weak = QPointer<Ui::GenericBox>(box.get());
-		ChannelRequest(userId, u"get_full_chat_by_id"_q, {}, [=](QJsonValue value, QString error) {
-			if (!weak) return;
-			if (!error.isEmpty()) { status->setText(error); return; }
-			const auto info = value.toObject();
-			const auto nameValue = box->lifetime().make_state<QString>(info.value(u"name"_q).toString());
-			const auto descriptionValue = box->lifetime().make_state<QString>();
-			const auto owner = info.value(u"chatType"_q).toString() == u"OutBroadcast"_q;
-			status->setText(QString());
-			const auto header = box->addRow(object_ptr<Ui::FixedHeightWidget>(box, st::infoProfileCover.height), style::margins());
-			const auto peer = session->data().peer(peerFromUser(UserId(userId)));
-			const auto photo = Ui::CreateChild<Ui::UserpicButton>(header, peer, st::infoProfileCover.photo);
-			photo->moveToLeft(st::infoProfileCover.photoLeft, st::infoProfileCover.photoTop);
-			const auto name = Ui::CreateChild<Ui::FlatLabel>(header, info.value(u"name"_q).toString(), st::infoProfileCover.name);
-			name->moveToLeft(st::infoProfileCover.nameLeft, st::infoProfileCover.nameTop);
-			const auto role = Ui::CreateChild<Ui::FlatLabel>(header, ChannelStatusValue(userId), st::infoProfileCover.status);
-			role->moveToLeft(st::infoProfileCover.statusLeft, st::infoProfileCover.statusTop);
-			header->widthValue() | rpl::on_next([=](int width) {
-				name->resizeToWidth(std::max(0, width - st::infoProfileCover.nameLeft - st::boxPadding.right()));
-				role->resizeToWidth(std::max(0, width - st::infoProfileCover.statusLeft - st::boxPadding.right()));
-			}, header->lifetime());
-			const auto about = box->addRow(object_ptr<Ui::FlatLabel>(box, QString(), st::aboutLabel), st::boxRowPadding);
-			about->setSelectable(true);
-			ChannelRequest(userId, u"get_chat_description"_q, {}, [=](QJsonValue text, QString failure) {
-				if (weak) {
-					*descriptionValue = text.toString();
-					about->setText(failure.isEmpty() ? *descriptionValue : failure);
-				}
-			});
-			const auto addAction = [=](QString text, Fn<void()> action) {
-				const auto button = box->addRow(object_ptr<Ui::SettingsButton>(box, rpl::single(text), st::settingsButtonNoIcon), style::margins());
-				button->setClickedCallback(std::move(action));
-			};
-			if (owner) {
-				addAction(u"Subscribers"_q, [=] { ShowChannelSubscribers(session, userId, [=] {
-					if (weak) ChannelRequest(userId, u"get_full_chat_by_id"_q, {}, [=](QJsonValue, QString) {
-						if (weak) role->setText(StatusSubtitle(userId).value_or(QString()));
-					});
-				}); });
-				addAction(u"Edit channel"_q, [=] {
-					Ui::show(Box([=](not_null<Ui::GenericBox*> edit) {
-						edit->setTitle(rpl::single(u"Edit Channel"_q));
-						const auto title = edit->addRow(object_ptr<Ui::InputField>(edit, st::defaultInputField, rpl::single(u"Channel name"_q), *nameValue));
-						const auto description = edit->addRow(object_ptr<Ui::InputField>(edit, st::newGroupDescription, Ui::InputField::Mode::MultiLine, rpl::single(u"Description"_q), *descriptionValue));
-						const auto busy = edit->lifetime().make_state<bool>(false);
-						const auto editWeak = QPointer<Ui::GenericBox>(edit.get());
-						edit->addButton(tr::lng_settings_save(), [=] {
-							if (*busy) return;
-							const auto text = title->getLastText().trimmed();
-							if (text.isEmpty()) { title->showError(); return; }
-							*busy = true;
-							ChannelRequest(userId, u"set_chat_name"_q, { text }, [=](QJsonValue, QString failure) {
-								if (!editWeak) return;
-								if (!failure.isEmpty()) { *busy = false; Ui::show(Ui::MakeInformBox(failure)); return; }
-								const auto desc = description->getLastText();
-								ChannelRequest(userId, u"set_chat_description"_q, { desc }, [=](QJsonValue, QString failure) {
-									if (!editWeak) return;
-									*busy = false;
-									if (!failure.isEmpty()) { Ui::show(Ui::MakeInformBox(failure)); return; }
-									if (weak) { *nameValue = text; *descriptionValue = desc; name->setText(text); about->setText(desc); }
-									edit->closeBox();
-								});
-							});
-						});
-						edit->addButton(tr::lng_cancel(), [=] { edit->closeBox(); });
-					}), Ui::LayerOption::KeepOther);
-				});
-				addAction(u"Change channel photo"_q, [=] {
-					const auto path = QFileDialog::getOpenFileName(box, u"Channel photo"_q, QString(), u"Images (*.png *.jpg *.jpeg *.webp)"_q);
-					if (path.isEmpty() || !weak) return;
-					ChannelRequest(userId, u"set_chat_profile_image"_q, { path }, [=](QJsonValue, QString failure) {
-						if (!weak) return;
-						if (!failure.isEmpty()) { Ui::show(Ui::MakeInformBox(failure)); return; }
-						photo->showCustom(QImage(path));
-					});
-				});
+namespace {
+
+class ChannelActionButton final : public Ui::RippleButton {
+public:
+	ChannelActionButton(QWidget *parent, QString text, const style::icon &icon)
+	: Ui::RippleButton(parent, st::defaultRippleAnimation)
+	, _text(std::move(text))
+	, _icon(&icon) {
+		show();
+	}
+	void setContent(QString text, const style::icon &icon) {
+		_text = std::move(text);
+		_icon = &icon;
+		update();
+	}
+	QString accessibilityName() override { return _text; }
+protected:
+	void paintEvent(QPaintEvent *e) override {
+		Painter p(this);
+		p.setRenderHint(QPainter::Antialiasing);
+		p.setPen(Qt::NoPen);
+		p.setBrush(st::windowBgOver);
+		p.drawRoundedRect(rect(), 8, 8);
+		paintRipple(p, 0, 0);
+		_icon->paint(p, (width() - _icon->width()) / 2, 6, width());
+		p.setFont(st::infoProfileTopBarActionButtonFont);
+		p.setPen(st::windowFg);
+		p.drawText(QRect(0, 32, width(), 20), Qt::AlignCenter, _text);
+	}
+private:
+	QString _text;
+	const style::icon *_icon;
+};
+
+void FillChannelInfo(
+		not_null<Ui::VerticalLayout*> box,
+		not_null<Window::SessionController*> controller,
+		int userId,
+		Fn<void()> close) {
+	const auto session = &controller->session();
+	const auto status = box->add(object_ptr<Ui::FlatLabel>(box, u"Loading…"_q, st::aboutLabel), st::boxRowPadding);
+	const auto weak = QPointer<Ui::VerticalLayout>(box.get());
+	ChannelRequest(userId, u"get_full_chat_by_id"_q, {}, [=](QJsonValue value, QString error) {
+		if (!weak) return;
+		if (!error.isEmpty()) { status->setText(error); return; }
+		const auto info = value.toObject();
+		const auto nameValue = box->lifetime().make_state<QString>(info.value(u"name"_q).toString());
+		const auto descriptionValue = box->lifetime().make_state<QString>();
+		const auto owner = info.value(u"chatType"_q).toString() == u"OutBroadcast"_q;
+		status->setText(QString());
+		const auto header = box->add(object_ptr<Ui::FixedHeightWidget>(box, 190), style::margins());
+		const auto peer = session->data().peer(peerFromUser(UserId(userId)));
+		const auto photo = Ui::CreateChild<Ui::UserpicButton>(header, peer, st::infoProfileCover.photo);
+		const auto nameStyle = header->lifetime().make_state<style::FlatLabel>(st::infoProfileCover.name);
+		nameStyle->align = style::al_center;
+		const auto statusStyle = header->lifetime().make_state<style::FlatLabel>(st::infoProfileCover.status);
+		statusStyle->align = style::al_center;
+		const auto name = Ui::CreateChild<Ui::FlatLabel>(header, *nameValue, *nameStyle);
+		const auto role = Ui::CreateChild<Ui::FlatLabel>(header, ChannelStatusValue(userId), *statusStyle);
+		header->widthValue() | rpl::on_next([=](int width) {
+			photo->moveToLeft((width - photo->width()) / 2, 18);
+			name->resizeToWidth(std::max(0, width - 40));
+			role->resizeToWidth(std::max(0, width - 40));
+			name->moveToLeft(20, 112);
+			role->moveToLeft(20, 140);
+		}, header->lifetime());
+		const auto actions = box->add(object_ptr<Ui::FixedHeightWidget>(box, 76), style::margins());
+		const auto buttons = actions->lifetime().make_state<std::vector<ChannelActionButton*>>();
+		const auto layoutActions = [=] {
+			if (buttons->empty()) return;
+			const auto gap = 8;
+			const auto available = std::max(0, actions->width() - 36);
+			const auto width = std::max(0, (available - gap * (int(buttons->size()) - 1)) / int(buttons->size()));
+			for (auto i = 0; i != int(buttons->size()); ++i) {
+				(*buttons)[i]->setGeometry(18 + i * (width + gap), 0, width, 56);
 			}
-			const auto muted = box->lifetime().make_state<bool>(info.value(u"isMuted"_q).toBool());
-			const auto busy = box->lifetime().make_state<bool>(false);
-			const auto muteText = box->lifetime().make_state<rpl::variable<QString>>(*muted ? u"Enable notifications"_q : u"Disable notifications"_q);
-			const auto mute = box->addRow(object_ptr<Ui::SettingsButton>(box, muteText->value(), st::settingsButtonNoIcon), style::margins());
-			mute->setClickedCallback([=] {
-				if (*busy) return;
-				*busy = true;
-				ChannelRequest(userId, u"set_chat_mute_duration"_q, { QJsonObject{ { u"kind"_q, *muted ? u"NotMuted"_q : u"Forever"_q } } }, [=](QJsonValue, QString failure) {
-					if (!weak) return;
-					*busy = false;
-					if (!failure.isEmpty()) { Ui::show(Ui::MakeInformBox(failure)); return; }
-					*muted = !*muted;
-					*muteText = *muted ? u"Enable notifications"_q : u"Disable notifications"_q;
-				});
-			});
-			if (!owner && info.value(u"contactIds"_q).toArray().contains(1)) {
-				addAction(u"Leave channel"_q, [=] {
-					Ui::show(Ui::MakeConfirmBox({
-						.text = u"Leave this channel?"_q,
-						.confirmed = [=](Fn<void()> close) {
-							close();
-							if (!weak) return;
-							ChannelRequest(userId, u"remove_contact_from_chat"_q, { 1 }, [=](QJsonValue, QString error) {
-								if (!weak) return;
-								if (!error.isEmpty()) { Ui::show(Ui::MakeInformBox(error)); return; }
-								box->closeBox();
-							});
-						},
-					}), Ui::LayerOption::KeepOther);
-				});
+		};
+		actions->widthValue() | rpl::on_next([=] { layoutActions(); }, actions->lifetime());
+		const auto addQuickAction = [=](QString text, const style::icon &icon, Fn<void()> action, bool first = false) {
+			const auto button = Ui::CreateChild<ChannelActionButton>(actions, std::move(text), icon);
+			button->setClickedCallback(std::move(action));
+			if (first) buttons->insert(buttons->begin(), button); else buttons->push_back(button);
+			layoutActions();
+			return button;
+		};
+		box->add(object_ptr<Ui::BoxContentDivider>(box), style::margins());
+		const auto about = box->add(object_ptr<Ui::FlatLabel>(box, QString(), st::aboutLabel), style::margins(23, 18, 23, 4));
+		about->setSelectable(true);
+		box->add(object_ptr<Ui::FlatLabel>(box, u"Description"_q, st::infoProfileStatus), style::margins(23, 0, 23, 18));
+		const auto view = Settings::AddButtonWithIcon(box, rpl::single(u"VIEW CHANNEL"_q), st::infoMainButton);
+		view->setClickedCallback([=] { controller->showPeerHistory(peer->id); });
+		box->add(object_ptr<Ui::BoxContentDivider>(box), style::margins());
+		ChannelRequest(userId, u"get_chat_description"_q, {}, [=](QJsonValue text, QString failure) {
+			if (weak) {
+				*descriptionValue = text.toString();
+				if (failure.isEmpty()) {
+					about->setMarkedText(TextUtilities::ParseEntities(*descriptionValue, TextParseLinks));
+				} else {
+					about->setText(failure);
+				}
 			}
 		});
-		box->addButton(tr::lng_close(), [=] { box->closeBox(); });
-	}));
+		for (const auto &[type, label, icon] : std::vector<std::tuple<QString, QString, const style::icon*>>{
+			{ u"Image"_q, u"Photos"_q, &st::infoIconMediaPhoto },
+			{ u"Video"_q, u"Videos"_q, &st::infoIconMediaVideo },
+			{ u"File"_q, u"Files"_q, &st::infoIconMediaFile },
+			{ u"Gif"_q, u"GIFs"_q, &st::infoIconMediaGif },
+		}) {
+			const auto ids = box->lifetime().make_state<QJsonArray>();
+			const auto text = box->lifetime().make_state<rpl::variable<QString>>(label);
+			const auto wrap = box->add(object_ptr<Ui::SlideWrap<Ui::SettingsButton>>(box,
+				Settings::CreateButtonWithIcon(box, text->value(), st::infoSharedMediaButton,
+					{ .icon = icon, .type = Settings::IconType::Simple })), style::margins());
+			const auto button = wrap->entity();
+			wrap->toggle(false, anim::type::instant);
+			ChannelRequest(userId, u"get_chat_media"_q, { type, QJsonValue(), QJsonValue() },
+				[=](QJsonValue value, QString failure) {
+					if (!weak || !failure.isEmpty()) return;
+					*ids = value.toArray();
+					const auto count = int(ids->size());
+					*text = (type == u"Image"_q) ? tr::lng_profile_photos(tr::now, lt_count, count)
+						: (type == u"Video"_q) ? tr::lng_profile_videos(tr::now, lt_count, count)
+						: (type == u"File"_q) ? tr::lng_profile_files(tr::now, lt_count, count)
+						: tr::lng_profile_gifs(tr::now, lt_count, count);
+					wrap->toggle(!ids->empty(), anim::type::instant);
+				});
+			button->setClickedCallback([=] {
+				Ui::show(Box([=](not_null<Ui::GenericBox*> media) {
+					media->setTitle(rpl::single(label));
+					media->addRow(object_ptr<Ui::FlatLabel>(media, u"Select an item to view its message."_q, st::aboutLabel), st::boxRowPadding);
+					for (auto i = ids->size(); i > std::max(0, int(ids->size()) - 100); --i) {
+						const auto messageId = (*ids)[i - 1].toInt();
+						const auto item = media->addRow(object_ptr<Ui::SettingsButton>(media,
+							rpl::single(u"%1 %2"_q.arg(label).arg(i)), st::settingsButtonNoIcon), style::margins());
+						item->setClickedCallback([=] {
+							media->closeBox();
+							controller->showPeerHistory(peer->id, Window::SectionShow(), MsgId(messageId));
+						});
+					}
+					media->addButton(tr::lng_close(), [=] { media->closeBox(); });
+				}), Ui::LayerOption::KeepOther);
+			});
+		}
+		box->add(object_ptr<Ui::BoxContentDivider>(box), style::margins());
+		const auto menuActions = box->lifetime().make_state<std::vector<std::pair<QString, Fn<void()>>>>();
+		const auto popup = box->lifetime().make_state<std::unique_ptr<Ui::PopupMenu>>();
+		const auto addAction = [=](QString text, Fn<void()> action) {
+			menuActions->emplace_back(text, action);
+			const auto icon = (text == u"Subscribers"_q) ? &st::menuIconGroups
+				: (text == u"Change channel photo"_q) ? &st::menuIconPhotoSet
+				: (text == u"Leave channel"_q) ? &st::menuIconLeave : &st::menuIconEdit;
+			if (text == u"Edit channel"_q) {
+				addQuickAction(u"Edit"_q, *icon, std::move(action));
+			} else {
+				const auto button = Settings::AddButtonWithIcon(box, rpl::single(text), st::infoProfileButton, { .icon = icon, .type = Settings::IconType::Simple });
+				button->setClickedCallback(std::move(action));
+			}
+		};
+		if (owner) {
+			addQuickAction(u"Invite"_q, st::menuIconInvite, [=] { ShowChannelInvite(session, userId); });
+			addAction(u"Subscribers"_q, [=] { ShowChannelSubscribers(session, userId, [=] {
+				if (weak) ChannelRequest(userId, u"get_full_chat_by_id"_q, {}, [=](QJsonValue, QString) {
+					if (weak) role->setText(StatusSubtitle(userId).value_or(QString()));
+				});
+			}); });
+			addAction(u"Edit channel"_q, [=] {
+				Ui::show(Box([=](not_null<Ui::GenericBox*> edit) {
+					edit->setTitle(rpl::single(u"Edit Channel"_q));
+					const auto title = edit->addRow(object_ptr<Ui::InputField>(edit, st::defaultInputField, rpl::single(u"Channel name"_q), *nameValue));
+					const auto description = edit->addRow(object_ptr<Ui::InputField>(edit, st::newGroupDescription, Ui::InputField::Mode::MultiLine, rpl::single(u"Description"_q), *descriptionValue));
+					const auto busy = edit->lifetime().make_state<bool>(false);
+					const auto editWeak = QPointer<Ui::GenericBox>(edit.get());
+					edit->addButton(tr::lng_settings_save(), [=] {
+						if (*busy) return;
+						const auto text = title->getLastText().trimmed();
+						if (text.isEmpty()) { title->showError(); return; }
+						*busy = true;
+						ChannelRequest(userId, u"set_chat_name"_q, { text }, [=](QJsonValue, QString failure) {
+							if (!editWeak) return;
+							if (!failure.isEmpty()) { *busy = false; Ui::show(Ui::MakeInformBox(failure)); return; }
+							const auto desc = description->getLastText();
+							ChannelRequest(userId, u"set_chat_description"_q, { desc }, [=](QJsonValue, QString failure) {
+								if (!editWeak) return;
+								*busy = false;
+								if (!failure.isEmpty()) { Ui::show(Ui::MakeInformBox(failure)); return; }
+								if (weak) { *nameValue = text; *descriptionValue = desc; name->setText(text); about->setMarkedText(TextUtilities::ParseEntities(desc, TextParseLinks)); }
+								edit->closeBox();
+							});
+						});
+					});
+					edit->addButton(tr::lng_cancel(), [=] { edit->closeBox(); });
+				}), Ui::LayerOption::KeepOther);
+			});
+			addAction(u"Change channel photo"_q, [=] {
+				const auto path = QFileDialog::getOpenFileName(box, u"Channel photo"_q, QString(), u"Images (*.png *.jpg *.jpeg *.webp)"_q);
+				if (path.isEmpty() || !weak) return;
+				ChannelRequest(userId, u"set_chat_profile_image"_q, { path }, [=](QJsonValue, QString failure) {
+					if (!weak) return;
+					if (!failure.isEmpty()) { Ui::show(Ui::MakeInformBox(failure)); return; }
+					photo->showCustom(QImage(path));
+				});
+			});
+		}
+		addQuickAction(u"More"_q, st::infoTopBarMenu.icon, [=] {
+			*popup = std::make_unique<Ui::PopupMenu>(actions, st::popupMenuWithIcons);
+			(*popup)->deleteOnHide(false);
+			for (const auto &[text, action] : *menuActions) {
+				(*popup)->addAction(text, action);
+			}
+			(*popup)->popup(actions->mapToGlobal(QPoint(actions->width(), actions->height())));
+		});
+		const auto muted = box->lifetime().make_state<bool>(info.value(u"isMuted"_q).toBool());
+		const auto busy = box->lifetime().make_state<bool>(false);
+		const auto mute = addQuickAction(*muted ? u"Unmute"_q : u"Mute"_q,
+			*muted ? st::menuIconUnmute : st::menuIconMute, nullptr, true);
+		mute->setClickedCallback([=] {
+			if (*busy) return;
+			*busy = true;
+			ChannelRequest(userId, u"set_chat_mute_duration"_q, { QJsonObject{ { u"kind"_q, *muted ? u"NotMuted"_q : u"Forever"_q } } }, [=](QJsonValue, QString failure) {
+				if (!weak) return;
+				*busy = false;
+				if (!failure.isEmpty()) { Ui::show(Ui::MakeInformBox(failure)); return; }
+				*muted = !*muted;
+				mute->setContent(*muted ? u"Unmute"_q : u"Mute"_q,
+					*muted ? st::menuIconUnmute : st::menuIconMute);
+			});
+		});
+		if (!owner && info.value(u"contactIds"_q).toArray().contains(1)) {
+			addAction(u"Leave channel"_q, [=] {
+				Ui::show(Ui::MakeConfirmBox({
+					.text = u"Leave this channel?"_q,
+					.confirmed = [=](Fn<void()> close) {
+						close();
+						if (!weak) return;
+						ChannelRequest(userId, u"remove_contact_from_chat"_q, { 1 }, [=](QJsonValue, QString error) {
+							if (!weak) return;
+							if (!error.isEmpty()) { Ui::show(Ui::MakeInformBox(error)); return; }
+							close();
+						});
+					},
+				}), Ui::LayerOption::KeepOther);
+			});
+		}
+	});
+}
+
+class ChannelInfoMemento;
+
+class ChannelInfoSection final : public Window::SectionWidget {
+public:
+	ChannelInfoSection(QWidget *parent, not_null<Window::SessionController*> controller, int userId)
+	: Window::SectionWidget(parent, controller)
+	, _userId(userId)
+	, _scroll(this, st::defaultScrollArea) {
+		const auto back = Ui::CreateChild<Ui::IconButton>(this, st::infoTopBarBack);
+		back->setClickedCallback([=] { controller->showBackFromStack(); });
+		back->moveToLeft(0, 0);
+		const auto title = Ui::CreateChild<Ui::FlatLabel>(this, u"Channel Info"_q, st::boxTitle);
+		title->moveToLeft(64, 17);
+		const auto content = _scroll->setOwnedWidget(object_ptr<Ui::VerticalLayout>(this));
+		FillChannelInfo(content.data(), controller, userId, crl::guard(this, [=] {
+			controller->showBackFromStack();
+		}));
+		sizeValue() | rpl::on_next([=](QSize size) {
+			_scroll->setGeometry(0, st::infoTopBarHeight, size.width(), std::max(0, size.height() - st::infoTopBarHeight));
+			content->resizeToWidth(size.width());
+		}, lifetime());
+	}
+	bool showInternal(not_null<Window::SectionMemento*> memento, const Window::SectionShow &params) override;
+	std::shared_ptr<Window::SectionMemento> createMemento() override;
+	bool floatPlayerHandleWheelEvent(QEvent *e) override { return false; }
+	QRect floatPlayerAvailableRect() override { return QRect(mapToGlobal(QPoint()), size()); }
+protected:
+	void paintEvent(QPaintEvent *e) override {
+		if (animatingShow()) {
+			Window::SectionWidget::paintEvent(e);
+			return;
+		}
+		Painter p(this);
+		p.fillRect(e->rect(), st::windowBg);
+	}
+	void keyPressEvent(QKeyEvent *e) override {
+		if (e->key() == Qt::Key_Escape) {
+			controller()->showBackFromStack();
+		} else {
+			Window::SectionWidget::keyPressEvent(e);
+		}
+	}
+private:
+	int _userId;
+	object_ptr<Ui::ScrollArea> _scroll;
+};
+
+class ChannelInfoMemento final : public Window::SectionMemento {
+public:
+	explicit ChannelInfoMemento(int userId) : userId(userId) {}
+	object_ptr<Window::SectionWidget> createWidget(QWidget *parent,
+			not_null<Window::SessionController*> controller,
+			Window::Column column, const QRect &geometry) override {
+		auto result = object_ptr<ChannelInfoSection>(parent, controller, userId);
+		result->setGeometry(geometry);
+		return result;
+	}
+	int userId;
+};
+
+bool ChannelInfoSection::showInternal(not_null<Window::SectionMemento*> memento,
+		const Window::SectionShow &params) {
+	const auto channel = dynamic_cast<ChannelInfoMemento*>(memento.get());
+	return channel && channel->userId == _userId;
+}
+
+std::shared_ptr<Window::SectionMemento> ChannelInfoSection::createMemento() {
+	return std::make_shared<ChannelInfoMemento>(_userId);
+}
+
+} // namespace
+
+void ShowChannelInfo(not_null<Window::SessionController*> controller, int userId,
+		const Window::SectionShow &params) {
+	controller->showSection(std::make_shared<ChannelInfoMemento>(userId), params);
 }
 
 void ShowChannelInvite(not_null<Main::Session*> session, int userId) {

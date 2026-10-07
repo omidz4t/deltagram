@@ -1394,7 +1394,7 @@ void SessionNavigation::showPeerInfo(
 		not_null<PeerData*> peer,
 		const SectionShow &params) {
 	if (peer->isUser() && Delta::IsChannel(peerToUser(peer->id).bare)) {
-		Delta::ShowChannelInfo(_session, int(peerToUser(peer->id).bare));
+		Delta::ShowChannelInfo(parentController(), int(peerToUser(peer->id).bare), params);
 		return;
 	}
 	//if (Adaptive::ThreeColumn()

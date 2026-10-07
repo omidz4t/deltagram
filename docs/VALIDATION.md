@@ -153,3 +153,18 @@ not exercise. The portable runtime relocates WebKit's production helper paths
 and preserves its sandbox configuration. This check covers basic HTML and
 JavaScript; network access, WebRTC and application-specific WebViews require
 separate validation.
+
+## Native channel profiles — 2026-10-07
+
+The channel profile now opens through the window navigation stack, with a
+centered avatar/name/subscriber cover, compact mute/invite/edit/menu actions,
+linked descriptions and native shared-media rows. Empty media categories
+collapse without leaving gaps. Photo/video/file/GIF totals come from Core;
+selecting a listed attachment opens its message in the channel.
+
+A disposable offline Core account verified name and description saves,
+notification changes, photo updates, photo/video counts, selection of a media
+message and return from the profile to history. Repeated use of the menu also
+passed after correcting its ownership. The release GUI built with four jobs,
+and project tests and the source audit passed. Network delivery and a complete
+media gallery remain outside these checks.

@@ -16,6 +16,7 @@ class Session;
 
 namespace Window {
 class SessionController;
+struct SectionShow;
 } // namespace Window
 
 namespace Delta {
@@ -48,7 +49,8 @@ void ChooseGroupMembers(not_null<Main::Session*> session,
 	Fn<void(std::vector<int>, Fn<void(QString)>)> create);
 void ShowContacts(not_null<Main::Session*> session, Fn<void(int chatId)> done);
 void ShowChannelSubscribers(not_null<Main::Session*> session, int userId, Fn<void()> done = nullptr);
-void ShowChannelInfo(not_null<Main::Session*> session, int userId);
+void ShowChannelInfo(not_null<Window::SessionController*> controller, int userId,
+	const Window::SectionShow &params);
 void ShowChannelInvite(not_null<Main::Session*> session, int userId);
 
 } // namespace Delta

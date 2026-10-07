@@ -470,7 +470,7 @@ void TopBarWidget::showCallMenu() {
 void TopBarWidget::toggleInfoSection() {
 	if (const auto peer = _activeChat.key.peer(); peer && peer->isUser()
 		&& Delta::IsChannel(peerToUser(peer->id).bare)) {
-		Delta::ShowChannelInfo(&_controller->session(), int(peerToUser(peer->id).bare));
+		Delta::ShowChannelInfo(_controller, int(peerToUser(peer->id).bare), Window::SectionShow());
 		return;
 	}
 	const auto isThreeColumn = _controller->adaptive().isThreeColumn();
