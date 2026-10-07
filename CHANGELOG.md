@@ -1,6 +1,12 @@
 # Changelog
 
-<!-- release-commit: fdbc83cc8a9aaa01313c077e130c8c4bafd7f54b -->
+<!-- release-commit: 2e8586b412df5c2853fc4b3a5d2bdaff2c77a7c8 -->
+
+## 0.2.1 (2026-10-07)
+
+- **fix**: restore desktop cursor themes on Linux (`384ea9f`)
+- **fix**: open the profile editor directly from account settings (`001fee5`)
+- **fix**: restore native voice message playback (`2e8586b`)
 
 ## 0.2.0 (2026-10-07)
 
