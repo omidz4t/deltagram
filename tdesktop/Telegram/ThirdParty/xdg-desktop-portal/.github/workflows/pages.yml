@@ -1,0 +1,64 @@
+on:
+  workflow_call:
+    inputs:
+      image:
+        required: true
+        type: string
+      image_options:
+        required: true
+        type: string
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build docs and website
+    runs-on: ubuntu-latest
+
+    container:
+      image: ${{ inputs.image }}
+      options: ${{ inputs.image_options }}
+
+    steps:
+      - name: Check out xdg-desktop-portal
+        uses: actions/checkout@v4
+
+      - name: Build docs
+        run: |
+          export PYTHONPATH="/root/.local/lib/python$(python3 -c 'import sys; print("{}.{}".format(*sys.version_info))')/site-packages:$PYTHONPATH"
+          export PATH="/root/.local/bin:$PATH"
+          meson setup _build \
+            -Ddocumentation=enabled \
+            -Dwerror=true
+          ninja -C _build doc/html
+
+      - name: Build website
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./doc/website
+          destination: ./_site
+
+      - name: Prepare docs
+        working-directory: _build/doc
+        run: |
+          mv ./html ../../_site/docs
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+
+  # Deployment job
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

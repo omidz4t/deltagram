@@ -1,0 +1,54 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+  <!--
+    Resource bundle for MicroTeX's compiled-in font registrations.
+
+    DEF_FONT(...) entries in src/res/font/*.def.cpp resolve at runtime to
+    paths of the form "res/fonts/<group>/<file>.ttf" (RES_BASE + "/" +
+    path). The Qt backend (src/platform/qt/graphic_qt.cpp::Font_qt) checks
+    QFile::exists(path) and prepends ":/" if the file is missing on disk,
+    so those references become ":/res/fonts/<group>/<file>.ttf".
+
+    This bundle registers the 28 unique TTFs referenced by the compiled-in
+    font defs, under prefix /res, so the ":/" fallback resolves cleanly
+    to in-binary resources without any disk dependency.
+
+    Cyrillic and Greek alphabet fonts (res/cyrillic, res/greek) are NOT
+    bundled here. They are loaded via the (now stripped) XML parser
+    path, which throws ex_alphabet_registration silently and falls back
+    to default font handling. If you need them, you also need to
+    re-introduce tinyxml2 (see the "Remove tinyxml2" commit).
+  -->
+  <qresource prefix="/res">
+    <file>fonts/base/cmex10.ttf</file>
+    <file>fonts/base/cmmi10.ttf</file>
+    <file>fonts/base/cmmib10.ttf</file>
+    <file>fonts/euler/eufb10.ttf</file>
+    <file>fonts/euler/eufm10.ttf</file>
+    <file>fonts/latin/bi10.ttf</file>
+    <file>fonts/latin/bx10.ttf</file>
+    <file>fonts/latin/cmr10.ttf</file>
+    <file>fonts/latin/i10.ttf</file>
+    <file>fonts/latin/r10.ttf</file>
+    <file>fonts/latin/sb10.ttf</file>
+    <file>fonts/latin/sbi10.ttf</file>
+    <file>fonts/latin/si10.ttf</file>
+    <file>fonts/latin/ss10.ttf</file>
+    <file>fonts/latin/tt10.ttf</file>
+    <file>fonts/latin/optional/cmbx10.ttf</file>
+    <file>fonts/latin/optional/cmbxti10.ttf</file>
+    <file>fonts/latin/optional/cmss10.ttf</file>
+    <file>fonts/latin/optional/cmssbx10.ttf</file>
+    <file>fonts/latin/optional/cmssi10.ttf</file>
+    <file>fonts/latin/optional/cmti10.ttf</file>
+    <file>fonts/latin/optional/cmtt10.ttf</file>
+    <file>fonts/maths/cmbsy10.ttf</file>
+    <file>fonts/maths/cmsy10.ttf</file>
+    <file>fonts/maths/msam10.ttf</file>
+    <file>fonts/maths/msbm10.ttf</file>
+    <file>fonts/maths/rsfs10.ttf</file>
+    <file>fonts/maths/special.ttf</file>
+    <file>fonts/maths/stmary10.ttf</file>
+    <file>fonts/maths/optional/dsrom10.ttf</file>
+  </qresource>
+</RCC>

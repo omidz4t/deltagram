@@ -1,0 +1,5 @@
+# items to ignore on UNIX platform
+
+GLib:.*:.*WIN32.*
+GLib:.*:g_win32.*
+GLib:enumeration:Win32.*

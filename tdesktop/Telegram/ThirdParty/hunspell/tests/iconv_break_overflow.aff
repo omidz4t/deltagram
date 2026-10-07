@@ -1,0 +1,86 @@
+# Test for stack overflow from deep ICONV + BREAK recursion in spell()
+# ICONV expands 2-char codes, BREAK strips the suffix, creating a chain
+# of unique words that recurse deeply without repeating.
+SET ISO8859-1
+
+ICONV 77
+ICONV aa abx
+ICONV ab acx
+ICONV ac adx
+ICONV ad aex
+ICONV ae afx
+ICONV af agx
+ICONV ag ahx
+ICONV ah aix
+ICONV ai ajx
+ICONV aj akx
+ICONV ak alx
+ICONV al amx
+ICONV am anx
+ICONV an aox
+ICONV ao apx
+ICONV ap aqx
+ICONV aq arx
+ICONV ar asx
+ICONV as atx
+ICONV at aux
+ICONV au avx
+ICONV av awx
+ICONV aw axx
+ICONV ax ayx
+ICONV ay azx
+ICONV az bax
+ICONV ba bbx
+ICONV bb bcx
+ICONV bc bdx
+ICONV bd bex
+ICONV be bfx
+ICONV bf bgx
+ICONV bg bhx
+ICONV bh bix
+ICONV bi bjx
+ICONV bj bkx
+ICONV bk blx
+ICONV bl bmx
+ICONV bm bnx
+ICONV bn box
+ICONV bo bpx
+ICONV bp bqx
+ICONV bq brx
+ICONV br bsx
+ICONV bs btx
+ICONV bt bux
+ICONV bu bvx
+ICONV bv bwx
+ICONV bw bxx
+ICONV bx byx
+ICONV by bzx
+ICONV bz cax
+ICONV ca cbx
+ICONV cb ccx
+ICONV cc cdx
+ICONV cd cex
+ICONV ce cfx
+ICONV cf cgx
+ICONV cg chx
+ICONV ch cix
+ICONV ci cjx
+ICONV cj ckx
+ICONV ck clx
+ICONV cl cmx
+ICONV cm cnx
+ICONV cn cox
+ICONV co cpx
+ICONV cp cqx
+ICONV cq crx
+ICONV cr csx
+ICONV cs ctx
+ICONV ct cux
+ICONV cu cvx
+ICONV cv cwx
+ICONV cw cxx
+ICONV cx cyx
+ICONV cy czx
+
+BREAK 1
+BREAK x$

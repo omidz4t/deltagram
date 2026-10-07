@@ -1,0 +1,6 @@
+BasedOnStyle: Chromium
+SortIncludes: Never
+ReflowComments: false
+PackConstructorInitializers: Never
+BreakConstructorInitializers: BeforeComma
+ColumnLimit: 132

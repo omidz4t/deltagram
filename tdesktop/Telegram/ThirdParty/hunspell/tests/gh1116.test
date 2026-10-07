@@ -1,0 +1,21 @@
+#!/bin/sh
+DIR="$(dirname "$0")"
+HUNSPELL="${HUNSPELL:-$DIR/../src/tools/hunspell}"
+LIBTOOL="${LIBTOOL:-$DIR/../libtool}"
+out=$(echo "test" | $LIBTOOL --mode=execute "$HUNSPELL" -d "$DIR/gh1116" -a 2>&1)
+rc=$?
+if [ $rc -ne 0 ]; then
+    echo "FAIL: gh1116 crashed with exit code $rc"
+    exit 1
+fi
+case "$out" in
+    *"missing or bad word count"*)
+        echo "PASS: gh1116"
+        exit 0
+        ;;
+    *)
+        echo "FAIL: gh1116 did not reject inflated tablesize"
+        echo "$out"
+        exit 1
+        ;;
+esac

@@ -1,0 +1,30 @@
+Language: Cpp
+Standard: Cpp11
+BasedOnStyle: llvm
+AlignAfterOpenBracket: DontAlign
+PenaltyBreakBeforeFirstCallParameter: 200
+IndentWidth: 2
+AllowShortFunctionsOnASingleLine: All
+KeepEmptyLinesAtTheStartOfBlocks: false
+#BreakBeforeBraces: Linux
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterEnum: false
+  AfterFunction: true
+  AfterNamespace: true
+  AfterStruct: true
+  AfterClass: true
+  AfterUnion: true
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+ColumnLimit: 80
+ContinuationIndentWidth: 4
+PointerAlignment: Right
+AlwaysBreakAfterReturnType: TopLevelDefinitions
+#BreakInheritanceList: AfterColon
+FixNamespaceComments: true
+IndentCaseLabels: true
+AlwaysBreakTemplateDeclarations: true
+SpaceAfterTemplateKeyword: false
+#SpaceBeforeCpp11BracedList: true
+AlignEscapedNewlines: DontAlign

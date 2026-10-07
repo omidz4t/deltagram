@@ -1,0 +1,330 @@
+# Brazilian Portuguese translation for xdg-desktop-portal.
+# Copyright (C) 2024 xdg-desktop-portal's COPYRIGHT HOLDER
+# This file is distributed under the same license as the xdg-desktop-portal package.
+# Rafael Fontenelle <rafaelff@gnome.org>, 2016-2024.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: xdg-desktop-portal master\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-04-23 10:29-0300\n"
+"PO-Revision-Date: 2024-04-05 16:40-0300\n"
+"Last-Translator: Rafael Fontenelle <rafaelff@gnome.org>\n"
+"Language-Team: Brazilian Portuguese <https://br.gnome.org/traducao>\n"
+"Language: pt_BR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1)\n"
+"X-Generator: Gtranslator 46.0\n"
+
+#: src/background.c:827
+#, c-format
+msgid "Allow %s to run in the background?"
+msgstr "Permitir que %s execute em segundo plano?"
+
+#: src/background.c:831
+#, c-format
+msgid "%s requests to be started automatically and run in the background."
+msgstr "%s solicita ser iniciado automaticamente e executado em segundo plano."
+
+#: src/background.c:833
+#, c-format
+msgid "%s requests to run in the background."
+msgstr "%s solicita ser executado em segundo plano."
+
+#: src/background.c:834
+msgid ""
+"The ‘run in background’ permission can be changed at any time from the "
+"application settings."
+msgstr ""
+"A permissão “executar em segundo plano” pode ser alterada a qualquer tempo a "
+"partir das configurações do aplicativo."
+
+#: src/background.c:838
+msgid "Don't allow"
+msgstr "Não permitir"
+
+#: src/background.c:839 src/screenshot.c:247 src/wallpaper.c:187
+msgid "Allow"
+msgstr "Permitir"
+
+#: src/camera.c:105
+#, c-format
+msgid "Allow %s to Use the Camera?"
+msgstr "Permitir que %s use a câmera?"
+
+#: src/camera.c:106
+#, c-format
+msgid "%s wants to access camera devices."
+msgstr "%s deseja acessar dispositivos de câmera."
+
+#: src/camera.c:110
+msgid "Allow app to Use the Camera?"
+msgstr "Permitir que o aplicativo use a câmera?"
+
+#: src/camera.c:111
+msgid "An app wants to access camera devices."
+msgstr "Um aplicativo deseja acessar dispositivos de câmera."
+
+#: src/dynamic-launcher.c:122
+#, c-format
+msgid "Desktop file id missing .desktop suffix: %s"
+msgstr "Faltando sufixo .desktop no id do arquivo desktop: %s"
+
+#: src/dynamic-launcher.c:133
+#, fuzzy, c-format
+msgid "Desktop file id is not valid"
+msgstr "A entrada desktop fornecida para Install() não é válida"
+
+#: src/dynamic-launcher.c:306
+#, c-format
+msgid "Desktop entry given to Install() not a valid key file"
+msgstr ""
+"A entrada desktop fornecida para Install() não é um arquivo de chave válido"
+
+#: src/dynamic-launcher.c:319
+#, fuzzy, c-format
+msgid "Desktop entry given to Install() must have exactly one group"
+msgstr "A entrada desktop fornecida para Install() deve ter apenas um grupo"
+
+#: src/dynamic-launcher.c:356
+#, c-format
+msgid "Token given is invalid: %s"
+msgstr "O token fornecido é inválido: %s"
+
+#: src/dynamic-launcher.c:400
+#, c-format
+msgid "Desktop entry given to Install() not valid"
+msgstr "A entrada desktop fornecida para Install() não é válida"
+
+#: src/dynamic-launcher.c:409 src/dynamic-launcher.c:831
+#: src/dynamic-launcher.c:880
+#, c-format
+msgid "Desktop file exceeds max size (%d): %s"
+msgstr "O arquivo desktop excede o tamanho máximo (%d): %s"
+
+#: src/dynamic-launcher.c:563
+#, c-format
+msgid "URL given is invalid: %s"
+msgstr "URL fornecida é inválida: %s"
+
+#: src/dynamic-launcher.c:586
+#, c-format
+msgid "Invalid launcher type: %x"
+msgstr "Tipo de lançador inválido: %x"
+
+#: src/dynamic-launcher.c:593
+#, c-format
+msgid "Unsupported launcher type: %x"
+msgstr "Tipo de lançador não suportado: %x"
+
+#: src/dynamic-launcher.c:655 src/dynamic-launcher.c:725
+msgid "Dynamic launcher icon failed validation"
+msgstr "O ícone do lançador dinâmico falhou na validação"
+
+#: src/dynamic-launcher.c:741
+#, c-format
+msgid "RequestInstallToken() not allowed for app id %s"
+msgstr "RequestInstallToken() não permitido para o id de aplicativo %s"
+
+#: src/dynamic-launcher.c:920
+#, c-format
+msgid "Desktop file '%s' icon at unrecognized path"
+msgstr "O ícone do arquivo desktop “%s” está em um caminho irreconhecível"
+
+#: src/dynamic-launcher.c:943
+#, c-format
+msgid "Desktop file '%s' icon failed to serialize"
+msgstr "O ícone do arquivo desktop “%s” falhou na serialização"
+
+#: src/dynamic-launcher.c:982
+#, c-format
+msgid "No dynamic launcher exists with id '%s'"
+msgstr "Nenhum lançador dinâmico existe com o id “%s”"
+
+#: src/dynamic-launcher.c:1001
+#, c-format
+msgid "Failed to create GDesktopAppInfo for launcher with id '%s'"
+msgstr "Falha ao criar GDesktopAppInfo para lançador com id “%s”"
+
+#: src/location.c:544
+msgid "Deny Access"
+msgstr "Negar acesso"
+
+#: src/location.c:546
+msgid "Grant Access"
+msgstr "Conceder acesso"
+
+#: src/location.c:566
+#, c-format
+msgid "Give %s Access to Your Location?"
+msgstr "Dar %s acesso a sua localização?"
+
+#: src/location.c:571
+#, c-format
+msgid "%s wants to use your location."
+msgstr "%s deseja usar sua localização."
+
+#: src/location.c:580
+msgid "Grant Access to Your Location?"
+msgstr "Conceder acesso à sua localização?"
+
+#: src/location.c:581
+msgid "An application wants to use your location."
+msgstr "Um aplicativo deseja usar sua localização."
+
+#: src/location.c:584
+msgid "Location access can be changed at any time from the privacy settings."
+msgstr ""
+"Acesso à localização pode ser alterado a qualquer tempo a partir das "
+"configurações de privacidades."
+
+#: src/screenshot.c:245 src/wallpaper.c:185
+msgid "Deny"
+msgstr "Negar"
+
+#: src/screenshot.c:267
+#, c-format
+msgid "Allow %s to Take Screenshots?"
+msgstr "Permitir que %s faça capturas de tela?"
+
+#: src/screenshot.c:268
+#, c-format
+msgid "%s wants to be able to take screenshots at any time."
+msgstr "%s deseja ser capaz de capturar a tela a qualquer momento."
+
+#: src/screenshot.c:276
+msgid "Allow Applications to Take Screenshots?"
+msgstr "Permitir que aplicativos façam capturas de tela?"
+
+#: src/screenshot.c:277
+msgid "An application wants to be able to take screenshots at any time."
+msgstr ""
+"Um aplicativo deseja ser capaz de fazer capturas de tela a qualquer momento."
+
+#: src/screenshot.c:280 src/wallpaper.c:220
+msgid "This permission can be changed at any time from the privacy settings."
+msgstr ""
+"Essa permissão pode ser alterada a qualquer momento a partir das "
+"configurações de privacidades."
+
+#: src/settings.c:187 src/settings.c:223
+msgid "Requested setting not found"
+msgstr "A configuração requisitada não foi encontrada"
+
+#: src/usb.c:1328
+msgid "Device not available"
+msgstr ""
+
+#: src/usb.c:1342
+#, fuzzy
+msgid "Not allowed"
+msgstr "Não permitir"
+
+#: src/wallpaper.c:207
+#, c-format
+msgid "Allow %s to Set Backgrounds?"
+msgstr "Permitir que %s defina planos de fundo?"
+
+#: src/wallpaper.c:208
+#, c-format
+msgid "%s is requesting to be able to change the background image."
+msgstr ""
+"%s está solicitando a capacidade de alterar a imagem de plano de fundo."
+
+#: src/wallpaper.c:217
+msgid "Allow Applications to Set Backgrounds?"
+msgstr "Permitir que aplicativos definam planos de fundo?"
+
+#: src/wallpaper.c:218
+msgid "An application is requesting to be able to change the background image."
+msgstr ""
+"Um aplicativo está solicitando a capacidade de alterar a imagem de plano de "
+"fundo."
+
+#, c-format
+#~ msgid "Allow %s to Use the Microphone?"
+#~ msgstr "Permitir que %s use o microfone?"
+
+#, c-format
+#~ msgid "%s wants to access recording devices."
+#~ msgstr "%s deseja acessar dispositivos de gravação."
+
+#~ msgid "Allow app to Use the Microphone?"
+#~ msgstr "Permitir que o aplicativo use o microfone?"
+
+#~ msgid "An app wants to access recording devices."
+#~ msgstr "Um aplicativo deseja acessar dispositivos de gravação."
+
+#, c-format
+#~ msgid "Allow %s to Use the Speakers?"
+#~ msgstr "Permitir que %s use os alto-falantes?"
+
+#, c-format
+#~ msgid "%s wants to access audio devices."
+#~ msgstr "%s deseja acessar dispositivos de áudio."
+
+#~ msgid "Allow app to Use the Speakers?"
+#~ msgstr "Permitir que o aplicativo use os alto-falantes?"
+
+#~ msgid "An app wants to access audio devices."
+#~ msgstr "Um aplicativo deseja acessar os dispositivos de áudio."
+
+#, c-format
+#~ msgid "Desktop file id missing app id prefix '%s.': %s"
+#~ msgstr ""
+#~ "Faltando prefixo de id de aplicativo no id do arquivo desktop: “%s.”: %s"
+
+#, c-format
+#~ msgid "Desktop entry given to Install() must not use --file-forwarding"
+#~ msgstr ""
+#~ "A entrada desktop fornecida para Install() não deve usar --file-forwarding"
+
+#, c-format
+#~ msgid "DynamicLauncher install not supported for: %s"
+#~ msgstr "Instalação por DynamicLauncher não suportada para: %s"
+
+#~ msgid "Turn On Microphone?"
+#~ msgstr "Ligar o microfone?"
+
+#~ msgid ""
+#~ "Access to your microphone can be changed at any time from the privacy "
+#~ "settings."
+#~ msgstr ""
+#~ "Acesso ao seu microfone pode ser alterado a qualquer tempo a partir das "
+#~ "configurações de privacidades."
+
+#~ msgid "An application wants to use your microphone."
+#~ msgstr "Um aplicativo deseja usar seu microfone."
+
+#, c-format
+#~ msgid "%s wants to use your microphone."
+#~ msgstr "%s deseja usar seu microfone."
+
+#~ msgid "Turn On Speakers?"
+#~ msgstr "Ligar o alto-falante?"
+
+#~ msgid ""
+#~ "Access to your speakers can be changed at any time from the privacy "
+#~ "settings."
+#~ msgstr ""
+#~ "Acesso ao seu alto-falante pode ser alterado a qualquer tempo a partir "
+#~ "das configurações de privacidades."
+
+#~ msgid "An application wants to play sound."
+#~ msgstr "Um aplicativo deseja reproduzir som."
+
+#, c-format
+#~ msgid "%s wants to play sound."
+#~ msgstr "%s deseja reproduzir som."
+
+#~ msgid "Turn On Camera?"
+#~ msgstr "Ligar a câmera?"
+
+#~ msgid ""
+#~ "Access to your camera can be changed at any time from the privacy "
+#~ "settings."
+#~ msgstr ""
+#~ "Acesso à sua câmera pode ser alterado a qualquer tempo a partir das "
+#~ "configurações de privacidades."

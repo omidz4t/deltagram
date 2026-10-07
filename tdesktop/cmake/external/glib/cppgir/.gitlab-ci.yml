@@ -1,0 +1,54 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+stages:
+  - build
+
+default:
+  image: registry.gitlab.com/mnauw/cppgir:noble
+
+ubuntu-focal-gcc:
+  image: registry.gitlab.com/mnauw/cppgir:focal
+  stage: build
+  script:
+    - mkdir build-gcc
+    - cd build-gcc
+    - cmake ..
+    - make
+    - make examples
+  except:
+    - tags
+
+ubuntu-focal-clang:
+  image: registry.gitlab.com/mnauw/cppgir:focal
+  stage: build
+  script:
+    - mkdir build-clang
+    - cd build-clang
+    - CC=clang-11 CXX=clang++-11 cmake ..
+    - make
+    - make examples
+  except:
+    - tags
+
+ubuntu-noble-gcc-13:
+  stage: build
+  script:
+    - mkdir build-gcc-13
+    - cd build-gcc-13
+    - cmake ..
+    - make
+    - make examples
+  except:
+    - tags
+
+ubuntu-noble-clang-18:
+  stage: build
+  script:
+    - mkdir build-clang-18
+    - cd build-clang-18
+    - CC=clang-18 CXX=clang++-18 cmake ..
+    - make
+    - make examples
+  except:
+    - tags

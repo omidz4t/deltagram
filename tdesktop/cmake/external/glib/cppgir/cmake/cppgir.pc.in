@@ -1,0 +1,9 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+includedir=${prefix}/include/@PROJECT_NAME@
+
+Name: @PROJECT_NAME@
+Description: GObject Introspection C++ wrapper generator.
+Version: @PROJECT_VERSION@
+# unfortunately, no pkg-config on nonstd-expected
+# so no Requires if used as external dependency
+Cflags: -I${includedir} -I${includedir}/override

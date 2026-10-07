@@ -1,0 +1,1551 @@
+.TH hunspell 5 "2026-04-30"
+.LO 1
+.SH NAME
+hunspell \- format of Hunspell dictionaries and affix files
+.SH DESCRIPTION
+.IR Hunspell (1)
+requires two files to define the way a language is being spell-checked:
+a dictionary file containing words and applicable flags, and an affix
+file that specifies how these flags control spell checking. The personal
+dictionary file is an optional third file.
+
+.SH Dictionary file
+A dictionary file (*.dic) contains a list of words, one per line.
+The first line of a dictionary (except personal dictionaries)
+contains the approximate word count (for optimal hash memory size).
+Each word may optionally be followed by a slash ("/") and one or
+more flags, which represent the word's attributes (for example,
+affixes).
+
+The slash separates the word from its flags, so it is the first
+unescaped slash on the line that marks the end of the word. A word
+may itself contain a slash if the slash is escaped as "\\/".
+
+A slash in the very first column is part of the word, not a separator.
+A line such as "/foo" is the whole word "/foo" with no flags. To give
+a word that starts with a slash some flags, write a second slash
+before the flags, as in "/foo/X". A leading slash followed by other
+text and no later slash, such as "/ comment text", is therefore loaded
+as one literal word and never expands into flagged forms.
+
+It is worth adding not only individual words but also word pairs to
+the dictionary, to get correct suggestions for common misspellings
+that are missing a space, as in the following example for the bad
+"alot" and "inspite" (see also "REP" and the "ph:" field for
+correct suggestions for common misspellings):
+
+.PP
+.RS
+.nf
+3
+word
+a lot
+in spite
+.fi
+.RE
+.PP
+
+.SH Personal dictionary file
+Personal dictionaries are simple word lists. An asterisk in the first
+character position marks the entry as forbidden.
+A second word separated by a slash sets the affixation: it names an
+existing dictionary word, and the new word is then recognized with the
+same affixes as that word. The text after the slash is an example word,
+not the affix class flags used in the main dictionary .dic file.
+
+.PP
+.RS
+.nf
+foo
+Foo/Simpson
+*bar
+.fi
+.RE
+.PP
+
+In this example, "foo" and "Foo" are personal words, plus Foo
+will be recognized with affixes of Simpson (Foo's etc.) and
+bar is a forbidden word.
+
+.SH Short example
+
+Dictionary file:
+.PP
+.RS
+.nf
+3
+hello
+try/B
+work/AB
+.fi
+.RE
+.PP
+The flags B and A specify attributes of these words.
+
+Affix file:
+
+.PP
+.RS
+.nf
+SET UTF-8
+TRY esianrtolcdugmphbyfvkwzESIANRTOLCDUGMPHBYFVKWZ'
+
+REP 2
+REP f ph
+REP ph f
+
+PFX A Y 1
+PFX A 0 re .
+
+SFX B Y 2
+SFX B 0 ed [^y]
+SFX B y ied y
+.fi
+.RE
+.PP
+
+In the affix file, prefix A and suffix B have been defined.
+Flag A defines a `re-' prefix. Class B defines two `-ed'
+suffixes. First B suffix can be added to a word if
+the last character of the word isn't `y'.
+Second suffix can be added to the words terminated with an `y'.
+
+All accepted words with this dictionary and affix combination are:
+"hello", "try", "tried", "work", "worked", "rework", "reworked".
+
+.SH "AFFIX FILE GENERAL OPTIONS"
+
+Hunspell source distribution contains more than 80 examples for
+option usage.
+
+.IP "SET encoding"
+Set character encoding of words and morphemes in affix and dictionary files.
+Possible values: UTF-8, ISO8859\-1 \- ISO8859\-10, 
+ISO8859\-13 \- ISO8859\-15, KOI8-R, KOI8-U, cp1251, ISCII-DEVANAGARI.
+.PP
+.RS
+.nf
+SET UTF-8
+.fi
+.RE
+.PP
+
+.IP "FLAG value"
+Set flag type. Default type is the extended ASCII (8-bit) character. 
+`UTF-8' parameter sets UTF-8 encoded Unicode character flags.
+The `long' value sets the double extended ASCII character flag type;
+the `num' value sets the decimal number flag type. Decimal flags are
+numbered from 1 to 65000 and are separated by commas in flag fields.
+.PP
+.RS
+.nf
+FLAG long
+.fi
+.RE
+.PP
+
+.IP "COMPLEXPREFIXES"
+Set twofold prefix stripping (but single suffix stripping), e.g. for morphologically complex
+languages with a right-to-left writing system.
+
+.IP "LANG langcode"
+Set language code for language-specific functions of Hunspell. Use it to activate special casing
+of Azeri (LANG az), Turkish (LANG tr) and Crimean Tatar (LANG crh), and the
+non-generalized syllable-counting compounding rules of Hungarian (LANG hu).
+
+.IP "IGNORE characters"
+Set characters to ignore in dictionary words, affixes and input words.
+Useful for optional characters such as Arabic (harakat) or Hebrew
+(niqqud) diacritical marks (see the tests/ignore.* test dictionary
+in the Hunspell distribution).
+
+.IP "AF number_of_flag_vector_aliases"
+.IP "AF flag_vector"
+Hunspell can substitute affix flag sets with
+ordinal numbers in affix rules (alias compression, see makealias tool). First
+example with alias compression:
+.PP
+.RS
+.nf
+3
+hello
+try/1
+work/2
+.fi
+.RE
+.PP
+AF definitions in the affix file:
+.PP
+.RS
+.nf
+AF 2
+AF A
+AF AB
+...
+.fi
+.RE
+.PP
+
+It is equivalent to the following dic file:
+.PP
+.RS
+.nf
+3
+hello
+try/A
+work/AB
+.fi
+.RE
+.PP
+
+See also tests/alias* examples of the source distribution.
+
+Note I: If the affix file contains the FLAG parameter, define it before
+the AF definitions.
+
+Note II: Use the makealias utility in the Hunspell distribution to
+compress aff and dic files.
+.IP "AM number_of_morphological_aliases"
+.IP "AM morphological_fields"
+Hunspell can also substitute morphological data with ordinal numbers
+in affix rules (alias compression). See tests/alias* examples.
+.SH "AFFIX FILE OPTIONS FOR SUGGESTION"
+Suggestion parameters can optimize Hunspell's default n-gram (similarity
+search through the dictionary words based on common 1-, 2-, 3-, and
+4-character sequences), character-swap and deletion suggestions.
+REP is recommended for fixing typical and especially bad
+language-specific spelling errors, because REP suggestions have the
+highest priority in the suggestion list.
+PHONE is for languages whose orthography is not pronunciation-based.
+
+For short common misspellings, it's important to use the ph:
+field (see later) to give the best suggestions.
+.IP "KEY characters_separated_by_vertical_line_optionally"
+Hunspell searches for and suggests words in which a single character
+has been replaced by a neighbouring KEY character. Non-neighbouring
+characters in the KEY string are separated by vertical line characters.
+Suggested KEY parameters for QWERTY and Dvorak keyboard layouts:
+.PP
+.RS
+.nf
+KEY qwertyuiop|asdfghjkl|zxcvbnm
+KEY pyfgcrl|aeouidhtns|qjkxbmwvz
+.fi
+.RE
+.PP
+Using the first QWERTY layout, Hunspell suggests "nude" and
+"node" for "*nide". A character may have more neighbors, too:
+.PP
+.RS
+.nf
+KEY qwertzuop|yxcvbnm|qaw|say|wse|dsx|sy|edr|fdc|dx|rft|gfv|fc|tgz|hgb|gv|zhu|jhn|hb|uji|kjm|jn|iko|lkm
+.fi
+.RE
+.PP
+.IP "TRY characters"
+Hunspell can suggest correct word forms when they differ from the
+bad input word by one TRY character. The parameter of TRY is
+case-sensitive.
+.PP
+For example, take a dictionary that contains the word "work" and
+the bad input word "wark". Hunspell tries to fix the word by
+replacing each letter in turn with each character listed in TRY.
+With
+.PP
+.RS
+.nf
+TRY o
+.fi
+.RE
+.PP
+replacing the "a" with "o" produces "work", so "work" is suggested.
+With
+.PP
+.RS
+.nf
+TRY i
+.fi
+.RE
+.PP
+the letter "o" is never tried, so "work" is never produced and there
+is no suggestion. The list should therefore hold the characters of the
+language, most frequent first, so that likely corrections are found.
+.IP "NOSUGGEST flag"
+Words flagged with NOSUGGEST are not suggested (but are still accepted
+when typed correctly). Proposed for vulgar and obscene words (see also
+SUBSTANDARD).
+.IP "MAXCPDSUGS num"
+Set the maximum number of suggested compound words generated by
+compound rules. The number of suggested compound words from the same
+1-character-distance type may exceed this.
+.IP "MAXNGRAMSUGS num"
+Set the maximum number of n-gram suggestions. A value of 0 switches off
+n-gram suggestions (see also MAXDIFF).
+.IP "MAXDIFF [0-10]"
+Set the similarity factor for the n-gram based suggestions (5 = default value; 0 = fewer n-gram suggestions, but min. 1;
+10 = MAXNGRAMSUGS n-gram suggestions).
+.IP "ONLYMAXDIFF"
+Remove all bad n-gram suggestions (default mode keeps one, see MAXDIFF).
+.IP "NOSPLITSUGS"
+Disable word suggestions with spaces.
+.IP "SUGSWITHDOTS"
+Add dot(s) to suggestions, if input word terminates in dot(s).
+(Not for LibreOffice dictionaries, because LibreOffice
+has an automatic dot expansion mechanism.)
+.IP "REP number_of_replacement_definitions"
+.IP "REP what replacement"
+This table specifies modifications to try first.
+The first REP line is the header of the table, followed by one or
+more REP data lines.
+With this table, Hunspell can suggest correct forms for typical
+spelling mistakes where the incorrect form differs by more than
+one letter from the correct form (see also "ph:").
+The search string supports the regex boundary anchors (^ and $).
+For example, a possible English replacement table definition
+to handle misspelled consonants:
+.PP
+.RS
+.nf
+REP 5
+REP f ph
+REP ph f
+REP tion$ shun
+REP ^cooccurr co-occurr
+REP ^alot$ a_lot
+.fi
+.RE
+.PP
+
+Note I: It's very useful to define replacements for the most typical one-character mistakes, too:
+with REP you can add higher priority to a subset of the TRY suggestions (suggestion list
+begins with the REP suggestions).
+
+Note II: To suggest separated words, specify spaces as underscores:
+
+.PP
+.RS
+.nf
+REP 1
+REP onetwothree one_two_three
+.fi
+.RE
+.PP
+
+Note III: The replacement table can be used for stricter compound word
+checking with the CHECKCOMPOUNDREP option.
+
+.IP "MAP number_of_map_definitions"
+.IP "MAP string_of_related_chars_or_parenthesized_character_sequences"
+We can define language-dependent information on characters and
+character sequences that should be considered related (i.e. nearer than
+other chars not in the set) in the affix file (.aff)  by a map table.
+With this table, Hunspell can suggest the right forms for words, which
+incorrectly choose the wrong letter or letter groups from a related
+set more than once in a word (see REP).
+
+For example, a possible mapping could be for the German
+umlauted ü versus the regular u; the word
+Frühstück really should be written with umlauted u's and not regular ones.
+.PP
+.RS
+.nf
+MAP 1
+MAP uü
+.fi
+.RE
+.PP
+Use parenthesized groups for character sequences (eg. for
+composed Unicode characters):
+.PP
+.RS
+.nf
+MAP 3
+MAP ß(ss)  (character sequence)
+MAP ﬁ(fi)  ("fi" compatibility characters for Unicode fi ligature)
+MAP (ọ́)o   (composed Unicode character: ó with bottom dot)
+.fi
+.RE
+.PP
+.IP "PHONE number_of_phone_definitions"
+.IP "PHONE what replacement"
+PHONE uses a table-driven phonetic transcription
+algorithm borrowed from Aspell. It is useful for languages whose
+orthography is not pronunciation-based. You can add a full
+alphabet conversion and other rules for converting
+special letter sequences. For detailed documentation see
+http://aspell.net/man-html/Phonetic-Code.html.
+Note: Multibyte UTF-8 characters do not yet work with bracket
+expressions. Dash range expressions still operate on single bytes,
+not UTF-8 characters.
+.IP "WARN flag"
+This flag is for rare words, which are also often spelling mistakes,
+see option -r of command line Hunspell and FORBIDWARN.
+.IP "FORBIDWARN"
+Words with flag WARN aren't accepted by the spell checker using this parameter.
+.SH "OPTIONS FOR COMPOUNDING"
+.IP "BREAK number_of_break_definitions"
+.IP "BREAK character_or_character_sequence"
+Define new break points for splitting words and checking word parts
+separately. Use ^ and $ to delete characters at the start and end of
+the word. Rationale: useful for compounding with joining characters
+or strings (for example, the hyphen in English and German or the
+hyphen and n-dash in Hungarian). Dashes are often bad break points
+for tokenization, because compounds with dashes may also contain
+invalid parts.
+With BREAK, Hunspell can check both sides of these compounds,
+breaking the words at dashes and n-dashes:
+.PP
+.RS
+.nf
+BREAK 2
+BREAK -
+BREAK \fB--\fR    # n-dash
+.fi
+.RE
+.PP
+Breaks are recursive, so foo-bar, bar-foo and foo-foo\fB--\fRbar-bar
+would all be valid compounds.
+Note: The default word break of Hunspell is equivalent to the following
+BREAK definition:
+.PP
+.RS
+.nf
+BREAK 3
+BREAK -
+BREAK ^-
+BREAK -$
+.fi
+.RE
+.PP
+With this BREAK definition, Hunspell doesn't accept the "-word" and "word-" forms:
+.PP
+.RS
+.nf
+BREAK 1
+BREAK -
+.fi
+.RE
+.PP
+
+Switching off the default values:
+.PP
+.RS
+.nf
+BREAK 0
+.fi
+.RE
+.PP
+
+Note II: COMPOUNDRULE is better for handling dashes and other compound
+joining characters or character strings. Use BREAK if you want to check
+words with dashes or other joining characters and there is no time or
+ability to describe precise compound rules with COMPOUNDRULE
+(COMPOUNDRULE only handles the suffixation of the last word part of a
+compound word).
+
+Note III: For command-line spell checking of words with extra characters,
+set the WORDCHARS parameter: WORDCHARS -\fB--\fR (see the tests/break.*
+example).
+.IP "COMPOUNDRULE number_of_compound_definitions"
+.IP "COMPOUNDRULE compound_pattern"
+Define custom compound patterns with a regex-like syntax.
+The first COMPOUNDRULE line is a header containing the number of
+following COMPOUNDRULE definitions. Compound patterns consist of
+compound flags, parentheses, and `*' or `?' meta-characters. A flag
+followed by `*' matches a word sequence of 0 or more words flagged
+with this compound flag. A flag followed by `?' matches 0 or 1 words
+flagged with this compound flag. See the tests/compound*.* examples.
+
+Note: the en_US dictionary of OpenOffice.org uses COMPOUNDRULE for
+ordinal number recognition (1st, 2nd, 11th, 12th, 22nd, 112th, 1000122nd, etc.).
+
+Note II: With long and numerical flag types, use only parenthesized
+flags: (1500)*(2000)?
+
+Note III: COMPOUNDRULE flags work completely independently of the
+compounding mechanisms using COMPOUNDFLAG, COMPOUNDBEGIN, etc.
+(Use these flags on different word entries.)
+
+.IP "COMPOUNDMIN num"
+Minimum length of words used for compounding.
+Default value is 3 letters.
+
+.IP "MAXCPDSUGS num"
+Max Compound Suggestions. Use 0 to disable suggesting from compounds.
+Default value is unlimited.
+
+.IP "COMPOUNDFLAG flag"
+Words flagged with COMPOUNDFLAG may appear in compound words (except
+when the word is shorter than COMPOUNDMIN). Affixes with COMPOUNDFLAG
+also permit compounding of affixed words.
+.IP "COMPOUNDBEGIN flag"
+Words flagged with COMPOUNDBEGIN (or with a flagged affix) may
+be first elements in compound words.
+.IP "COMPOUNDLAST flag"
+Words flagged with COMPOUNDLAST (or with a flagged affix) may be last elements in compound words.
+.IP "COMPOUNDMIDDLE flag"
+Words flagged with COMPOUNDMIDDLE (or with a flagged affix) may be middle elements in compound words.
+.IP "ONLYINCOMPOUND flag"
+Suffixes flagged with ONLYINCOMPOUND may only appear inside compounds
+(Fuge-elements in German, fogemorphemes in Swedish).
+The ONLYINCOMPOUND flag also works on words (see tests/onlyincompound.*).
+Note: also useful to flag compounding parts which are not correct as a
+word on their own.
+.IP "COMPOUNDPERMITFLAG flag"
+Prefixes are allowed at the beginning of compounds,
+suffixes are allowed at the end of compounds by default.
+Affixes with COMPOUNDPERMITFLAG may be inside of compounds.
+.IP "COMPOUNDFORBIDFLAG flag"
+Suffixes with this flag forbid compounding of the affixed word.
+Dictionary words with this flag are removed from the beginning and
+middle of compound words, overriding the effect of COMPOUNDPERMITFLAG.
+.IP "COMPOUNDMORESUFFIXES"
+Allow twofold suffixes within compounds.
+.IP "COMPOUNDROOT flag"
+The COMPOUNDROOT flag marks compounds in the dictionary
+(currently only used in the Hungarian language-specific code).
+.IP "COMPOUNDWORDMAX number"
+Set maximum word count in a compound word. (Default is unlimited.)
+.IP "CHECKCOMPOUNDDUP"
+Forbid word duplication in compounds (e.g. foofoo).
+.IP "CHECKCOMPOUNDREP"
+Forbid compounding, if the (usually bad) compound word may be
+a non-compound word with a REP fault. Useful for languages with
+`compound friendly' orthography.
+.IP "CHECKCOMPOUNDCASE"
+Forbid upper case characters at word boundaries in compounds.
+.IP "CHECKCOMPOUNDTRIPLE"
+Forbid compounding, if compound word contains triple repeating letters
+(e.g. foo|ox or xo|oof). Bug: missing multi-byte character support
+in UTF-8 encoding (works only for 7-bit ASCII characters).
+.IP "SIMPLIFIEDTRIPLE"
+Allow simplified 2-letter forms of the compounds forbidden by CHECKCOMPOUNDTRIPLE.
+It's useful for Swedish and Norwegian (and for
+the old German orthography: Schiff|fahrt -> Schiffahrt).
+.IP "CHECKCOMPOUNDPATTERN number_of_checkcompoundpattern_definitions"
+.IP "CHECKCOMPOUNDPATTERN endchars[/flag] beginchars[/flag] [replacement]"
+Forbid compounding, if the first word in the compound ends with endchars, and
+next word begins with beginchars and (optionally) they have the requested flags.
+The optional replacement parameter allows simplified compound form.
+
+The special "endchars" pattern 0 (zero) limits the rule to the unmodified stems (stems
+and stems with zero affixes):
+.PP
+.RS
+.nf
+CHECKCOMPOUNDPATTERN 0/x /y
+.fi
+.RE
+.PP
+Note: COMPOUNDMIN doesn't work correctly with the compound word alternation,
+so it may need to set COMPOUNDMIN to lower value.
+.IP "FORCEUCASE flag"
+If the last word part of a compound has the FORCEUCASE flag, it forces
+capitalization of the whole compound word. E.g. the Dutch word "straat"
+(street) with the FORCEUCASE flag will be allowed only in capitalized
+compound forms, according to the Dutch spelling rules for proper names.
+.IP "COMPOUNDSYLLABLE max_syllable vowels"
+Needed for special compounding rules in Hungarian.
+The first parameter is the maximum syllable count permitted in a
+compound when the number of words in the compound exceeds
+COMPOUNDWORDMAX. The second parameter is the list of vowels (used
+for counting syllables).
+.IP "SYLLABLENUM flags"
+Needed for special compounding rules in Hungarian.
+.SH "AFFIX FILE OPTIONS FOR AFFIX CREATION"
+.IP "PFX flag cross_product number"
+.IP "PFX flag stripping prefix [condition [morphological_fields...]]"
+.IP "SFX flag cross_product number"
+.IP "SFX flag stripping suffix [condition [morphological_fields...]]"
+An affix is either a prefix or a suffix attached to root words to form
+other words. Affix classes can be defined with an arbitrary number of
+affix rules. Affix classes are identified by affix flags. The first
+line of an affix class definition is the header. The fields of an affix class header:
+
+(0) Option name (PFX or SFX)
+
+(1) Flag (name of the affix class)
+
+(2) Cross product (permission to combine prefixes and suffixes).
+Possible values: Y (yes) or N (no)
+
+(3) Line count of the following rules.
+
+Fields of an affix rules:
+
+(0) Option name
+
+(1) Flag
+
+(2) stripping characters from beginning (at prefix rules) or
+end (at suffix rules) of the word
+
+(3) affix (optionally with flags of continuation classes, separated by a slash)
+
+(4) condition.
+
+Zero stripping or affix is indicated by zero. A zero condition is
+indicated by a dot. The condition is a simplified, regular-expression-like
+pattern that must be met before the affix can be applied. (A dot matches
+an arbitrary character. Characters in brackets match any character from
+the bracketed subset. A dash has no special meaning, but a circumflex
+(^) immediately after the opening bracket inverts the character set.)
+
+(5) Optional morphological fields separated by spaces or tabs.
+
+.SH "AFFIX FILE OTHER OPTIONS"
+.IP "CIRCUMFIX flag"
+An affix flagged with CIRCUMFIX may be applied to a word only when the
+word also has a prefix with CIRCUMFIX, and vice versa (see the
+circumfix.* test files in the source distribution).
+.IP "FORBIDDENWORD flag"
+This flag marks a forbidden word form. Because affixed forms are also
+forbidden, we can subtract a subset from the set of accepted affixed
+and compound words.
+Note: useful for forbidding erroneous words generated by the compounding
+mechanism.
+.IP "FULLSTRIP"
+With FULLSTRIP, affix rules can strip the full word, not only all but
+one character, before adding the affixes (see the fullstrip.* test
+files in the source distribution).
+Note: even without FULLSTRIP, conditions may match the full word length.
+.IP "KEEPCASE flag"
+Forbid uppercased and capitalized forms of words flagged with KEEPCASE.
+Useful for special orthographies (measurements and currency often keep
+their case even in uppercased texts) and writing systems (e.g. keeping
+the lower case of IPA characters). Also useful for words that would
+otherwise be erroneously written in the wrong case.
+
+Note: With CHECKSHARPS declaration, words with sharp s and KEEPCASE
+flag may be capitalized and uppercased, but uppercased forms of these
+words may not contain sharp s, only SS. See germancompounding
+example in the tests directory of the Hunspell distribution.
+
+.IP "ICONV number_of_ICONV_definitions"
+.IP "ICONV pattern pattern2"
+Define input conversion table.
+Use underscore '_' to represent the last character of the string.
+For e.g. if you need to change <200D> to <FFF0> only if it appears at the end of the word, then ...
+
+ICONV <200D>_ <FFF0>
+
+Note: useful to convert one type of quote to another one, or change ligature.
+.IP "OCONV number_of_OCONV_definitions"
+.IP "OCONV pattern pattern2"
+Define output conversion table.
+.IP "LEMMA_PRESENT flag"
+Deprecated. Use "st:" field instead of LEMMA_PRESENT.
+.IP "NEEDAFFIX flag"
+This flag marks virtual stems in the dictionary: words only valid when
+affixed (except when the dictionary word has a homonym or a zero affix).
+NEEDAFFIX also works with prefixes and prefix + suffix combinations
+(see tests/needaffix5.*).
+.IP "PSEUDOROOT flag"
+Deprecated. (Former name of the NEEDAFFIX option.)
+.IP "SUBSTANDARD flag"
+The SUBSTANDARD flag marks affix rules and dictionary words (allomorphs)
+that are not used in morphological generation, and root words to be
+removed from suggestions. See also NOSUGGEST.
+.IP "WORDCHARS characters"
+WORDCHARS extends the tokenizer of the Hunspell command-line interface
+with additional word characters. For example, the dot, dash, n-dash,
+digits, and percent sign are word characters in Hungarian.
+.IP "CHECKSHARPS"
+SS letter pair in uppercased (German) words may be upper case sharp s (ß).
+Hunspell can handle this special casing with the CHECKSHARPS
+declaration (see also KEEPCASE flag and tests/germancompounding example)
+in both spelling and suggestion.
+
+.SH "Morphological analysis"
+
+Hunspell's dictionary items and affix rules may have optional space or
+tabulator separated morphological description fields, started with
+3-character (two letters and a colon) field IDs:
+
+.PP
+.RS
+.nf
+ word/flags po:noun is:nom
+.fi
+.RE
+.PP
+
+Example: We define a simple resource with morphological informations,
+a derivative suffix (ds:) and a part of speech category (po:):
+
+Affix file:
+
+.PP
+.RS
+.nf
+ SFX X Y 1
+ SFX X 0 able . ds:able
+.fi
+.RE
+.PP
+
+Dictionary file:
+
+.PP
+.RS
+.nf
+ drink/X po:verb
+.fi
+.RE
+.PP
+
+Test file:
+
+.PP
+.RS
+.nf
+ drink
+ drinkable
+.fi
+.RE
+.PP
+
+Test:
+
+.PP
+.RS
+.nf
+ $ analyze test.aff test.dic test.txt
+ > drink
+ analyze(drink) = po:verb
+ stem(drink) = po:verb
+ > drinkable
+ analyze(drinkable) = po:verb ds:able
+ stem(drinkable) = drinkable
+.fi
+.RE
+.PP
+
+You can see in the example, that the analyzer concatenates the morphological fields in
+\fIitem and arrangement\fR
+style.
+
+.SH "Optional data fields"
+Default morphological and other IDs (used in suggestion,
+stemming and morphological generation):
+.IP "ph:"
+Alternative transliteration for better suggestions, i.e. for
+misspellings related to the special orthography and pronunciation
+of the word. This is the best way to handle common misspellings,
+so it is worth adding a ph: field to the most affected few thousand
+dictionary words (or word pairs etc.) to get correct suggestions
+for their misspellings.
+
+
+For example:
+
+.PP
+.RS
+.nf
+Wednesday ph:wendsay ph:wensday
+Marseille ph:maarsayl
+.fi
+.RE
+.PP
+
+Hunspell adds all ph: transliterations to the inner REP table, so
+it will always suggest the correct word for the specified
+misspellings with the highest priority.
+
+The previous example is equivalent to the following REP definition:
+
+.PP
+.RS
+.nf
+REP 6
+REP wendsay Wednesday
+REP Wendsay Wednesday
+REP wensday Wednesday
+REP Wensday Wednesday
+REP maarsayl Marseille
+REP Maarsayl Marseille
+.fi
+.RE
+.PP
+
+The asterisk at the end of the ph: pattern means stripping the
+terminating character both from the pattern and the word in the
+associated REP rule:
+
+.PP
+.RS
+.nf
+pretty ph:prity*
+.fi
+.RE
+.PP
+
+will result
+
+.PP
+.RS
+.nf
+REP 1
+REP prit prett
+.fi
+.RE
+.PP
+
+REP rule, resulting in the following correct suggestions:
+
+.PP
+.RS
+.nf
+*prity -> pretty
+*pritier -> prettier
+*pritiest -> prettiest
+.fi
+.RE
+.PP
+
+Moreover, ph: fields can handle suggestions with more than
+two words, also different suggestions for the same
+misspelling:
+.PP
+.RS
+.nf
+do not know ph:dunno
+don't know ph:dunno
+.fi
+.RE
+.PP
+
+results
+
+.PP
+.RS
+.nf
+*dunno -> do not know, don't know
+.fi
+.RE
+.PP
+
+Note: if available, ph: is used in n-gram similarity, too.
+
+The ASCII arrow "->" in a ph: pattern means a REP rule (see REP),
+creating an arbitrary replacement rule associated with the dictionary
+item:
+.PP
+.RS
+.nf
+happy/B ph:hepy ph:hepi->happi
+.fi
+.RE
+.PP
+
+results
+
+.PP
+.RS
+.nf
+*hepy -> happy
+*hepiest -> happiest
+.fi
+.RE
+.PP
+
+.IP "st:"
+Stem. Optional: the default stem is the dictionary item in morphological
+analysis. The stem field is useful for virtual stems (dictionary words
+with the NEEDAFFIX flag) and for morphological exceptions, in place of
+new single-use morphological rules.
+.PP
+.RS
+.nf
+feet  st:foot  is:plural
+mice  st:mouse is:plural
+teeth st:tooth is:plural
+.fi
+.RE
+.PP
+
+Word forms with multiple stems need multiple dictionary items:
+
+.PP
+.RS
+.nf
+lay po:verb st:lie is:past_2
+lay po:verb is:present
+lay po:noun
+.fi
+.RE
+.PP
+
+.IP "al:"
+Allomorph(s). A dictionary item is the stem of its allomorphs.
+Morphological generation needs stem, allomorph and
+affix fields.
+.PP
+.RS
+.nf
+sing al:sang al:sung
+sang st:sing
+sung st:sing
+.fi
+.RE
+.PP
+.IP "po:"
+Part of speech category.
+.IP "ds:"
+Derivational suffix(es).
+Stemming doesn't remove derivational suffixes.
+Morphological generation depends on the order of the suffix fields.
+
+In affix rules:
+
+.PP
+.RS
+.nf
+SFX Y Y 1
+SFX Y 0 ly . ds:ly_adj
+.fi
+.RE
+.PP
+
+In the dictionary:
+
+.PP
+.RS
+.nf
+ably st:able ds:ly_adj
+able al:ably
+.fi
+.RE
+.PP
+
+.IP "is:"
+Inflectional suffix(es).
+All inflectional suffixes are removed by stemming.
+Morphological generation depends on the order of the suffix fields.
+
+.PP
+.RS
+.nf
+feet st:foot is:plural
+.fi
+.RE
+.PP
+
+.IP "ts:"
+Terminal suffix(es).
+Terminal suffix fields are inflectional suffix fields
+"removed" by additional (not terminal) suffixes.
+
+Useful for zero morphemes and affixes removed by splitting rules.
+
+.PP
+.RS
+.nf
+work/D ts:present
+.fi
+.RE
+.PP
+
+
+.PP
+.RS
+.nf
+SFX D Y 2
+SFX D   0 ed . is:past_1
+SFX D   0 ed . is:past_2
+.fi
+.RE
+.PP
+
+Typical example of the terminal suffix is the zero morpheme
+of the nominative case.
+
+.IP "sp:"
+Surface prefix. Temporary solution for adding prefixes to the
+stems and generated word forms. See tests/morph.* example.
+
+.IP "pa:"
+Parts of the compound words. Output fields of morphological 
+analysis for stemming.
+.IP "dp:"
+Planned: derivational prefix.
+.IP "ip:"
+Planned: inflectional prefix.
+.IP "tp:"
+Planned: terminal prefix.
+
+.SH "Twofold suffix stripping"
+
+Ispell's original algorithm strips only one suffix. Hunspell can strip
+an additional one (or an extra prefix in COMPLEXPREFIXES mode).
+
+Twofold suffix stripping is a significant improvement in handling the
+immense number of suffixes that characterize agglutinative languages.
+
+A second `s' suffix (affix class Y) will be the continuation class
+of the suffix `able' in the following example:
+
+.PP
+.RS
+.nf
+ SFX Y Y 1
+ SFX Y 0 s .
+
+ SFX X Y 1
+ SFX X 0 able/Y .
+.fi
+.RE
+.PP
+
+Dictionary file:
+
+.PP
+.RS
+.nf
+ drink/X
+.fi
+.RE
+.PP
+
+Test file:
+
+.PP
+.RS
+.nf
+ drink
+ drinkable
+ drinkables
+.fi
+.RE
+.PP
+
+Test:
+
+.PP
+.RS
+.nf
+ $ hunspell -m -d test <test.txt
+ drink st:drink
+ drinkable st:drink fl:X
+ drinkables st:drink fl:X fl:Y
+.fi
+.RE
+.PP
+
+In theory, twofold suffix stripping requires only the square root of
+the number of suffix rules compared with a one-level Hunspell
+implementation. In practice, this is what made it possible to
+elaborate the Hungarian inflectional morphology with twofold suffix
+stripping.
+
+.SH "Extended affix classes"
+
+Hunspell can handle more than 65000 affix classes.
+There are three new syntaxes for specifying flags in affix and
+dictionary files.
+
+\fIFLAG long\fR command sets 2-character flags:
+
+.PP
+.RS
+.nf
+  FLAG long
+  SFX Y1 Y 1
+  SFX Y1 0 s 1
+.fi
+.RE
+.PP
+
+Dictionary record with the Y1, Z3, F? flags:
+
+.PP
+.RS
+.nf
+  foo/Y1Z3F?
+.fi
+.RE
+.PP
+
+\fIFLAG num\fR command sets numerical flags separated by comma:
+
+.PP
+.RS
+.nf
+  FLAG num
+  SFX 65000 Y 1
+  SFX 65000 0 s 1
+.fi
+.RE
+.PP
+
+Dictionary example:
+
+.PP
+.RS
+.nf
+  foo/65000,12,2756
+.fi
+.RE
+.PP
+
+The third one is the Unicode character flags.
+
+.SH "Homonyms"
+
+Hunspell's dictionary can contain repeating elements that are homonyms:
+
+.PP
+.RS
+.nf
+ work/A    po:verb
+ work/B    po:noun
+.fi
+.RE
+.PP
+
+An affix file:
+
+.PP
+.RS
+.nf
+ SFX A Y 1
+ SFX A 0 s . sf:sg3
+
+ SFX B Y 1
+ SFX B 0 s . is:plur
+.fi
+.RE
+.PP
+
+Test file:
+
+.PP
+.RS
+.nf
+ works
+.fi
+.RE
+.PP
+
+Test:
+
+.PP
+.RS
+.nf
+ $ hunspell -d test -m <testwords
+ work st:work po:verb is:sg3
+ work st:work po:noun is:plur
+.fi
+.RE
+.PP
+
+This feature also gives a way to forbid illegal prefix/suffix combinations.
+
+.SH "Prefix--suffix dependencies"
+
+An interesting side-effect of multi-step stripping is that the
+appropriate treatment of circumfixes now comes for free.  For
+instance, in Hungarian, superlatives are formed by simultaneous
+prefixation of \fIleg-\fR and suffixation of \fI-bb\fR to the
+adjective base.  A problem with the one-level architecture is that
+there is no way to render lexical licensing of particular prefixes and
+suffixes interdependent, and therefore incorrect forms are recognized
+as valid, i.e. *\fIlegvén\fR = \fIleg\fR + \fIvén\fR `old'. Until
+the introduction of clusters, a special treatment of the superlative
+had to be hardwired in the earlier \fBHunSpell\fR code. This may have
+been legitimate for a single case, but in fact prefix--suffix
+dependences are ubiquitous in category-changing derivational patterns
+(cf. English \fIpayable\fR, \fInon-payable\fR but \fI*non-pay\fR or
+\fIdrinkable\fR, \fIundrinkable\fR but \fI*undrink\fR). In simple
+words, here, the prefix \fIun-\fR is legitimate only if the base 
+\fIdrink\fR is suffixed with \fI-able\fR. If both these patters are
+handled by on-line affix rules and affix rules are checked against the
+base only, there is no way to express this dependency and the system
+will necessarily over- or undergenerate.
+
+In the next example, suffix class R has a prefix `continuation' class
+(class P).
+
+.PP
+.RS
+.nf
+PFX P Y 1
+PFX P   0 un . [prefix_un]+
+
+SFX S Y 1
+SFX S   0 s . +PL
+
+SFX Q Y 1
+SFX Q   0 s . +3SGV
+
+SFX R Y 1
+SFX R   0 able/PS . +DER_V_ADJ_ABLE
+.fi
+.RE
+.PP
+
+Dictionary:
+
+.PP
+.RS
+.nf
+2
+drink/RQ	[verb]
+drink/S	[noun]
+.fi
+.RE
+.PP
+
+Morphological analysis:
+
+.PP
+.RS
+.nf
+> drink
+drink[verb]
+drink[noun]
+> drinks
+drink[verb]+3SGV
+drink[noun]+PL
+> drinkable
+drink[verb]+DER_V_ADJ_ABLE
+> drinkables
+drink[verb]+DER_V_ADJ_ABLE+PL
+> undrinkable
+[prefix_un]+drink[verb]+DER_V_ADJ_ABLE
+> undrinkables
+[prefix_un]+drink[verb]+DER_V_ADJ_ABLE+PL
+> undrink
+Unknown word.
+> undrinks
+Unknown word.
+.fi
+.RE
+.PP
+
+.SH "Circumfix"
+
+Conditional affixes implemented by a continuation class are not enough for
+circumfixes, because a circumfix is one affix
+in morphology. We also need CIRCUMFIX option for correct
+morphological analysis.
+
+.PP
+.RS
+.nf
+# circumfixes: ~ obligate prefix/suffix combinations
+# superlative in Hungarian: leg- (prefix) AND -bb (suffix)
+# nagy, nagyobb, legnagyobb, legeslegnagyobb
+# (great, greater, greatest, most greatest)
+
+CIRCUMFIX X
+
+PFX A Y 1
+PFX A 0 leg/X .
+
+PFX B Y 1
+PFX B 0 legesleg/X .
+
+SFX C Y 3
+SFX C 0 obb . +COMPARATIVE
+SFX C 0 obb/AX . +SUPERLATIVE
+SFX C 0 obb/BX . +SUPERSUPERLATIVE
+.fi
+.RE
+.PP
+
+Dictionary:
+
+.PP
+.RS
+.nf
+1
+nagy/C	[MN]
+.fi
+.RE
+.PP
+
+Analysis:
+
+.PP
+.RS
+.nf
+> nagy
+nagy[MN]
+> nagyobb
+nagy[MN]+COMPARATIVE
+> legnagyobb
+nagy[MN]+SUPERLATIVE
+> legeslegnagyobb
+nagy[MN]+SUPERSUPERLATIVE
+.fi
+.RE
+.PP
+
+.SH "Compounds"
+
+Allowing free compounding yields a decrease in the precision of
+recognition, not to mention stemming and morphological analysis.
+Although \fBIspell\fR introduces lexical switches to license the
+compounding of bases, this proves not to be restrictive enough.
+For example:
+
+.PP
+.RS
+.nf
+# affix file
+COMPOUNDFLAG X
+.fi
+.RE
+.PP
+
+.PP
+.RS
+.nf
+2
+foo/X
+bar/X
+.fi
+.RE
+.PP
+
+With this resource, \fIfoobar\fR and \fIbarfoo\fR also are accepted words.
+
+This has been improved upon with the introduction of direction-sensitive
+compounding, i.e., lexical features can specify separately whether a
+base can occur as leftmost or rightmost constituent in compounds.
+This, however, is still insufficient to handle the intricate patterns
+of compounding, not to mention idiosyncratic (and language specific)
+norms of hyphenation.
+
+The \fBHunspell\fR algorithm currently allows any affixed form of words
+that are lexically marked as potential members of compounds.
+\fBHunspell\fR improved on this, and its recursive compound-checking
+rules make it possible to implement the intricate spelling conventions
+of Hungarian compounds. For example, the COMPOUNDWORDMAX,
+COMPOUNDSYLLABLE, COMPOUNDROOT, and SYLLABLENUM options can be used to
+encode the noteworthy Hungarian `6-3' rule. As a further example, in
+Hungarian derivative suffixes often modify compounding properties.
+Hunspell allows compounding flags on affixes, and provides two special
+flags (COMPOUNDPERMITFLAG and COMPOUNDFORBIDFLAG) to permit or prohibit
+compounding of the derived forms.
+
+Several Hunspell features are needed to handle German compounding:
+
+.PP
+.RS
+.nf
+# German compounding
+
+# set language to handle special casing of German sharp s
+
+LANG de_DE
+
+# compound flags
+
+COMPOUNDBEGIN U
+COMPOUNDMIDDLE V
+COMPOUNDEND W
+
+# Prefixes are allowed at the beginning of compounds,
+# suffixes are allowed at the end of compounds by default:
+# (prefix)?(root)+(affix)?
+# Affixes with COMPOUNDPERMITFLAG may be inside of compounds.
+COMPOUNDPERMITFLAG P
+
+# for German fogemorphemes (Fuge-element)
+# Hint: ONLYINCOMPOUND is not required everywhere, but the
+# checking will be a little faster with it.
+
+ONLYINCOMPOUND X
+
+# forbid uppercase characters at compound word bounds
+CHECKCOMPOUNDCASE
+
+# for handling Fuge-elements with dashes (Arbeits-) 
+# dash will be a special word
+
+COMPOUNDMIN 1
+WORDCHARS -
+
+# compound settings and fogemorpheme for `Arbeit'
+
+SFX A Y 3
+SFX A 0 s/UPX .
+SFX A 0 s/VPDX .
+SFX A 0 0/WXD .
+
+SFX B Y 2
+SFX B 0 0/UPX .
+SFX B 0 0/VWXDP .
+
+# a suffix for `Computer'
+
+SFX C Y 1
+SFX C 0 n/WD .
+
+# for forbid exceptions (*Arbeitsnehmer)
+
+FORBIDDENWORD Z
+
+# dash prefix for compounds with dash (Arbeits-Computer)
+
+PFX - Y 1
+PFX - 0 -/P .
+
+# decapitalizing prefix
+# circumfix for positioning in compounds
+
+PFX D Y 29
+PFX D A a/PX A
+PFX D Ä ä/PX Ä
+ .
+ .
+PFX D Y y/PX Y
+PFX D Z z/PX Z
+.fi
+.RE
+.PP
+
+Example dictionary: 
+
+.PP
+.RS
+.nf
+4
+Arbeit/A-
+Computer/BC-
+-/W
+Arbeitsnehmer/Z
+.fi
+.RE
+.PP
+
+Accepted compound words with the previous resource:
+
+.PP
+.RS
+.nf
+Computer
+Computern
+Arbeit
+Arbeits-
+Computerarbeit
+Computerarbeits-
+Arbeitscomputer
+Arbeitscomputern
+Computerarbeitscomputer
+Computerarbeitscomputern
+Arbeitscomputerarbeit
+Computerarbeits-Computer
+Computerarbeits-Computern
+.fi
+.RE
+.PP
+
+Not accepted compounds:
+
+.PP
+.RS
+.nf
+computer
+arbeit
+Arbeits
+arbeits
+ComputerArbeit
+ComputerArbeits
+Arbeitcomputer
+ArbeitsComputer
+Computerarbeitcomputer
+ComputerArbeitcomputer
+ComputerArbeitscomputer
+Arbeitscomputerarbeits
+Computerarbeits-computer
+Arbeitsnehmer
+.fi
+.RE
+.PP
+
+This solution is still not ideal, however, and will be replaced by a
+pattern-based compound-checking algorithm which is closely integrated
+with input buffer tokenization. Patterns describing compounds come as
+a separate input resource that can refer to high-level properties of
+constituent parts (e.g. the number of syllables, affix flags,
+and containment of hyphens). The patterns are matched against potential
+segmentations of compounds to assess wellformedness. 
+
+.SH "Unicode character encoding"
+
+Both \fBIspell\fR and \fBMyspell\fR use 8-bit character encodings,
+which is a major deficiency when it comes to scalability. Although a
+language like Hungarian has a standard 8-bit character set
+(ISO 8859-2), that set does not allow a full implementation of
+Hungarian orthographic conventions. For instance, the '--' symbol
+(n-dash) is missing from this character set, despite being not only
+the official symbol for delimiting parenthetic clauses in the
+language but also occurring in compound words as a special `big'
+hyphen.
+
+MySpell has some 8-bit encoding tables, but there are also languages
+without a standard 8-bit encoding. For example, a lot of African
+languages have non-Latin or extended-Latin characters.
+
+Similarly, using the original spelling of certain foreign names like
+\fIÅngström\fR or \fIMolière\fR is encouraged by the Hungarian
+spelling norm, and, since characters 'Å' and 'è' are not part of
+ISO\ 8859-2, when they combine with inflections containing characters
+only in ISO\ 8859-2 (like elative \fI-ből\fR, allative \fI-től\fR or
+delative \fI-ről\fR with double acute), these result in words
+(like \fIÅngströmről\fR or \fIMolière-től.\fR) that can not be encoded
+using any single ASCII encoding scheme.
+
+The problems raised by 8-bit encodings have long been recognized by
+proponents of Unicode. It is clear that trading efficiency for
+encoding-independence has its advantages when it comes to a truly
+multilingual application. Hunspell implements memory- and
+time-efficient Unicode handling. With non-UTF-8 character encodings,
+Hunspell works with the original 8-bit strings. With UTF-8, affixes
+and words are stored in UTF-8 and handled mostly in UTF-8 during
+analysis; for condition checking and suggestion they are converted
+to UTF-16. Unicode text analysis and spell checking have a minimal
+(0-20%) time overhead, and a minimal or reasonable memory overhead
+that depends on the language (its UTF-8 encoding and affixation).
+
+.SH "Conversion of aspell dictionaries"
+Aspell dictionaries can be easily converted to Hunspell format.
+Conversion steps:
+
+\fBdictionary (xx.cwl -> xx.wl):\fR
+
+.nf
+preunzip xx.cwl
+wc -l < xx.wl > xx.dic
+cat xx.wl >> xx.dic
+.fi
+
+\fBaffix file\fR
+
+If the affix file exists, copy it:
+.nf
+cp xx_affix.dat xx.aff
+.fi
+If not, create it with the suitable character encoding (see xx.dat)
+.nf
+echo "SET ISO8859-x" > xx.aff
+.fi
+or
+.nf
+echo "SET UTF-8" > xx.aff
+.fi
+
+It is useful to add a TRY option listing the characters of the
+dictionary in order of frequency, to drive edit-distance suggestions:
+.nf
+echo "TRY qwertzuiopasdfghjklyxcvbnmQWERTZUIOPASDFGHJKLYXCVBNM" >>xx.aff
+.fi
+
+.SH "SEE ALSO"
+.B hunspell (1),
+.B ispell (1),
+.B ispell (4)
+

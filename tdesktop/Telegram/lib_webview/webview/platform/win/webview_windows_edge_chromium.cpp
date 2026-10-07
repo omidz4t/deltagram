@@ -1,0 +1,1304 @@
+// This file is part of Desktop App Toolkit,
+// a set of libraries for developing nice desktop applications.
+//
+// For license and copyright information please follow this link:
+// https://github.com/desktop-app/legal/blob/master/LEGAL
+//
+#include "webview/platform/win/webview_windows_edge_chromium.h"
+
+#include "webview/webview_data_stream.h"
+#include "webview/webview_embed.h"
+#include "webview/platform/win/webview_windows_data_stream.h"
+#include "base/algorithm.h"
+#include "base/basic_types.h"
+#include "base/event_filter.h"
+#include "base/flat_map.h"
+#include "base/invoke_queued.h"
+#include "base/options.h"
+#include "base/timer.h"
+#include "base/variant.h"
+#include "base/unique_qptr.h"
+#include "base/weak_ptr.h"
+#include "base/platform/base_platform_info.h"
+#include "base/platform/win/base_windows_co_task_mem.h"
+#include "base/platform/win/base_windows_winrt.h"
+#include "base/platform/win/wrl/wrl_implements_h.h"
+
+#include <wrl/event.h>
+
+#include <QtCore/QUrl>
+#include <QtGui/QDesktopServices>
+#include <QtGui/QWindow>
+#include <QtWidgets/QWidget>
+
+#include <crl/common/crl_common_on_main_guarded.h>
+#include <rpl/variable.h>
+
+#include <string>
+#include <locale>
+#include <shlwapi.h>
+#include <WebView2.h>
+#include <WebView2EnvironmentOptions.h>
+
+namespace Webview::EdgeChromium {
+namespace {
+
+constexpr auto kKeepActiveInterval = crl::time(1000);
+
+constexpr auto kDataUrlPrefix
+	= std::string_view("http://desktop-app-resource/");
+
+[[nodiscard]] std::wstring ToWide(std::string_view string) {
+	const auto length = MultiByteToWideChar(
+		CP_UTF8,
+		0,
+		string.data(),
+		string.size(),
+		nullptr,
+		0);
+	auto result = std::wstring(length, wchar_t{});
+	MultiByteToWideChar(
+		CP_UTF8,
+		0,
+		string.data(),
+		string.size(),
+		result.data(),
+		result.size());
+	return result;
+}
+
+[[nodiscard]] std::string FromWide(std::wstring_view string) {
+	const auto length = WideCharToMultiByte(
+		CP_UTF8,
+		0,
+		string.data(),
+		string.size(),
+		nullptr,
+		0,
+		nullptr,
+		nullptr);
+	auto result = std::string(length, char{});
+	WideCharToMultiByte(
+		CP_UTF8,
+		0,
+		string.data(),
+		string.size(),
+		result.data(),
+		result.size(),
+		nullptr,
+		nullptr);
+	return result;
+}
+
+[[nodiscard]] std::string FromWide(const base::CoTaskMemString &string) {
+	return string ? FromWide(string.data()) : std::string();
+}
+
+[[nodiscard]] bool AllowedRestrictedUrl(
+		const std::string &value,
+		const std::string &origin) {
+	const auto url = QUrl(
+		QString::fromStdString(value),
+		QUrl::StrictMode);
+	const auto expected = QUrl(
+		QString::fromStdString(origin),
+		QUrl::StrictMode);
+	return url.isValid()
+		&& expected.isValid()
+		&& expected.scheme() == u"https"_q
+		&& expected.userInfo().isEmpty()
+		&& expected.port(443) == 443
+		&& (url.scheme() == u"https"_q || url.scheme() == u"wss"_q)
+		&& url.host() == expected.host()
+		&& url.port(443) == 443
+		&& url.userInfo().isEmpty();
+}
+
+HRESULT BlockRequest(
+		ICoreWebView2Environment *environment,
+		ICoreWebView2WebResourceRequestedEventArgs *args) {
+	auto response = winrt::com_ptr<ICoreWebView2WebResourceResponse>();
+	const auto result = environment->CreateWebResourceResponse(
+		nullptr,
+		403,
+		L"Forbidden",
+		L"Cache-Control: no-store",
+		response.put());
+	if (result != S_OK || !response) {
+		return (result != S_OK) ? result : E_FAIL;
+	}
+	return args->put_Response(response.get());
+}
+
+void KeepProcessesActive(
+		winrt::com_ptr<ICoreWebView2Environment> environment) {
+	const auto processes = environment.try_as<ICoreWebView2Environment8>();
+	auto infos = winrt::com_ptr<ICoreWebView2ProcessInfoCollection>();
+	if (!processes || processes->GetProcessInfos(infos.put()) != S_OK) {
+		return;
+	}
+	auto count = UINT();
+	if (!infos || infos->get_Count(&count) != S_OK) {
+		return;
+	}
+	for (auto i = UINT(); i != count; ++i) {
+		auto info = winrt::com_ptr<ICoreWebView2ProcessInfo>();
+		auto id = INT32();
+		if (infos->GetValueAtIndex(i, info.put()) != S_OK
+			|| !info
+			|| info->get_ProcessId(&id) != S_OK
+			|| id <= 0) {
+			continue;
+		}
+		const auto process = OpenProcess(
+			PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_INFORMATION,
+			FALSE,
+			id);
+		if (process) {
+			const auto guard = gsl::finally([&] { CloseHandle(process); });
+			const auto priority = GetPriorityClass(process);
+			if (priority == IDLE_PRIORITY_CLASS
+				|| priority == BELOW_NORMAL_PRIORITY_CLASS) {
+				SetPriorityClass(process, NORMAL_PRIORITY_CLASS);
+			}
+		}
+	}
+}
+
+class Handler
+	: public winrt::implements<
+		Handler,
+		ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler,
+		ICoreWebView2CreateCoreWebView2ControllerCompletedHandler,
+		ICoreWebView2WebMessageReceivedEventHandler,
+		ICoreWebView2PermissionRequestedEventHandler,
+		ICoreWebView2NavigationStartingEventHandler,
+		ICoreWebView2NavigationCompletedEventHandler,
+		ICoreWebView2ContentLoadingEventHandler,
+		ICoreWebView2DocumentTitleChangedEventHandler,
+		ICoreWebView2SourceChangedEventHandler,
+		ICoreWebView2NewWindowRequestedEventHandler,
+		ICoreWebView2ScriptDialogOpeningEventHandler,
+		ICoreWebView2WebResourceRequestedEventHandler,
+		ICoreWebView2DownloadStartingEventHandler,
+		ICoreWebView2BasicAuthenticationRequestedEventHandler,
+		ICoreWebView2ClientCertificateRequestedEventHandler,
+		ICoreWebView2ProcessFailedEventHandler,
+		ICoreWebView2ZoomFactorChangedEventHandler>
+	, public ZoomController
+	, public base::has_weak_ptr {
+
+public:
+	Handler(
+		Config config,
+		HWND handle,
+		std::function<void(not_null<Handler*>)> saveThis,
+		std::function<void()> readyHandler);
+	~Handler();
+
+	const winrt::com_ptr<ICoreWebView2Environment> &environment() const {
+		return _environment;
+	}
+	const winrt::com_ptr<ICoreWebView2Controller> &controller() const {
+		return _controller;
+	}
+	const winrt::com_ptr<ICoreWebView2> &webview() const {
+		return _webview;
+	}
+	[[nodiscard]] bool valid() const {
+		return _window && _environment && _controller && _webview;
+	}
+
+	// Set by ~Instance before it closes the controller. The WebView2
+	// runtime keeps its own reference to this handler, so it may well
+	// outlive the Instance, and a callback that is still on the stack
+	// must not touch the runtime objects after that point.
+	void setDestroying() {
+		_destroying = true;
+	}
+
+	void setOpaqueBg(QColor opaqueBg);
+
+	HRESULT STDMETHODCALLTYPE Invoke(
+		HRESULT res,
+		ICoreWebView2Environment *env) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		HRESULT res,
+		ICoreWebView2Controller *controller) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2WebMessageReceivedEventArgs *args) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2PermissionRequestedEventArgs *args) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2NavigationStartingEventArgs *args) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2NavigationCompletedEventArgs *args) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2ContentLoadingEventArgs *args) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2 *sender,
+		IUnknown *args) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2SourceChangedEventArgs *args) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2NewWindowRequestedEventArgs *args) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2ScriptDialogOpeningEventArgs *args) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2WebResourceRequestedEventArgs *args) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2DownloadStartingEventArgs *args) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2BasicAuthenticationRequestedEventArgs *args) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2ClientCertificateRequestedEventArgs *args) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2ProcessFailedEventArgs *args) override;
+	HRESULT STDMETHODCALLTYPE Invoke(
+		ICoreWebView2Controller *sender,
+		IUnknown *args) override;
+
+	rpl::producer<int> zoomValue() override {
+		return _zoomValue.value();
+	}
+	void setZoom(int zoom) {
+		if (_controller) {
+			_controller->put_ZoomFactor(zoom / 100.);
+		}
+	}
+
+	rpl::producer<NavigationHistoryState> navigationHistoryState() {
+		return _navigationHistoryState.value();
+	}
+
+	[[nodiscard]] ZoomController *zoomController() {
+		return this;
+	}
+
+private:
+	void updateHistoryStates();
+
+	HWND _window = nullptr;
+	winrt::com_ptr<ICoreWebView2Environment> _environment;
+	winrt::com_ptr<ICoreWebView2Controller> _controller;
+	winrt::com_ptr<ICoreWebView2> _webview;
+	std::function<void(Webview::Message)> _messageHandler;
+	std::function<bool(std::string, bool)> _navigationStartHandler;
+	std::function<void(bool)> _navigationDoneHandler;
+	std::function<DialogResult(DialogArgs)> _dialogHandler;
+	std::function<DataResult(DataRequest)> _dataRequestHandler;
+	std::function<void()> _readyHandler;
+	base::flat_map<
+		winrt::com_ptr<ICoreWebView2WebResourceRequestedEventArgs>,
+		winrt::com_ptr<ICoreWebView2Deferral>> _pending;
+
+	rpl::variable<NavigationHistoryState> _navigationHistoryState;
+	rpl::variable<int> _zoomValue;
+
+	QColor _opaqueBg;
+	std::string _restrictedOrigin;
+	bool _debug = false;
+	bool _destroying = false;
+
+};
+
+Handler::Handler(
+	Config config,
+	HWND handle,
+	std::function<void(not_null<Handler*>)> saveThis,
+	std::function<void()> readyHandler)
+: _window(handle)
+, _messageHandler(std::move(config.messageHandler))
+, _navigationStartHandler(std::move(config.navigationStartHandler))
+, _navigationDoneHandler(std::move(config.navigationDoneHandler))
+, _dialogHandler(std::move(config.dialogHandler))
+, _dataRequestHandler(std::move(config.dataRequestHandler))
+, _readyHandler(std::move(readyHandler))
+, _opaqueBg(config.opaqueBg)
+, _restrictedOrigin(std::move(config.restrictedOrigin))
+, _debug(config.debug) {
+	saveThis(this);
+	setOpaqueBg(_opaqueBg);
+}
+
+Handler::~Handler() = default;
+
+void Handler::setOpaqueBg(QColor opaqueBg) {
+	_opaqueBg = Platform::IsWindows10OrGreater()
+		? QColor(255, 255, 255, 0)
+		: opaqueBg;
+	if (const auto late = _controller.try_as<ICoreWebView2Controller2>()) {
+		late->put_DefaultBackgroundColor({
+			uchar(_opaqueBg.alpha()),
+			uchar(_opaqueBg.red()),
+			uchar(_opaqueBg.green()),
+			uchar(_opaqueBg.blue())
+		});
+	}
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		HRESULT res,
+		ICoreWebView2Environment *env) {
+	_environment.copy_from(env);
+	if (!_environment) {
+		return E_FAIL;
+	}
+	if (!_restrictedOrigin.empty()) {
+		const auto advanced = _environment.try_as<ICoreWebView2Environment10>();
+		if (!advanced) {
+			return E_NOINTERFACE;
+		}
+		auto options = winrt::com_ptr<ICoreWebView2ControllerOptions>();
+		auto result = advanced->CreateCoreWebView2ControllerOptions(
+			options.put());
+		if (result != S_OK || !options) {
+			return E_FAIL;
+		}
+		result = options->put_IsInPrivateModeEnabled(TRUE);
+		return (result == S_OK)
+			? advanced->CreateCoreWebView2ControllerWithOptions(
+				_window,
+				options.get(),
+				this)
+			: result;
+	}
+	_environment->CreateCoreWebView2Controller(_window, this);
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		HRESULT res,
+		ICoreWebView2Controller *controller) {
+	if (!_readyHandler) {
+		return S_OK;
+	}
+	_controller.copy_from(controller);
+	const auto guard = gsl::finally([&] {
+		const auto onstack = _readyHandler;
+		_readyHandler = nullptr;
+		onstack();
+	});
+	if (!_controller) {
+		_window = nullptr;
+		return E_FAIL;
+	}
+
+	_controller->get_CoreWebView2(_webview.put());
+	if (!_webview) {
+		return E_FAIL;
+	}
+	auto token = ::EventRegistrationToken();
+	_webview->add_WebMessageReceived(this, &token);
+	_webview->add_PermissionRequested(this, &token);
+	_webview->add_NavigationStarting(this, &token);
+	_webview->add_NavigationCompleted(this, &token);
+	_webview->add_ContentLoading(this, &token);
+	_webview->add_DocumentTitleChanged(this, &token);
+	_webview->add_SourceChanged(this, &token);
+	_webview->add_NewWindowRequested(this, &token);
+	_webview->add_ScriptDialogOpening(this, &token);
+	_webview->add_WebResourceRequested(this, &token);
+	const auto downloads = _webview.try_as<ICoreWebView2_4>();
+	const auto downloadsBlocked = downloads
+		&& (downloads->add_DownloadStarting(this, &token) == S_OK);
+	if (!_restrictedOrigin.empty()) {
+		if (!downloadsBlocked) {
+			return E_NOINTERFACE;
+		}
+		const auto authentication = _webview.try_as<ICoreWebView2_10>();
+		const auto certificates = _webview.try_as<ICoreWebView2_5>();
+		if (!authentication || !certificates) {
+			return E_NOINTERFACE;
+		}
+		auto result = authentication->add_BasicAuthenticationRequested(
+			this,
+			&token);
+		if (result != S_OK) {
+			return result;
+		}
+		result = certificates->add_ClientCertificateRequested(this, &token);
+		if (result != S_OK) {
+			return result;
+		}
+		result = _webview->add_ProcessFailed(this, &token);
+		if (result != S_OK) {
+			return result;
+		}
+	}
+
+	_controller->add_ZoomFactorChanged(this, &token);
+
+	const auto filter = _restrictedOrigin.empty()
+		? (ToWide(kDataUrlPrefix) + L'*')
+		: L"*";
+	auto hr = _webview->AddWebResourceRequestedFilter(
+		filter.c_str(),
+		COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
+	if (hr != S_OK) {
+		return E_FAIL;
+	}
+
+	auto settings = winrt::com_ptr<ICoreWebView2Settings>();
+	hr = _webview->get_Settings(settings.put());
+	if (hr != S_OK || !settings) {
+		return E_FAIL;
+	}
+	settings->put_AreDefaultContextMenusEnabled(
+		_debug && _restrictedOrigin.empty());
+	settings->put_AreDevToolsEnabled(_debug && _restrictedOrigin.empty());
+	settings->put_AreDefaultScriptDialogsEnabled(FALSE);
+	settings->put_IsStatusBarEnabled(FALSE);
+	if (!_restrictedOrigin.empty()) {
+		const auto reputation = settings.try_as<ICoreWebView2Settings8>();
+		if (!reputation) {
+			return E_NOINTERFACE;
+		}
+		const auto reputationResult
+			= reputation->put_IsReputationCheckingRequired(FALSE);
+		if (reputationResult != S_OK) {
+			return reputationResult;
+		}
+		const auto advanced = _webview.try_as<ICoreWebView2_8>();
+		if (!advanced) {
+			return E_NOINTERFACE;
+		}
+		const auto result = advanced->put_IsMuted(TRUE);
+		if (result != S_OK) {
+			return result;
+		}
+	}
+
+	setOpaqueBg(_opaqueBg);
+
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2WebMessageReceivedEventArgs *args) {
+	auto sourceUrl = base::CoTaskMemString();
+	args->get_Source(sourceUrl.put());
+	auto mainUrl = base::CoTaskMemString();
+	sender->get_Source(mainUrl.put());
+	if (!sourceUrl
+		|| !mainUrl
+		|| std::wstring_view(sourceUrl.data()) != mainUrl.data()) {
+		return S_OK;
+	}
+
+	auto message = base::CoTaskMemString();
+	const auto result = args->TryGetWebMessageAsString(message.put());
+
+	if (result == S_OK && message) {
+		const auto messageText = FromWide(message);
+		const auto sourceText = FromWide(sourceUrl);
+		const auto weak = base::make_weak(this);
+		_messageHandler(Webview::Message{
+			.text = messageText,
+			.sourceUrl = sourceText,
+		});
+		if (!weak || _destroying) {
+			// The handler destroyed the webview, so `sender` and the rest
+			// of the object graph below this callback are already gone.
+			return S_OK;
+		}
+		if (_restrictedOrigin.empty()) {
+			sender->PostWebMessageAsString(message.data());
+		}
+	}
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2PermissionRequestedEventArgs *args) {
+	auto kind = COREWEBVIEW2_PERMISSION_KIND{};
+	const auto result = args->get_PermissionKind(&kind);
+	if (result == S_OK) {
+		if (!_restrictedOrigin.empty()) {
+			args->put_State(COREWEBVIEW2_PERMISSION_STATE_DENY);
+		} else if (kind == COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ) {
+			// Never let the page read the clipboard on its own, not even
+			// after asking the user: navigator.clipboard.read/readText()
+			// would give any embedded content silent access to whatever
+			// the user copied. The embedder is expected to expose its own
+			// method for that, gated on a real user interaction.
+			args->put_State(COREWEBVIEW2_PERMISSION_STATE_DENY);
+		}
+	}
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2NavigationStartingEventArgs *args) {
+	auto uri = base::CoTaskMemString();
+	const auto result = args->get_Uri(uri.put());
+
+	if (result == S_OK && uri && _navigationStartHandler) {
+		const auto weak = base::make_weak(this);
+		const auto allowed = _navigationStartHandler(FromWide(uri), false);
+		if (!weak || _destroying) {
+			return S_OK;
+		} else if (!allowed) {
+			args->put_Cancel(TRUE);
+			return S_OK;
+		}
+	}
+	updateHistoryStates();
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2NavigationCompletedEventArgs *args) {
+	auto isSuccess = BOOL(FALSE);
+	const auto result = args->get_IsSuccess(&isSuccess);
+
+	if (_navigationDoneHandler) {
+		_navigationDoneHandler(result == S_OK && isSuccess);
+	}
+	updateHistoryStates();
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2ContentLoadingEventArgs *args) {
+	updateHistoryStates();
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2 *sender,
+		IUnknown *args) {
+	updateHistoryStates();
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2SourceChangedEventArgs *args) {
+	updateHistoryStates();
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2NewWindowRequestedEventArgs *args) {
+	auto uri = base::CoTaskMemString();
+	const auto result = args->get_Uri(uri.put());
+	auto isUserInitiated = BOOL{};
+	args->get_IsUserInitiated(&isUserInitiated);
+	args->put_Handled(TRUE);
+
+	if (result == S_OK && uri && isUserInitiated && _restrictedOrigin.empty()) {
+		const auto url = FromWide(uri);
+		if (_navigationStartHandler && _navigationStartHandler(url, true)) {
+			QDesktopServices::openUrl(QString::fromStdString(url));
+		}
+	}
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2ScriptDialogOpeningEventArgs *args) {
+	auto kind = COREWEBVIEW2_SCRIPT_DIALOG_KIND_ALERT;
+	auto hr = args->get_Kind(&kind);
+	if (hr != S_OK) {
+		return S_OK;
+	}
+
+	auto uri = base::CoTaskMemString();
+	auto text = base::CoTaskMemString();
+	auto value = base::CoTaskMemString();
+	hr = args->get_Uri(uri.put());
+	if (hr != S_OK || !uri) {
+		return S_OK;
+	}
+	hr = args->get_Message(text.put());
+	if (hr != S_OK || !text) {
+		return S_OK;
+	}
+	hr = args->get_DefaultText(value.put());
+	if (hr != S_OK || !value) {
+		return S_OK;
+	}
+
+	const auto type = [&] {
+		switch (kind) {
+		case COREWEBVIEW2_SCRIPT_DIALOG_KIND_ALERT:
+			return DialogType::Alert;
+		case COREWEBVIEW2_SCRIPT_DIALOG_KIND_CONFIRM:
+			return DialogType::Confirm;
+		case COREWEBVIEW2_SCRIPT_DIALOG_KIND_PROMPT:
+			return DialogType::Prompt;
+		}
+		return DialogType::Alert;
+	}();
+	// The handler may spin a nested event loop, and anything running in it
+	// may destroy the webview together with this handler.
+	const auto weak = base::make_weak(this);
+	const auto result = _dialogHandler(DialogArgs{
+		.type = type,
+		.value = FromWide(value),
+		.text = FromWide(text),
+		.url = FromWide(uri),
+	});
+	if (!weak || _destroying) {
+		return S_OK;
+	}
+
+	if (result.accepted) {
+		args->Accept();
+		if (kind == COREWEBVIEW2_SCRIPT_DIALOG_KIND_PROMPT) {
+			const auto wide = ToWide(result.text);
+			args->put_ResultText(wide.c_str());
+		}
+	}
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2Controller *sender,
+		IUnknown *args) {
+	auto zoom = float64(0);
+	sender->get_ZoomFactor(&zoom);
+	_zoomValue = zoom * 100;
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2WebResourceRequestedEventArgs *args) {
+	auto request = winrt::com_ptr<ICoreWebView2WebResourceRequest>();
+	auto hr = args->get_Request(request.put());
+	if (hr != S_OK || !request) {
+		return S_OK;
+	}
+	auto uri = base::CoTaskMemString();
+	hr = request->get_Uri(uri.put());
+	if (hr != S_OK || !uri) {
+		return S_OK;
+	}
+	const auto ansi = FromWide(uri);
+	if (!_restrictedOrigin.empty()
+		&& !AllowedRestrictedUrl(ansi, _restrictedOrigin)) {
+		return BlockRequest(_environment.get(), args);
+	}
+	auto headers = winrt::com_ptr<ICoreWebView2HttpRequestHeaders>();
+	hr = request->get_Headers(headers.put());
+	if (hr != S_OK || !headers) {
+		return S_OK;
+	}
+	if (!_restrictedOrigin.empty()) {
+		headers->RemoveHeader(L"Cookie");
+	}
+	winrt::com_ptr<ICoreWebView2HttpHeadersCollectionIterator> iterator;
+	hr = headers->GetIterator(iterator.put());
+	if (hr != S_OK || !iterator) {
+		return S_OK;
+	}
+	const auto prefix = kDataUrlPrefix.size();
+	if (ansi.size() <= prefix || ansi.compare(0, prefix, kDataUrlPrefix)) {
+		return S_OK;
+	}
+
+	constexpr auto fail = [](
+			ICoreWebView2Environment *environment,
+			ICoreWebView2WebResourceRequestedEventArgs *args) {
+		auto response = winrt::com_ptr<ICoreWebView2WebResourceResponse>();
+		auto hr = environment->CreateWebResourceResponse(
+			nullptr,
+			404,
+			L"Not Found",
+			L"",
+			response.put());
+		if (hr == S_OK && response) {
+			args->put_Response(response.get());
+		}
+		return S_OK;
+	};
+	constexpr auto done = [](
+			ICoreWebView2Environment *environment,
+			ICoreWebView2WebResourceRequestedEventArgs *args,
+			DataResponse resolved) {
+		auto &stream = resolved.stream;
+		if (!stream) {
+			return fail(environment, args);
+		}
+		const auto length = stream->size();
+		const auto offset = resolved.streamOffset;
+		const auto total = resolved.totalSize ? resolved.totalSize : length;
+		const auto partial = (offset > 0) || (total != length);
+		auto headers = L""
+			L"Content-Type: " + ToWide(stream->mime()) +
+			L"\nAccess-Control-Allow-Origin: *"
+			L"\nAccept-Ranges: bytes"
+			L"\nCache-Control: no-store"
+			L"\nContent-Length: " + std::to_wstring(length);
+		if (partial) {
+			headers += L"\nContent-Range: bytes "
+				+ std::to_wstring(offset)
+				+ L'-'
+				+ std::to_wstring(offset + length - 1)
+				+ L'/'
+				+ std::to_wstring(total);
+		}
+		auto response = winrt::com_ptr<ICoreWebView2WebResourceResponse>();
+		auto hr = environment->CreateWebResourceResponse(
+			Microsoft::WRL::Make<DataStreamCOM>(std::move(stream)).Detach(),
+			partial ? 206 : 200,
+			partial ? L"Partial Content" : L"OK",
+			headers.c_str(),
+			response.put());
+		if (hr == S_OK && response) {
+			args->put_Response(response.get());
+		}
+		return S_OK;
+	};
+	const auto callback = crl::guard(this, [=](DataResponse response) {
+		done(_environment.get(), args, std::move(response));
+		auto copy = winrt::com_ptr<ICoreWebView2WebResourceRequestedEventArgs>();
+		copy.copy_from(args);
+		if (const auto deferral = _pending.take(copy)) {
+			(*deferral)->Complete();
+		}
+	});
+	auto prepared = DataRequest{
+		.id = ansi.substr(prefix),
+		.done = std::move(callback),
+	};
+	while (true) {
+		auto hasCurrent = BOOL();
+		hr = iterator->get_HasCurrentHeader(&hasCurrent);
+		if (hr != S_OK || !hasCurrent) {
+			break;
+		}
+		auto name = base::CoTaskMemString();
+		auto value = base::CoTaskMemString();
+		hr = iterator->GetCurrentHeader(name.put(), value.put());
+		if (hr != S_OK || !name || !value) {
+			break;
+		} else if (FromWide(name) == "Range") {
+			const auto data = FromWide(value);
+			ParseRangeHeaderFor(prepared, FromWide(value));
+		}
+		auto hasNext = BOOL();
+		hr = iterator->MoveNext(&hasNext);
+		if (hr != S_OK || !hasNext) {
+			break;
+		}
+	}
+
+	const auto result = _dataRequestHandler
+		? _dataRequestHandler(prepared)
+		: DataResult::Failed;
+	if (result == DataResult::Failed) {
+		return fail(_environment.get(), args);
+	} else if (result == DataResult::Pending) {
+		auto deferral = winrt::com_ptr<ICoreWebView2Deferral>();
+		hr = args->GetDeferral(deferral.put());
+		if (hr != S_OK || !deferral) {
+			return fail(_environment.get(), args);
+		}
+		auto copy = winrt::com_ptr<ICoreWebView2WebResourceRequestedEventArgs>();
+		copy.copy_from(args);
+		_pending.emplace(std::move(copy), std::move(deferral));
+	}
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2DownloadStartingEventArgs *args) {
+	args->put_Cancel(TRUE);
+	args->put_Handled(TRUE);
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2BasicAuthenticationRequestedEventArgs *args) {
+	if (!_restrictedOrigin.empty()) {
+		args->put_Cancel(TRUE);
+	}
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2ClientCertificateRequestedEventArgs *args) {
+	if (!_restrictedOrigin.empty()) {
+		args->put_Cancel(TRUE);
+		args->put_Handled(TRUE);
+	}
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE Handler::Invoke(
+		ICoreWebView2 *sender,
+		ICoreWebView2ProcessFailedEventArgs *args) {
+	if (!_restrictedOrigin.empty() && _navigationDoneHandler) {
+		_navigationDoneHandler(false);
+	}
+	return S_OK;
+}
+
+void Handler::updateHistoryStates() {
+	if (!_webview) {
+		return;
+	};
+	auto canGoBack = BOOL(FALSE);
+	auto canGoForward = BOOL(FALSE);
+	auto url = base::CoTaskMemString();
+	auto title = base::CoTaskMemString();
+	_webview->get_CanGoBack(&canGoBack);
+	_webview->get_CanGoForward(&canGoForward);
+	_webview->get_Source(url.put());
+	_webview->get_DocumentTitle(title.put());
+	_navigationHistoryState = NavigationHistoryState{
+		.url = FromWide(url),
+		.title = FromWide(title),
+		.canGoBack = (canGoBack == TRUE),
+		.canGoForward = (canGoForward == TRUE),
+	};
+}
+
+class Instance final : public Interface, public base::has_weak_ptr {
+public:
+	explicit Instance(Config &&config);
+	~Instance();
+
+	[[nodiscard]] bool failed() const;
+
+	void navigate(std::string url) override;
+	void navigateToData(std::string id) override;
+	void reload() override;
+
+	void init(std::string js) override;
+	void initAllFrames(std::string js) override;
+	void eval(std::string js) override;
+
+	void focus() override;
+	void setInteractionHandler(Fn<void()> handler) override;
+
+	QWidget *widget() override;
+
+	void refreshNavigationHistoryState() override;
+	auto navigationHistoryState()
+	-> rpl::producer<NavigationHistoryState> override;
+
+	void setOpaqueBg(QColor opaqueBg) override;
+
+	[[nodiscard]] ZoomController *zoomController() override;
+
+private:
+	struct NavigateToUrl {
+		std::string url;
+	};
+	struct NavigateToData {
+		std::string id;
+	};
+	struct InitScript {
+		std::string script;
+	};
+	struct EvalScript {
+		std::string script;
+	};
+
+	using ReadyStep = std::variant<
+		NavigateToUrl,
+		NavigateToData,
+		InitScript,
+		EvalScript>;
+
+	void start(Config &&config);
+	[[nodiscard]] bool ready() const;
+	void processReadySteps();
+	void processNextReadyStep();
+	void resizeToWindow();
+
+	base::Timer _keepActiveTimer;
+	base::unique_qptr<QWindow> _window;
+	HWND _handle = nullptr;
+	winrt::com_ptr<IUnknown> _ownedHandler;
+	Handler *_handler = nullptr;
+	std::vector<ReadyStep> _waitingForReady;
+	base::unique_qptr<QWidget> _widget;
+	bool _pendingFocus = false;
+	bool _readyFlag = false;
+	bool _readyProcessed = false;
+	bool _initPending = false;
+	bool _processingSteps = false;
+	bool _hidden = false;
+	Fn<void()> _interactionHandler;
+	WNDPROC _originalWndProc = nullptr;
+
+};
+
+Instance::Instance(Config &&config)
+: _keepActiveTimer([=] {
+	if (_handler) {
+		KeepProcessesActive(_handler->environment());
+	}
+})
+, _window(MakeFramelessWindow())
+, _handle(HWND(_window->winId()))
+, _hidden(config.mode == WindowMode::Hidden) {
+	if (!_hidden) {
+		_widget.reset(
+			QWidget::createWindowContainer(
+				_window,
+				config.parent,
+				Qt::FramelessWindowHint));
+		_widget->show();
+	}
+	CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
+	init("if(window===window.top){window.external={invoke:s=>window.chrome.webview.postMessage(s)}}");
+	start(std::move(config));
+}
+
+Instance::~Instance() {
+	_keepActiveTimer.cancel();
+	if (_originalWndProc && _handle) {
+		SetWindowLongPtrW(
+			_handle,
+			GWLP_WNDPROC,
+			reinterpret_cast<LONG_PTR>(_originalWndProc));
+		RemovePropW(_handle, L"WebviewOrigProc");
+		RemovePropW(_handle, L"WebviewInstance");
+	}
+	if (_handler) {
+		_handler->setDestroying();
+		if (_handler->valid()) {
+			_handler->controller()->Close();
+		}
+		_handler = nullptr;
+	}
+	CoUninitialize();
+}
+
+void Instance::start(Config &&config) {
+	auto options = winrt::com_ptr<ICoreWebView2EnvironmentOptions>(
+		Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>().Detach(),
+		winrt::take_ownership_from_abi);
+	// Avoid Windows account lockouts: crbug.com/541310282.
+	options->put_AdditionalBrowserArguments(config.restrictedOrigin.empty()
+		? L"--disable-features=ElasticOverscroll,AutofillAiWalletPrivatePasses"
+		: L"--disable-features=ElasticOverscroll,AutofillAiWalletPrivatePasses,"
+			L"msSmartScreenProtection "
+			L"--force-webrtc-ip-handling-policy=disable_non_proxied_udp "
+			L"--mute-audio");
+	if (_hidden && !config.restrictedOrigin.empty()) {
+		_keepActiveTimer.callEach(kKeepActiveInterval);
+	}
+
+	auto handler = (Handler*)nullptr;
+	const auto ready = [=] {
+		_readyFlag = true;
+		if (_handler) {
+			processReadySteps();
+		}
+	};
+	auto owned = winrt::make<Handler>(
+		config,
+		_handle,
+		[&](not_null<Handler*> that) { handler = that; },
+		crl::guard(this, ready));
+	const auto wpath = ToWide(config.userDataPath);
+	const auto result = CreateCoreWebView2EnvironmentWithOptions(
+		nullptr,
+		wpath.empty() ? nullptr : wpath.c_str(),
+		options.get(),
+		handler);
+	if (result == S_OK) {
+		_ownedHandler = std::move(owned);
+		_handler = handler;
+		if (_readyFlag) {
+			processReadySteps();
+		}
+	}
+}
+
+bool Instance::failed() const {
+	return !_handler;
+}
+
+void Instance::processReadySteps() {
+	Expects(ready());
+
+	const auto guard = base::make_weak(this);
+	if (!_handler->valid()) {
+		_widget = nullptr;
+		_handle = nullptr;
+		_window = nullptr;
+		_handler = nullptr;
+		base::take(_ownedHandler);
+		return;
+	}
+	if (guard) {
+		_handler->controller()->put_IsVisible(_hidden ? FALSE : TRUE);
+	}
+	if (const auto widget = guard ? _widget.get() : nullptr) {
+		base::install_event_filter(widget, [=](not_null<QEvent*> e) {
+			if (e->type() == QEvent::Resize || e->type() == QEvent::Move) {
+				InvokeQueued(widget, [=] { resizeToWindow(); });
+			}
+			return base::EventFilterResult::Continue;
+		});
+		resizeToWindow();
+	}
+	if (guard && _interactionHandler) {
+		const auto weak = base::make_weak(this);
+		_originalWndProc = reinterpret_cast<WNDPROC>(
+			SetWindowLongPtrW(
+				_handle,
+				GWLP_WNDPROC,
+				reinterpret_cast<LONG_PTR>(+[](
+						HWND hwnd,
+						UINT msg,
+						WPARAM wParam,
+						LPARAM lParam) -> LRESULT {
+					if (msg == WM_PARENTNOTIFY) {
+						const auto event = LOWORD(wParam);
+						if (event == WM_LBUTTONDOWN
+							|| event == WM_RBUTTONDOWN
+							|| event == WM_MBUTTONDOWN) {
+							const auto instance = reinterpret_cast<Instance*>(
+								GetPropW(hwnd, L"WebviewInstance"));
+							if (instance && instance->_interactionHandler) {
+								instance->_interactionHandler();
+							}
+						}
+					}
+					const auto original = reinterpret_cast<WNDPROC>(
+						GetPropW(hwnd, L"WebviewOrigProc"));
+					return original
+						? CallWindowProcW(original, hwnd, msg, wParam, lParam)
+						: DefWindowProcW(hwnd, msg, wParam, lParam);
+				})));
+		SetPropW(
+			_handle,
+			L"WebviewOrigProc",
+			reinterpret_cast<HANDLE>(_originalWndProc));
+		SetPropW(
+			_handle,
+			L"WebviewInstance",
+			reinterpret_cast<HANDLE>(this));
+
+		auto token = ::EventRegistrationToken();
+		_handler->controller()->add_AcceleratorKeyPressed(
+			Microsoft::WRL::Callback<
+				ICoreWebView2AcceleratorKeyPressedEventHandler>(
+				[weak](
+						ICoreWebView2Controller*,
+						ICoreWebView2AcceleratorKeyPressedEventArgs *args
+						) -> HRESULT {
+					const auto that = weak.get();
+					if (!that || !that->_interactionHandler) {
+						return S_OK;
+					}
+					auto kind = COREWEBVIEW2_KEY_EVENT_KIND{};
+					args->get_KeyEventKind(&kind);
+					if (kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN
+						|| kind == COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN) {
+						that->_interactionHandler();
+					}
+					return S_OK;
+				}).Get(),
+			&token);
+	}
+	if (guard) {
+		_readyProcessed = true;
+		processNextReadyStep();
+	}
+	if (guard && _pendingFocus) {
+		focus();
+	}
+}
+
+void Instance::processNextReadyStep() {
+	if (!ready()
+		|| !_readyProcessed
+		|| _initPending
+		|| _processingSteps) {
+		return;
+	}
+	_processingSteps = true;
+	const auto guard = base::make_weak(this);
+	while (!_waitingForReady.empty()) {
+		auto step = std::move(_waitingForReady.front());
+		_waitingForReady.erase(_waitingForReady.begin());
+		auto pending = false;
+		v::match(step, [&](const NavigateToUrl &data) {
+			const auto wide = ToWide(data.url);
+			_handler->webview()->Navigate(wide.c_str());
+		}, [&](const NavigateToData &data) {
+			auto full = std::string();
+			full.reserve(kDataUrlPrefix.size() + data.id.size());
+			full.append(kDataUrlPrefix);
+			full.append(data.id);
+			const auto wide = ToWide(full);
+			_handler->webview()->Navigate(wide.c_str());
+		}, [&](const InitScript &data) {
+			const auto weak = base::make_weak(this);
+			const auto wide = ToWide(data.script);
+			_initPending = true;
+			const auto result
+				= _handler->webview()->AddScriptToExecuteOnDocumentCreated(
+					wide.c_str(),
+					Microsoft::WRL::Callback<
+						ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
+							[weak](HRESULT, PCWSTR) -> HRESULT {
+								if (const auto that = weak.get()) {
+									that->_initPending = false;
+									that->processNextReadyStep();
+								}
+								return S_OK;
+							}).Get());
+			if (result == S_OK && _initPending) {
+				pending = true;
+			} else {
+				_initPending = false;
+			}
+		}, [&](const EvalScript &data) {
+			const auto wide = ToWide(data.script);
+			_handler->webview()->ExecuteScript(wide.c_str(), nullptr);
+		});
+		if (!guard) {
+			return;
+		} else if (pending) {
+			_processingSteps = false;
+			return;
+		}
+	}
+	_processingSteps = false;
+}
+
+bool Instance::ready() const {
+	return _handle && _handler && _readyFlag;
+}
+
+void Instance::navigate(std::string url) {
+	_waitingForReady.push_back(NavigateToUrl{ std::move(url) });
+	processNextReadyStep();
+}
+
+void Instance::navigateToData(std::string id) {
+	_waitingForReady.push_back(NavigateToData{ std::move(id) });
+	processNextReadyStep();
+}
+
+void Instance::reload() {
+	if (ready()) {
+		_handler->webview()->Reload();
+	}
+}
+
+void Instance::resizeToWindow() {
+	auto bounds = RECT{};
+	GetClientRect(_handle, &bounds);
+	_handler->controller()->put_Bounds(bounds);
+}
+
+void Instance::init(std::string js) {
+	_waitingForReady.push_back(InitScript{ std::move(js) });
+	processNextReadyStep();
+}
+
+void Instance::initAllFrames(std::string js) {
+	init(std::move(js));
+}
+
+void Instance::eval(std::string js) {
+	_waitingForReady.push_back(EvalScript{ std::move(js) });
+	processNextReadyStep();
+}
+
+void Instance::focus() {
+	if (_hidden) {
+		return;
+	}
+	if (_window) {
+		_window->requestActivate();
+	}
+	if (_handle) {
+		SetForegroundWindow(_handle);
+		SetFocus(_handle);
+	}
+	if (!ready()) {
+		_pendingFocus = true;
+		return;
+	}
+	_handler->controller()->MoveFocus(
+		COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+}
+
+QWidget *Instance::widget() {
+	return _widget.get();
+}
+
+void Instance::refreshNavigationHistoryState() {
+	// Not needed here, there are events.
+}
+
+auto Instance::navigationHistoryState()
+-> rpl::producer<NavigationHistoryState> {
+	return _handler
+		? _handler->navigationHistoryState()
+		: rpl::single(NavigationHistoryState());
+}
+
+ZoomController *Instance::zoomController() {
+	return _handler->zoomController();
+}
+
+void Instance::setOpaqueBg(QColor opaqueBg) {
+	if (_handler) {
+		_handler->setOpaqueBg(opaqueBg);
+	}
+}
+
+void Instance::setInteractionHandler(Fn<void()> handler) {
+	_interactionHandler = std::move(handler);
+}
+
+} // namespace
+
+bool Supported() {
+	if (base::options::value<bool>(kOptionWebviewLegacyEdge)) {
+		return false;
+	}
+	auto version = LPWSTR(nullptr);
+	const auto result = GetAvailableCoreWebView2BrowserVersionString(
+		nullptr,
+		&version);
+	return (result == S_OK);
+}
+
+std::unique_ptr<Interface> CreateInstance(Config config) {
+	if (!Supported()) {
+		return nullptr;
+	}
+	auto result = std::make_unique<Instance>(std::move(config));
+	return result->failed() ? nullptr : std::move(result);
+}
+
+} // namespace Webview::EdgeChromium

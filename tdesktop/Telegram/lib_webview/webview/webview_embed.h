@@ -1,0 +1,134 @@
+// This file is part of Desktop App Toolkit,
+// a set of libraries for developing nice desktop applications.
+//
+// For license and copyright information please follow this link:
+// https://github.com/desktop-app/legal/blob/master/LEGAL
+//
+#pragma once
+
+#include "base/unique_qptr.h"
+#include "base/basic_types.h"
+#include "webview/webview_common.h"
+#include "webview/webview_interface.h"
+
+#include <QMargins>
+#include <rpl/lifetime.h>
+#include <rpl/producer.h>
+#include <QColor>
+#include <QSize>
+
+class QString;
+class QTemporaryDir;
+class QWidget;
+class QWindow;
+
+namespace Webview {
+
+extern const char kOptionWebviewDebugEnabled[];
+extern const char kOptionWebviewLegacyEdge[];
+
+struct DialogArgs;
+struct DialogResult;
+class Interface;
+struct PopupAnchor;
+class ZoomController;
+struct Config;
+struct DataRequest;
+enum class DataResult;
+struct Message;
+struct NavigationHistoryState;
+
+struct WindowConfig {
+	QColor opaqueBg;
+	StorageId storageId;
+	QString dataProtocolOverride;
+	QString dataRequestRedirectHost;
+	bool safe = false;
+	bool allowThirdPartyCookies = false;
+	WindowMode mode = WindowMode::Embedded;
+	WindowStyle windowStyle = WindowStyle::Default;
+	QMargins windowMargins;
+	QSize initialSize;
+	QString shellMessageToken;
+	QString restrictedOrigin;
+};
+
+class Window final {
+public:
+	explicit Window(
+		QWidget *parent = nullptr,
+		WindowConfig config = WindowConfig());
+	~Window();
+
+	[[nodiscard]] bool valid() const;
+
+	// May be nullptr or destroyed any time (in case webview crashed).
+	[[nodiscard]] QWidget *widget() const;
+	[[nodiscard]] void *winId() const;
+	[[nodiscard]] PopupAnchor popupAnchor() const;
+
+	void updateTheme(
+		QColor opaqueBg,
+		QColor scrollBg,
+		QColor scrollBgOver,
+		QColor scrollBarBg,
+		QColor scrollBarBgOver);
+	void navigate(const QString &url);
+	void navigateToData(const QString &id);
+	void loadHtml(const QString &html, const QString &baseUrl);
+	void reload();
+	void setMessageHandler(Fn<void(Message)> handler);
+	void setMessageHandler(Fn<void(std::string)> handler);
+	void setMessageHandler(Fn<void(const QJsonDocument&)> handler);
+	void setNavigationStartHandler(Fn<bool(QString,bool)> handler);
+	void setNavigationDoneHandler(Fn<void(bool)> handler);
+	void setExternalWindowCloseHandler(Fn<void()> handler);
+	void setFullscreenChangedHandler(Fn<void(bool)> handler);
+	void setDialogHandler(Fn<DialogResult(DialogArgs)> handler);
+	void setAsyncDialogHandler(AsyncDialogHandler handler);
+	void setDataRequestHandler(Fn<DataResult(DataRequest)> handler);
+	void init(const QByteArray &js);
+	void eval(const QByteArray &js);
+
+	void focus();
+	void resize(QSize size);
+	void setFullscreen(bool fullscreen);
+	void setInteractionHandler(Fn<void()> handler);
+
+	void refreshNavigationHistoryState();
+	[[nodiscard]] auto navigationHistoryState() const
+	-> rpl::producer<NavigationHistoryState>;
+
+	[[nodiscard]] ZoomController *zoomController() const;
+
+	[[nodiscard]] rpl::lifetime &lifetime() {
+		return _lifetime;
+	}
+
+private:
+	bool createWebView(QWidget *parent, const WindowConfig &config);
+	[[nodiscard]] Fn<void(Message)> messageHandler() const;
+	[[nodiscard]] Fn<bool(std::string,bool)> navigationStartHandler() const;
+	[[nodiscard]] Fn<void(bool)> navigationDoneHandler() const;
+	[[nodiscard]] Fn<void()> externalWindowCloseHandler() const;
+	[[nodiscard]] Fn<void(bool)> fullscreenChangedHandler() const;
+	[[nodiscard]] Fn<DialogResult(DialogArgs)> dialogHandler() const;
+	[[nodiscard]] AsyncDialogHandler asyncDialogHandler() const;
+	[[nodiscard]] Fn<DataResult(DataRequest)> dataRequestHandler() const;
+
+	std::unique_ptr<QTemporaryDir> _temporaryStorage;
+	std::unique_ptr<Interface> _webview;
+	Fn<void(Message)> _messageHandler;
+	Fn<bool(std::string,bool)> _navigationStartHandler;
+	Fn<void(bool)> _navigationDoneHandler;
+	Fn<void()> _externalWindowCloseHandler;
+	Fn<void(bool)> _fullscreenChangedHandler;
+	Fn<DialogResult(DialogArgs)> _dialogHandler;
+	AsyncDialogHandler _asyncDialogHandler;
+	Fn<DataResult(DataRequest)> _dataRequestHandler;
+	Fn<void()> _interactionHandler;
+	rpl::lifetime _lifetime;
+
+};
+
+} // namespace Webview

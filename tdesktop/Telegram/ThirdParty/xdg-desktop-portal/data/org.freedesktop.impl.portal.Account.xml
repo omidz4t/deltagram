@@ -1,0 +1,79 @@
+<?xml version="1.0"?>
+<!--
+ Copyright (C) 2016 Red Hat, Inc.
+
+ SPDX-License-Identifier: LGPL-2.1-or-later
+
+ This library is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+
+ This library is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+
+ You should have received a copy of the GNU Lesser General Public
+ License along with this library. If not, see <http://www.gnu.org/licenses/>.
+
+ Author: Matthias Clasen <mclasen@redhat.com>
+-->
+
+<node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
+  <!--
+      org.freedesktop.impl.portal.Account:
+      @short_description: Backend for the portal for obtaining user information
+
+      This Account portal lets sandboxed applications query basic
+      information about the user, like their name and avatar photo.
+      The portal backend will present the user with a dialog to confirm
+      which (if any) information to share.
+  -->
+  <interface name="org.freedesktop.impl.portal.Account">
+    <!--
+        GetUserInformation:
+        @handle: Object path for the :ref:`org.freedesktop.portal.Request` object representing this call
+        @app_id: App id of the application
+        @window: Identifier for the application window, see :doc:`window-identifiers`
+        @options: Vardict with optional further information
+        @response: Numeric response
+        @results: Vardict with the results of the call
+
+        Gets information about the user.
+
+        Supported keys in the @options vardict include:
+
+        * ``reason`` (``s``)
+
+          A string that can be shown in the dialog to expain why the information is needed.
+          This should be a complete sentence that explains what the application will do with
+          the returned information, for example: Allows your personal information to be included
+          with recipes you share with your friends.
+
+        The following results get returned via the @results vardict:
+
+        * ``id`` (``s``)
+
+          The user id.
+
+        * ``name`` (``s``)
+
+          The users real name.
+
+        * ``image`` (``s``)
+
+          The URI of an image file for the users avatar photo.
+    -->
+    <method name="GetUserInformation">
+      <arg type="o" name="handle" direction="in"/>
+      <arg type="s" name="app_id" direction="in"/>
+      <arg type="s" name="window" direction="in"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In3" value="QVariantMap"/>
+      <arg type="a{sv}" name="options" direction="in"/>
+      <arg type="u" name="response" direction="out"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.Out1" value="QVariantMap"/>
+      <arg type="a{sv}" name="results" direction="out"/>
+    </method>
+  </interface>
+</node>

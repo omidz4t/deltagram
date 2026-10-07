@@ -1,0 +1,3 @@
+# items to ignore on WIN platform
+
+GLib:.*:.*g_unix.*

@@ -1,0 +1,129 @@
+nimf (1.3.5) noble; urgency=medium
+
+  * Release for Ubuntu 24.04
+  * Support QT6
+
+ -- HamoniKRTeam <pkg@hamonikr.org>  Wed, 12 Jun 2024 10:01:49 +0900
+
+nimf (1.3.4) stable; urgency=medium
+
+  * Release for Ubuntu 24.04
+  * Removed gtk 2.0
+  * Override test step in rules
+
+ -- HamoniKRTeam <pkg@hamonikr.org>  Sat, 08 Jun 2024 00:18:01 +0900
+
+nimf (1.3.3) stable; urgency=medium
+
+  * Release for arm64
+  * Tested on raspberry pi 4, 400
+  * Support APT for focal(bullseye) and jammy(bookworm)
+
+ -- HamoniKRTeam <pkg@hamonikr.org>  Mon, 04 Dec 2023 00:36:11 +0900
+
+nimf (1.3.1) stable; urgency=medium
+
+  * Support Arch Linux, Manjaro
+  * Replace indicator icons
+
+ -- HamoniKRTeam <pkg@hamonikr.org>  Sat, 03 Dec 2022 16:51:23 +0900
+
+nimf (1.3.0hamonikr40.9) stable; urgency=medium
+
+  * Release for Debian 12 Bookworm
+
+ -- HamoniKRTeam <pkg@hamonikr.org>  Thu, 24 Nov 2022 19:57:21 +0900
+
+nimf (1.3.0hamonikr40.8) stable; urgency=medium
+
+  * Release for Ubuntu 22.04 Jammy
+
+ -- HamoniKRTeam <pkg@hamonikr.org>  Thu, 31 May 2022 14:25:13 +0900
+
+nimf (1.3.0hamonikr40.7) stable; urgency=medium
+
+  * Synchronizing Release Versions
+
+ -- HamoniKRTeam <pkg@hamonikr.org>  Thu, 24 Dec 2021 16:57:08 +0900
+
+nimf (1.3.0hamonikr40.6) stable; urgency=medium
+
+  * Release for Ubuntu 21.10 Impish
+
+ -- HamoniKRTeam <pkg@hamonikr.org>  Thu, 23 Dec 2021 16:57:08 +0900
+
+nimf (1.3.0hamonikr40.5) stable; urgency=medium
+
+  * Release for Ubuntu 21.04 Hirsute
+
+ -- HamoniKRTeam <pkg@hamonikr.org>  Fri, 19 Mar 2021 16:42:20 +0900
+
+nimf (1.3.0hamonikr40.4) stable; urgency=medium
+
+  * Remove doc/nimf-info.png
+  * Update README.md 
+  * Update nimf/po/ko.po
+  * Change distributor name to Hodong Kim
+  * Update nimf/modules/services/indicator/nimf-indicator.c
+  * Change distributor name to Hodong Kim
+
+ -- HamoniKRTeam <pkg@hamonikr.org>  Tue, 08 Dec 2020 09:49:50 +0900
+
+nimf (1.3.0hamonikr40.3) stable; urgency=medium
+
+  * Update nimf/configure.ac
+  * Change version string to 1.3.0
+  * Add doc/nimf-info.png and doc/nimf.png
+  * Update README.md 
+  * Update nimf/po/ko.po
+  * Change distributor name as HamoniKR
+  * Update nimf/modules/services/indicator/nimf-indicator.c
+  * Change distributor name as HamoniKR
+
+ -- HamoniKRTeam <pkg@hamonikr.org>  Tue, 01 Dec 2020 15:23:33 +0900
+
+nimf (1.3.0hamonikr40.2) stable; urgency=medium
+
+  * Rebuild deb package for HamoniKR 4.0
+  * Apply new icons for modules
+  * Remove modules/engines/nimf-m17n/icons/scalable/nimf-m17n-ui.svg
+  * Fix bug for nimf/modules/engines/nimf-m17n/test-nimf-m17n.c 
+
+ -- HamoniKRTeam <pkg@hamonikr.org>  Tue, 01 Dec 2020 15:23:33 +0900
+
+nimf (1.3.0hamonikr40.1) stable; urgency=medium
+
+  * Rebuild deb package for HamoniKR 4.0
+  * Build for auto upgrade on HamoniKR 4.0 Jin
+ 
+ -- HamoniKRTeam <pkg@hamonikr.org>  Sun, 29 Nov 2020 18:07:32 +0900
+
+nimf (2020.04.28-1+hamonikr40.2) focal; urgency=low
+
+  * Apply patch for HamoniKR 4.0
+  * Update icons on data/icons/scalable folder
+  * Apply new icon for HamoniKR 4.0
+  * Update AUTHORS, README
+  * Changed contact into AUTHORS for fix #23
+  * Add BUILD.md and README.md
+  * Add build descriptions for HamoniKR 4.0 (Ubuntu 20.04)
+  * Update modules/services/indicator/nimf-indicator.c
+  * Change display maintainer name  
+
+ -- HamoniKR Team <pkg@hamonikr.org>  Sun, 29 Nov 2020 17:57:07 +0900
+
+nimf (2020.04.28-0~20200428~hamonikr40.1) focal; urgency=low
+
+  * Apply new icons for HamoniKR 4.0
+
+ -- HamoniKR Team <pkg@hamonikr.org>  Tue, 13 Oct 2020 15:32:00 +0900
+
+nimf (2020.04.28) stable; urgency=medium
+
+  * Fixed auto-reordering
+  * Fixed errors when typing Hangul with the Dvorak layout.
+  * Fixed wrong path. This prevents nimf from running more than once.
+    Don't use g_get_user_runtime_dir()
+  * Fix an error on compiling im-nimf.c for gtk2
+
+ -- Hodong Kim <nimfsoft@gmail.com>  Tue, 28 Apr 2020 22:14:14 +0900

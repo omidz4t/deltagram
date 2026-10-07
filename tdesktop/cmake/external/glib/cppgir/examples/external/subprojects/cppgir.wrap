@@ -1,0 +1,5 @@
+[wrap-git]
+url = https://gitlab.com/mnauw/cppgir.git
+revision = master
+clone-recursive = true
+depth = 1

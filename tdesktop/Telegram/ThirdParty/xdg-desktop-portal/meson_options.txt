@@ -1,0 +1,56 @@
+option('dbus-service-dir',
+       type: 'string',
+       value: '',
+       description: 'directory for dbus service files (default: PREFIX/share/dbus-1/services)')
+option('flatpak-interfaces',
+       type: 'feature',
+       value: 'auto',
+       description: 'Build flatpak interfaces')
+option('flatpak-interfaces-dir',
+       type: 'string',
+       value: '',
+       description: 'directory for Flatpak interface files (default: PREFIX/share/dbus-1/interfaces)')
+option('systemd-user-unit-dir',
+       type: 'string',
+       value: '',
+       description: 'directory for systemd user service files (default: PREFIX/lib/systemd/user)')
+option('geoclue',
+       type: 'feature',
+       value: 'auto',
+       description: 'Enable Geoclue support. Needed for location portal')
+option('gudev',
+       type: 'feature',
+       value: 'auto',
+       description: 'Enable udev support. Needed for the USB portal.')
+option('systemd',
+       type: 'feature',
+       value: 'auto',
+       description: 'Enable systemd support')
+option('documentation',
+       type: 'feature',
+       value: 'auto',
+       description: 'Build documentation (requires sphinx)')
+option('datarootdir',
+        type: 'string',
+        value: '',
+        description: 'Define the datarootdir for the pkgconf file')
+option('tests',
+        type: 'feature',
+        value: 'enabled',
+        description: 'Enable the test suite')
+option('installed-tests',
+        type: 'boolean',
+        value: false,
+        description: 'Enable installation of some test cases')
+option('man-pages',
+       type: 'feature',
+       value: 'auto',
+       description: 'Build man pages (requires rst2man)')
+option('sandboxed-image-validation',
+       type: 'feature',
+       value: 'enabled',
+       description: 'Use Bubblewrap to sandbox image validation. Disabling this option may lead to security vulnerabilities.')
+option('sandboxed-sound-validation',
+       type: 'feature',
+       value: 'enabled',
+       description: 'Use Bubblewrap to sandbox sound validation. Disabling this option may lead to security vulnerabilities.')

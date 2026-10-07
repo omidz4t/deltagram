@@ -1,0 +1,119 @@
+#include "fonts/font_info.h"
+
+#include "core/formula.h"
+#include "fonts/font_reg.h"
+
+using namespace std;
+using namespace tex;
+
+vector<FontInfo*> FontInfo::_infos;
+vector<string>    FontInfo::_names;
+
+void FontInfo::__register(const FontSet& set) {
+  const vector<FontReg>& regs = set.regs();
+  for (auto r : regs) __predefine_name(r.name);
+  for (auto r : regs) r.reg();
+}
+
+// The +1 skips the key column of the found row, but it must only be applied
+// to a row that exists: a lookup miss returns nullptr, and nullptr + 1 is
+// undefined behaviour that in practice produces the non-null 0x4. Callers
+// test the result against nullptr to decide whether the char is present
+// (isExtensionChar()), so a bare +1 makes every miss look like a hit and the
+// dereference that follows then faults on 0x4.
+const float* const FontInfo::getMetrics(wchar_t ch) const {
+  const float* const item = _metrics((float)ch);
+  return item == nullptr ? nullptr : item + 1;
+}
+
+const int* const FontInfo::getExtension(wchar_t ch) const {
+  const int* const item = _extensions((int)ch);
+  return item == nullptr ? nullptr : item + 1;
+}
+
+//sptr<CharFont> FontInfo::getNextLarger(wchar_t ch) const {
+//  const int* const item = _nextLargers((int)ch);
+//  if (item == nullptr) return nullptr;
+//  return sptrOf<CharFont>(item[1], item[2]);
+//}
+
+//sptr<CharFont> FontInfo::getLigture(wchar_t left, wchar_t right) const {
+//  const wchar_t* const item = _lig(left, right);
+//  if (item == nullptr) return nullptr;
+//  return sptrOf<CharFont>(item[2], _id);
+//}
+
+float FontInfo::getKern(wchar_t left, wchar_t right, float factor) const {
+  const float* const item = _kern((float)left, (float)right);
+  if (item == nullptr) return 0;
+  return item[2] * factor;
+}
+
+void FontInfo::setVariousId(
+    const string& bold,
+    const string& roman,
+    const string& ss,
+    const string& tt,
+    const string& it) {
+  _boldId  = __idOf(bold);
+  _romanId = __idOf(roman);
+  _ssId    = __idOf(ss);
+  _ttId    = __idOf(tt);
+  _itId    = __idOf(it);
+}
+
+const Font* FontInfo::getFont() {
+  if (_font == nullptr) _font = Font::create(_path, Formula::PIXELS_PER_POINT);
+  return _font;
+}
+
+FontInfo::~FontInfo() {
+  if (_font != nullptr) delete _font;
+}
+
+void FontInfo::__free() {
+  for (auto f : _infos) {
+    delete f;
+  }
+}
+
+#ifdef HAVE_LOG
+#include <iomanip>
+#include <codecvt>
+namespace tex {
+    ostream& operator<<(ostream& os, const FontInfo& info) {
+        // base information
+        os << "\nID: " << info._id;
+        os << " path: " << info._path << endl;
+        // font information
+        os << "---------------------------------------------------" << endl;
+        os << "x height    space     quad  bold  roman  ss  tt  it" << endl;
+        os << setw(8) << info._xHeight << setw(9) << info._space;
+        os << setw(9) << info._quad << setw(6) << info._boldId;
+        os << setw(7) << info._romanId << setw(4) << info._ssId;
+        os << setw(4) << info._ttId << setw(4) << info._itId;
+        os << endl;
+
+        if (!info._lig.isEmpty()) {
+            os << "ligatures:" << endl;
+            const int rows = info._lig.rows();
+            for (int i = 0; i < rows; i++) {
+                const wchar_t* t = info._lig[i];
+                std::wstring _a(t);
+                std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+                std::string _b{};
+                try{_b = converter.to_bytes(_a);}
+                catch (const std::range_error& e)
+                { _b = "�";}
+                os << "\t["
+                    << setw(3) << _b[0] << ", "
+                    << setw(3) << _b[1] << "] = "
+                    << _b[2] << endl;
+            }
+        }
+
+        os << "---------------------------------------------------" << endl;
+        return os;
+    }
+}
+#endif

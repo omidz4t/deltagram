@@ -1,0 +1,285 @@
+# Spanish translation for xdg-desktop-portal.
+# Copyright (C) 2018 xdg-desktop-portal's COPYRIGHT HOLDER
+# This file is distributed under the same license as the xdg-desktop-portal package.
+# Adolfo Jayme Barrientos <fitojb@ubuntu.com>, 2018.
+msgid ""
+msgstr ""
+"Project-Id-Version: xdg-desktop-portal master\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-04-23 10:29-0300\n"
+"PO-Revision-Date: 2021-12-04 14:52+0100\n"
+"Last-Translator: Adolfo Jayme Barrientos <fitojb@ubuntu.com>\n"
+"Language-Team: Spanish\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.0\n"
+
+#: src/background.c:827
+#, c-format
+msgid "Allow %s to run in the background?"
+msgstr "¿Quiere permitir que %s se ejecute en segundo plano?"
+
+#: src/background.c:831
+#, c-format
+msgid "%s requests to be started automatically and run in the background."
+msgstr "%s solicita iniciarse automáticamente y ejecutarse en segundo plano."
+
+#: src/background.c:833
+#, c-format
+msgid "%s requests to run in the background."
+msgstr "%s solicita ejecutarse en segundo plano."
+
+#: src/background.c:834
+msgid ""
+"The ‘run in background’ permission can be changed at any time from the "
+"application settings."
+msgstr ""
+"El permiso «ejecución en segundo plano» puede modificarse en cualquier "
+"momento a través de la configuración de privacidad."
+
+#: src/background.c:838
+msgid "Don't allow"
+msgstr "No permitir"
+
+#: src/background.c:839 src/screenshot.c:247 src/wallpaper.c:187
+msgid "Allow"
+msgstr "Permitir"
+
+#: src/camera.c:105
+#, fuzzy, c-format
+msgid "Allow %s to Use the Camera?"
+msgstr "¿Quiere permitir que %s se ejecute en segundo plano?"
+
+#: src/camera.c:106
+#, fuzzy, c-format
+msgid "%s wants to access camera devices."
+msgstr "%s intenta utilizar la cámara."
+
+#: src/camera.c:110
+msgid "Allow app to Use the Camera?"
+msgstr ""
+
+#: src/camera.c:111
+#, fuzzy
+msgid "An app wants to access camera devices."
+msgstr "Una aplicación intenta utilizar la cámara."
+
+#: src/dynamic-launcher.c:122
+#, c-format
+msgid "Desktop file id missing .desktop suffix: %s"
+msgstr ""
+
+#: src/dynamic-launcher.c:133
+#, c-format
+msgid "Desktop file id is not valid"
+msgstr ""
+
+#: src/dynamic-launcher.c:306
+#, c-format
+msgid "Desktop entry given to Install() not a valid key file"
+msgstr ""
+
+#: src/dynamic-launcher.c:319
+#, c-format
+msgid "Desktop entry given to Install() must have exactly one group"
+msgstr ""
+
+#: src/dynamic-launcher.c:356
+#, c-format
+msgid "Token given is invalid: %s"
+msgstr ""
+
+#: src/dynamic-launcher.c:400
+#, c-format
+msgid "Desktop entry given to Install() not valid"
+msgstr ""
+
+#: src/dynamic-launcher.c:409 src/dynamic-launcher.c:831
+#: src/dynamic-launcher.c:880
+#, c-format
+msgid "Desktop file exceeds max size (%d): %s"
+msgstr ""
+
+#: src/dynamic-launcher.c:563
+#, c-format
+msgid "URL given is invalid: %s"
+msgstr ""
+
+#: src/dynamic-launcher.c:586
+#, c-format
+msgid "Invalid launcher type: %x"
+msgstr ""
+
+#: src/dynamic-launcher.c:593
+#, c-format
+msgid "Unsupported launcher type: %x"
+msgstr ""
+
+#: src/dynamic-launcher.c:655 src/dynamic-launcher.c:725
+msgid "Dynamic launcher icon failed validation"
+msgstr ""
+
+#: src/dynamic-launcher.c:741
+#, c-format
+msgid "RequestInstallToken() not allowed for app id %s"
+msgstr ""
+
+#: src/dynamic-launcher.c:920
+#, c-format
+msgid "Desktop file '%s' icon at unrecognized path"
+msgstr ""
+
+#: src/dynamic-launcher.c:943
+#, c-format
+msgid "Desktop file '%s' icon failed to serialize"
+msgstr ""
+
+#: src/dynamic-launcher.c:982
+#, c-format
+msgid "No dynamic launcher exists with id '%s'"
+msgstr ""
+
+#: src/dynamic-launcher.c:1001
+#, c-format
+msgid "Failed to create GDesktopAppInfo for launcher with id '%s'"
+msgstr ""
+
+#: src/location.c:544
+msgid "Deny Access"
+msgstr "Denegar acceso"
+
+#: src/location.c:546
+msgid "Grant Access"
+msgstr "Conceder acceso"
+
+#: src/location.c:566
+#, c-format
+msgid "Give %s Access to Your Location?"
+msgstr "¿Quiere conceder a %s acceso a su ubicación?"
+
+#: src/location.c:571
+#, c-format
+msgid "%s wants to use your location."
+msgstr "%s intenta utilizar su ubicación."
+
+#: src/location.c:580
+msgid "Grant Access to Your Location?"
+msgstr "¿Quiere conceder acceso a su ubicación?"
+
+#: src/location.c:581
+msgid "An application wants to use your location."
+msgstr "Una aplicación intenta utilizar su ubicación."
+
+#: src/location.c:584
+msgid "Location access can be changed at any time from the privacy settings."
+msgstr ""
+"El acceso a la ubicación puede modificarse en cualquier momento a través de "
+"la configuración de privacidad."
+
+#: src/screenshot.c:245 src/wallpaper.c:185
+msgid "Deny"
+msgstr "Denegar"
+
+#: src/screenshot.c:267
+#, fuzzy, c-format
+msgid "Allow %s to Take Screenshots?"
+msgstr "¿Quiere permitir que %s establezca fondos?"
+
+#: src/screenshot.c:268
+#, c-format
+msgid "%s wants to be able to take screenshots at any time."
+msgstr ""
+
+#: src/screenshot.c:276
+#, fuzzy
+msgid "Allow Applications to Take Screenshots?"
+msgstr "¿Quiere permitir que las aplicaciones establezcan fondos?"
+
+#: src/screenshot.c:277
+#, fuzzy
+msgid "An application wants to be able to take screenshots at any time."
+msgstr "Una aplicación intenta utilizar el micrófono."
+
+#: src/screenshot.c:280 src/wallpaper.c:220
+msgid "This permission can be changed at any time from the privacy settings."
+msgstr ""
+"Este permiso puede modificarse en cualquier momento a través de la "
+"configuración de privacidad."
+
+#: src/settings.c:187 src/settings.c:223
+msgid "Requested setting not found"
+msgstr "No se encontró la configuración solicitada"
+
+#: src/usb.c:1328
+msgid "Device not available"
+msgstr ""
+
+#: src/usb.c:1342
+#, fuzzy
+msgid "Not allowed"
+msgstr "No permitir"
+
+#: src/wallpaper.c:207
+#, c-format
+msgid "Allow %s to Set Backgrounds?"
+msgstr "¿Quiere permitir que %s establezca fondos?"
+
+#: src/wallpaper.c:208
+#, c-format
+msgid "%s is requesting to be able to change the background image."
+msgstr "%s solicita poder cambiar la imagen de fondo."
+
+#: src/wallpaper.c:217
+msgid "Allow Applications to Set Backgrounds?"
+msgstr "¿Quiere permitir que las aplicaciones establezcan fondos?"
+
+#: src/wallpaper.c:218
+msgid "An application is requesting to be able to change the background image."
+msgstr "Una aplicación solicita poder cambiar la imagen de fondo."
+
+#~ msgid "Turn On Microphone?"
+#~ msgstr "¿Quiere encender el micrófono?"
+
+#~ msgid ""
+#~ "Access to your microphone can be changed at any time from the privacy "
+#~ "settings."
+#~ msgstr ""
+#~ "El acceso al micrófono puede modificarse en cualquier momento a través de "
+#~ "la configuración de privacidad."
+
+#~ msgid "An application wants to use your microphone."
+#~ msgstr "Una aplicación intenta utilizar el micrófono."
+
+#, c-format
+#~ msgid "%s wants to use your microphone."
+#~ msgstr "%s intenta utilizar el micrófono."
+
+#~ msgid "Turn On Speakers?"
+#~ msgstr "¿Quiere encender los altavoces?"
+
+#~ msgid ""
+#~ "Access to your speakers can be changed at any time from the privacy "
+#~ "settings."
+#~ msgstr ""
+#~ "El acceso a los altavoces puede modificarse en cualquier momento a través "
+#~ "de la configuración de privacidad."
+
+#~ msgid "An application wants to play sound."
+#~ msgstr "Una aplicación intenta reproducir sonido."
+
+#, c-format
+#~ msgid "%s wants to play sound."
+#~ msgstr "%s intenta reproducir sonido."
+
+#~ msgid "Turn On Camera?"
+#~ msgstr "¿Quiere encender la cámara?"
+
+#~ msgid ""
+#~ "Access to your camera can be changed at any time from the privacy "
+#~ "settings."
+#~ msgstr ""
+#~ "El acceso a la cámara puede modificarse en cualquier momento a través de "
+#~ "la configuración de privacidad."

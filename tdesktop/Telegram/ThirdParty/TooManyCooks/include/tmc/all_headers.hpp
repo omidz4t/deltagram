@@ -1,0 +1,49 @@
+// Copyright (c) 2023-2026 Logan McDougall
+//
+// Distributed under the Boost Software License, Version 1.0. (See accompanying
+// file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
+
+#pragma once
+
+// This header includes all headers in the main TooManyCooks library.
+// It does not include headers in optional libraries such as tmc-asio.
+// Those must be included manually (tmc/include/asio/aw_asio.hpp +
+// tmc/include/asio/ex_asio.hpp).
+
+#include "tmc/atomic_condvar.hpp"     // IWYU pragma: export
+#include "tmc/auto_reset_event.hpp"   // IWYU pragma: export
+#include "tmc/aw_resume_on.hpp"       // IWYU pragma: export
+#include "tmc/aw_yield.hpp"           // IWYU pragma: export
+#include "tmc/barrier.hpp"            // IWYU pragma: export
+#include "tmc/channel.hpp"            // IWYU pragma: export
+#include "tmc/current.hpp"            // IWYU pragma: export
+#include "tmc/ex_any.hpp"             // IWYU pragma: export
+#include "tmc/ex_braid.hpp"           // IWYU pragma: export
+#include "tmc/ex_cpu.hpp"             // IWYU pragma: export
+#include "tmc/ex_cpu_st.hpp"          // IWYU pragma: export
+#include "tmc/ex_manual_st.hpp"       // IWYU pragma: export
+#include "tmc/external.hpp"           // IWYU pragma: export
+#include "tmc/fork_group.hpp"         // IWYU pragma: export
+#include "tmc/latch.hpp"              // IWYU pragma: export
+#include "tmc/manual_reset_event.hpp" // IWYU pragma: export
+#include "tmc/mutex.hpp"              // IWYU pragma: export
+#include "tmc/mux_many.hpp"           // IWYU pragma: export
+#include "tmc/mux_tuple.hpp"          // IWYU pragma: export
+#include "tmc/qu_mpsc_bounded.hpp"    // IWYU pragma: export
+#include "tmc/qu_mpsc_unbounded.hpp"  // IWYU pragma: export
+#include "tmc/qu_spsc_bounded.hpp"    // IWYU pragma: export
+#include "tmc/qu_spsc_unbounded.hpp"  // IWYU pragma: export
+#include "tmc/rw_lock.hpp"            // IWYU pragma: export
+#include "tmc/select.hpp"             // IWYU pragma: export
+#include "tmc/semaphore.hpp"          // IWYU pragma: export
+#include "tmc/spawn.hpp"              // IWYU pragma: export
+#include "tmc/spawn_func.hpp"         // IWYU pragma: export
+#include "tmc/spawn_group.hpp"        // IWYU pragma: export
+#include "tmc/spawn_many.hpp"         // IWYU pragma: export
+#include "tmc/spawn_tuple.hpp"        // IWYU pragma: export
+#include "tmc/sync.hpp"               // IWYU pragma: export
+#include "tmc/task.hpp"               // IWYU pragma: export
+#include "tmc/topology.hpp"           // IWYU pragma: export
+#include "tmc/traits.hpp"             // IWYU pragma: export
+#include "tmc/version.hpp"            // IWYU pragma: export
+#include "tmc/work_item.hpp"          // IWYU pragma: export

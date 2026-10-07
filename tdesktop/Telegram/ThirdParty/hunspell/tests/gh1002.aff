@@ -1,0 +1,5 @@
+SET UTF-8
+SFX A N 1
+SFX A us órum
+OCONV 1
+OCONV ánó anó

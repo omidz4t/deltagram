@@ -1,0 +1,31 @@
+ # Build option
+option('build_fmt', type : 'combo',
+  choices : ['auto', 'fmtlib', 'stdformat'] ,
+  value : 'auto',
+  description : 'format library'
+)
+
+option('build_embed_ignore', type : 'boolean',
+  value : false,
+  description : 'embed default ignore'
+)
+
+option('gir_dir', type : 'string',
+  description : 'extra GIR search directory'
+)
+
+option('gir_default_dirs', type : 'string',
+  description : 'fallback GIR search prefix paths (to be suffixed with gir-1.0)',
+  # best left as-is to follow standard GIR search
+  value : '/usr/local/share:/usr/share'
+)
+
+option('link_stdfs', type : 'boolean',
+  value : false,
+  description : 'link to stdc++fs'
+)
+
+option('build_doc', type : 'boolean',
+  value : true,
+  description : 'build documentation'
+)

@@ -1,0 +1,74 @@
+name: Release new version
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  build-container:
+    name: Container
+    uses: ./.github/workflows/container.yml
+    permissions:
+      packages: write
+
+  release:
+    name: Build and publish a release
+    runs-on: ubuntu-latest
+    needs: build-container
+    permissions:
+      contents: write
+
+    container:
+      image: ${{ needs.build-container.outputs.image }}
+      options: ${{ needs.build-container.outputs.image_options }}
+      env:
+        XDP_TEST_IN_CI: 1
+
+    steps:
+      - name: Configure environment
+        run: |
+          git config --global --add safe.directory $GITHUB_WORKSPACE
+
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Build xdg-desktop-portal
+        run: |
+          meson setup . _build
+          meson dist -C _build
+
+      - name: Extract release information
+        run: |
+          # Extract the release version
+          releaseVersion=`meson introspect --projectinfo _build/ | jq -r .version`
+          echo "releaseVersion=$releaseVersion" | tee -a $GITHUB_ENV
+          echo $releaseVersion
+
+          # Extract the changelog
+          {
+            echo "releaseChangelog<<EOF"
+            perl -0777nE 'print $& if /(?<=\n\n).*?(?=\nChanges in)/sg' NEWS.md
+            echo "\nEOF"
+          } | tee -a $GITHUB_ENV
+          echo $releaseChangelog
+
+          # Check if version is a pre-release
+          preRelease=$((`echo $releaseVersion | cut -d '.' -f2` % 2))
+          {
+            echo -n "preRelease="
+            if [ $preRelease = 1 ] || [ $preRelease = "true" ]; then
+              echo "true";
+            else
+              echo "false";
+            fi
+          } | tee -a $GITHUB_ENV
+          echo $preRelease
+
+      - name: Create release
+        uses: ncipollo/release-action@v1.15.0
+        with:
+          tag: ${{ env.releaseVersion }}
+          body: ${{ env.releaseChangelog }}
+          prerelease: ${{ env.preRelease }}
+          artifacts: _build/meson-dist/*

@@ -1,0 +1,286 @@
+# Copyright (C) 2022 xdg-desktop-portal
+# This file is distributed under the same license as the xdg-desktop-portal package.
+#
+# Sergiu Bivol <sergiu@cip.md>, 2022.
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-04-23 10:29-0300\n"
+"PO-Revision-Date: 2022-02-18 10:51+0000\n"
+"Last-Translator: Sergiu Bivol <sergiu@cip.md>\n"
+"Language-Team: Romanian\n"
+"Language: ro\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n==1 ? 0 : (n==0 || (n%100 > 0 && n%100 < "
+"20)) ? 1 : 2;\n"
+"X-Generator: Lokalize 21.12.2\n"
+
+#: src/background.c:827
+#, c-format
+msgid "Allow %s to run in the background?"
+msgstr "Permiteți %s să ruleze în fundal?"
+
+#: src/background.c:831
+#, c-format
+msgid "%s requests to be started automatically and run in the background."
+msgstr "%s cere să fie pornit automat și să ruleze în fundal."
+
+#: src/background.c:833
+#, c-format
+msgid "%s requests to run in the background."
+msgstr "%s cere să ruleze în fundal."
+
+#: src/background.c:834
+msgid ""
+"The ‘run in background’ permission can be changed at any time from the "
+"application settings."
+msgstr ""
+"Permisiunea „rulează în fundal” poate fi schimbată în orice moment din "
+"configurările aplicației."
+
+#: src/background.c:838
+msgid "Don't allow"
+msgstr "Nu permite"
+
+#: src/background.c:839 src/screenshot.c:247 src/wallpaper.c:187
+msgid "Allow"
+msgstr "Permite"
+
+#: src/camera.c:105
+#, fuzzy, c-format
+msgid "Allow %s to Use the Camera?"
+msgstr "Permiteți %s să ruleze în fundal?"
+
+#: src/camera.c:106
+#, fuzzy, c-format
+msgid "%s wants to access camera devices."
+msgstr "%s vrea să vă folosească camera."
+
+#: src/camera.c:110
+msgid "Allow app to Use the Camera?"
+msgstr ""
+
+#: src/camera.c:111
+#, fuzzy
+msgid "An app wants to access camera devices."
+msgstr "O aplicație vrea să vă folosească camera."
+
+#: src/dynamic-launcher.c:122
+#, c-format
+msgid "Desktop file id missing .desktop suffix: %s"
+msgstr ""
+
+#: src/dynamic-launcher.c:133
+#, c-format
+msgid "Desktop file id is not valid"
+msgstr ""
+
+#: src/dynamic-launcher.c:306
+#, c-format
+msgid "Desktop entry given to Install() not a valid key file"
+msgstr ""
+
+#: src/dynamic-launcher.c:319
+#, c-format
+msgid "Desktop entry given to Install() must have exactly one group"
+msgstr ""
+
+#: src/dynamic-launcher.c:356
+#, c-format
+msgid "Token given is invalid: %s"
+msgstr ""
+
+#: src/dynamic-launcher.c:400
+#, c-format
+msgid "Desktop entry given to Install() not valid"
+msgstr ""
+
+#: src/dynamic-launcher.c:409 src/dynamic-launcher.c:831
+#: src/dynamic-launcher.c:880
+#, c-format
+msgid "Desktop file exceeds max size (%d): %s"
+msgstr ""
+
+#: src/dynamic-launcher.c:563
+#, c-format
+msgid "URL given is invalid: %s"
+msgstr ""
+
+#: src/dynamic-launcher.c:586
+#, c-format
+msgid "Invalid launcher type: %x"
+msgstr ""
+
+#: src/dynamic-launcher.c:593
+#, c-format
+msgid "Unsupported launcher type: %x"
+msgstr ""
+
+#: src/dynamic-launcher.c:655 src/dynamic-launcher.c:725
+msgid "Dynamic launcher icon failed validation"
+msgstr ""
+
+#: src/dynamic-launcher.c:741
+#, c-format
+msgid "RequestInstallToken() not allowed for app id %s"
+msgstr ""
+
+#: src/dynamic-launcher.c:920
+#, c-format
+msgid "Desktop file '%s' icon at unrecognized path"
+msgstr ""
+
+#: src/dynamic-launcher.c:943
+#, c-format
+msgid "Desktop file '%s' icon failed to serialize"
+msgstr ""
+
+#: src/dynamic-launcher.c:982
+#, c-format
+msgid "No dynamic launcher exists with id '%s'"
+msgstr ""
+
+#: src/dynamic-launcher.c:1001
+#, c-format
+msgid "Failed to create GDesktopAppInfo for launcher with id '%s'"
+msgstr ""
+
+#: src/location.c:544
+msgid "Deny Access"
+msgstr "Refuză accesul"
+
+#: src/location.c:546
+msgid "Grant Access"
+msgstr "Permite accesul"
+
+#: src/location.c:566
+#, c-format
+msgid "Give %s Access to Your Location?"
+msgstr "Permiteți accesul %s la localizare?"
+
+#: src/location.c:571
+#, c-format
+msgid "%s wants to use your location."
+msgstr "%s vrea să vă folosească localizarea."
+
+#: src/location.c:580
+msgid "Grant Access to Your Location?"
+msgstr "Permiteți accesul la localizare?"
+
+#: src/location.c:581
+msgid "An application wants to use your location."
+msgstr "O aplicație vrea să vă folosească localizarea."
+
+#: src/location.c:584
+msgid "Location access can be changed at any time from the privacy settings."
+msgstr ""
+"Accesul la localizare poate fi schimbat oricând din configurările de "
+"confidențialitate."
+
+#: src/screenshot.c:245 src/wallpaper.c:185
+msgid "Deny"
+msgstr "Refuză"
+
+#: src/screenshot.c:267
+#, fuzzy, c-format
+msgid "Allow %s to Take Screenshots?"
+msgstr "Permiteți %s să stabilească fundaluri?"
+
+#: src/screenshot.c:268
+#, c-format
+msgid "%s wants to be able to take screenshots at any time."
+msgstr ""
+
+#: src/screenshot.c:276
+#, fuzzy
+msgid "Allow Applications to Take Screenshots?"
+msgstr "Permiteți aplicațiilor să stabilească fundaluri?"
+
+#: src/screenshot.c:277
+#, fuzzy
+msgid "An application wants to be able to take screenshots at any time."
+msgstr "O aplicație vrea să vă folosească microfonul."
+
+#: src/screenshot.c:280 src/wallpaper.c:220
+msgid "This permission can be changed at any time from the privacy settings."
+msgstr ""
+"Această permisiune poate fi schimbată oricând din configurările de "
+"confidențialitate."
+
+#: src/settings.c:187 src/settings.c:223
+msgid "Requested setting not found"
+msgstr "Configurarea cerută nu a fost găsită"
+
+#: src/usb.c:1328
+msgid "Device not available"
+msgstr ""
+
+#: src/usb.c:1342
+#, fuzzy
+msgid "Not allowed"
+msgstr "Nu permite"
+
+#: src/wallpaper.c:207
+#, c-format
+msgid "Allow %s to Set Backgrounds?"
+msgstr "Permiteți %s să stabilească fundaluri?"
+
+#: src/wallpaper.c:208
+#, c-format
+msgid "%s is requesting to be able to change the background image."
+msgstr "%s cere să poată schimba imaginea de fundal."
+
+#: src/wallpaper.c:217
+msgid "Allow Applications to Set Backgrounds?"
+msgstr "Permiteți aplicațiilor să stabilească fundaluri?"
+
+#: src/wallpaper.c:218
+msgid "An application is requesting to be able to change the background image."
+msgstr "O aplicație cere să poată schimba imaginea de fundal."
+
+#~ msgid "Turn On Microphone?"
+#~ msgstr "Porniți microfonul?"
+
+#~ msgid ""
+#~ "Access to your microphone can be changed at any time from the privacy "
+#~ "settings."
+#~ msgstr ""
+#~ "Accesul la microfon poate fi schimbat oricând din configurările de "
+#~ "confidențialitate."
+
+#~ msgid "An application wants to use your microphone."
+#~ msgstr "O aplicație vrea să vă folosească microfonul."
+
+#, c-format
+#~ msgid "%s wants to use your microphone."
+#~ msgstr "%s vrea să vă folosească microfonul."
+
+#~ msgid "Turn On Speakers?"
+#~ msgstr "Porniți difuzoarele?"
+
+#~ msgid ""
+#~ "Access to your speakers can be changed at any time from the privacy "
+#~ "settings."
+#~ msgstr ""
+#~ "Accesul la difuzoare poate fi schimbat oricând din configurările de "
+#~ "confidențialitate."
+
+#~ msgid "An application wants to play sound."
+#~ msgstr "O aplicație dorește să redea sunet."
+
+#, c-format
+#~ msgid "%s wants to play sound."
+#~ msgstr "%s dorește să redea sunet."
+
+#~ msgid "Turn On Camera?"
+#~ msgstr "Porniți camera?"
+
+#~ msgid ""
+#~ "Access to your camera can be changed at any time from the privacy "
+#~ "settings."
+#~ msgstr ""
+#~ "Accesul la cameră poate fi schimbat oricând din configurările de "
+#~ "confidențialitate."

@@ -1,0 +1,36 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      DELTA_TEL_USE_SYSTEM_NIX: '1'
+      DELTA_TEL_JOBS: '4'
+      CCACHE_MAXSIZE: 2G
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@b85815f71a6de0ddee80b8a80a98d43f4bcc66c7 # v31
+      - name: Initialize the pinned toolchain
+        run: make init
+      - name: Offline tests and source audit
+        run: make test
+      - name: Build Core RPC and Qt release
+        run: make release
+      - name: Core RPC smoke test
+        run: ./nix/develop.sh --command bash nix/test-rpc.sh

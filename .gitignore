@@ -1,0 +1,75 @@
+# Local accounts, message storage and identity material.
+/accounts/
+**/tdata/
+**/dc.db*
+**/accounts.lock
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Generated binaries, dependencies and build records.
+/dist/
+/delta-shell
+/.delta-shell-runtime/
+/public-source/
+/publish-output/
+**/target/
+**/node_modules/
+**/build.ninja
+**/.ninja_deps
+**/.ninja_log
+**/CMakeCache.txt
+**/CMakeFiles/
+**/compile_commands.json
+**/result
+**/result-*
+*.AppImage
+*.run
+*.o
+*.a
+*.so
+*.so.*
+
+# Diagnostics and editor state.
+*.log
+*.core
+core.[0-9]*
+*.dmp
+__pycache__/
+*.pyc
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project-local Nix store, caches, build output and private runtime state.
+/data/
+/context/
+/result
+/result-*
+*.tar.xz
+*.tar.gz
+*.deb
+*.rpm
+*.pkg.tar.zst
+
+# Compiled donor executables and runtime libraries: source-only publication.
+*.dll
+*.exe
+*.dylib
+*.lib
+*.wasm
+*.class
+*.jar
+# Upstream update verification public key is a required source input.
+!/tdesktop/Telegram/Resources/update/root-public.pem

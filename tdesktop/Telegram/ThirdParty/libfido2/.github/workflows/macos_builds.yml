@@ -1,0 +1,33 @@
+# Copyright (c) 2022 Yubico AB. All rights reserved.
+# Use of this source code is governed by a BSD-style
+# license that can be found in the LICENSE file.
+# SPDX-License-Identifier: BSD-2-Clause
+
+name: macos
+
+on:
+  pull_request:
+    branches:
+    - main
+  push:
+    branches:
+    - main
+    - '*-ci'
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ macos-15, macos-14 ]
+    steps:
+    - uses: actions/checkout@v6
+    - name: dependencies
+      env:
+        HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+      run: brew install libcbor llvm mandoc openssl@3.0 pkg-config zlib
+    - name: appleclang
+      run: echo "CC=$(xcrun -f clang)" >> $GITHUB_ENV
+    - name: build
+      run: ./.actions/build-osx-clang

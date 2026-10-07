@@ -1,0 +1,91 @@
+<?xml version="1.0"?>
+<!--
+ Copyright (C) 2016 Red Hat, Inc.
+
+ SPDX-License-Identifier: LGPL-2.1-or-later
+
+ This library is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+
+ This library is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+
+ You should have received a copy of the GNU Lesser General Public
+ License along with this library. If not, see <http://www.gnu.org/licenses/>.
+
+ Author: Matthias Clasen <mclasen@redhat.com>
+-->
+
+<node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
+  <!--
+      org.freedesktop.impl.portal.Access:
+      @short_description: Interface for presenting an access dialog
+
+      This backend can be used by portal implementations that
+      need to ask a direct access question, such as "May xyz
+      use the microphone?"
+   -->
+  <interface name="org.freedesktop.impl.portal.Access">
+    <!--
+        AccessDialog:
+        @handle: Object path to export the Request object at
+        @app_id: App id of the application
+        @parent_window: Identifier for the application window, see :doc:`window-identifiers`
+        @title: Title for the dialog
+        @subtitle: Subtitle for the dialog
+        @body: Body text, may be ""
+        @options: Vardict with optional further information
+        @response: Numeric response. The values allowed match the values allowed for :ref:`org.freedesktop.portal.Request::Response` signal.
+        @results: Vardict with the results of the call
+
+        Presents a "deny/grant" question to the user.
+
+        Supported keys in the @options include:
+
+        * ``modal`` (``b``)
+
+          Whether to make the dialog modal. Defaults to true.
+
+        * ``deny_label`` (``s``)
+
+          Label for the Deny button.
+
+        * ``grant_label`` (``s``)
+
+          Label for the Grant button.
+
+        * ``icon`` (``s``)
+
+          Icon name for an icon to show in the dialog. This should be a symbolic icon name.
+
+        * ``choices`` (``a(ssa(ss)s)``)
+
+          List of serialized choices.
+          See :ref:`org.freedesktop.portal.FileChooser.OpenFile` for details.
+
+        The following results get returned via the @results vardict:
+
+        * ``choices`` (``a(ss)``)
+
+          An array of pairs of strings, corresponding to the passed-in choices.
+          See :ref:`org.freedesktop.portal.FileChooser.OpenFile` for details.
+     -->
+    <method name="AccessDialog">
+      <arg type="o" name="handle" direction="in"/>
+      <arg type="s" name="app_id" direction="in"/>
+      <arg type="s" name="parent_window" direction="in"/>
+      <arg type="s" name="title" direction="in"/>
+      <arg type="s" name="subtitle" direction="in"/>
+      <arg type="s" name="body" direction="in"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In6" value="QVariantMap"/>
+      <arg type="a{sv}" name="options" direction="in"/>
+      <arg type="u" name="response" direction="out"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.Out1" value="QVariantMap"/>
+      <arg type="a{sv}" name="results" direction="out"/>
+    </method>
+  </interface>
+</node>

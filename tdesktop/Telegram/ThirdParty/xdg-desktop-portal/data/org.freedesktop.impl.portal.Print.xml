@@ -1,0 +1,135 @@
+<?xml version="1.0"?>
+<!--
+ Copyright (C) 2016 Red Hat, Inc.
+
+ SPDX-License-Identifier: LGPL-2.1-or-later
+
+ This library is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+
+ This library is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+
+ You should have received a copy of the GNU Lesser General Public
+ License along with this library. If not, see <http://www.gnu.org/licenses/>.
+
+ Author: Matthias Clasen <mclasen@redhat.com>
+-->
+<node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
+  <!--
+      org.freedesktop.impl.portal.Print:
+      @short_description: Print portal backend interface
+
+      The Print portal allows sandboxed applications to print.
+  -->
+  <interface name="org.freedesktop.impl.portal.Print">
+    <!--
+        PreparePrint:
+        @handle: Object path for the :ref:`org.freedesktop.impl.portal.Request` object representing this call
+        @app_id: App id of the application
+        @parent_window: Identifier for the application window, see :doc:`window-identifiers`
+        @title: Title for the print dialog
+        @settings: Serialized print settings
+        @page_setup: Serialized page setup
+        @options: Vardict with optional further information
+        @response: Numeric response
+        @results: Vardict with the results of the call
+
+        Presents a print dialog to the user and returns print settings
+        and page setup.
+
+        Supported keys in the @options vardict:
+
+        * ``modal`` (``b``)
+
+          Whether to make the dialog modal. Defaults to yes.
+
+        * ``accept_label`` (``s``)
+
+          Label for the accept button. Mnemonic underlines are allowed.
+
+        The following results get returned via the @results vardict:
+
+        * ``settings`` (``a{sv}``)
+
+          Print settings as set up by the user in the print dialog.
+
+        * ``page-setup`` (``a{sv}``)
+
+          Page setup as set up by the user in the print dialog.
+
+        * ``token`` (``u``)
+
+          Token that can be passed to a subsequent org.freedesktop.impl.portal.Print.Print() call to
+          bypass the print dialog.
+
+        The :ref:`org.freedesktop.portal.Print.Print` documentation has details about
+        the supported keys in settings and page-setup.
+    -->
+    <method name="PreparePrint">
+      <arg type="o" name="handle" direction="in"/>
+      <arg type="s" name="app_id" direction="in"/>
+      <arg type="s" name="parent_window" direction="in"/>
+      <arg type="s" name="title" direction="in"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In4" value="QVariantMap"/>
+      <arg type="a{sv}" name="settings" direction="in"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In5" value="QVariantMap"/>
+      <arg type="a{sv}" name="page_setup" direction="in"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In6" value="QVariantMap"/>
+      <arg type="a{sv}" name="options" direction="in"/>
+      <arg type="u" name="response" direction="out"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.Out1" value="QVariantMap"/>
+      <arg type="a{sv}" name="results" direction="out"/>
+    </method>
+
+    <!--
+        Print:
+        @handle: Object path for the :ref:`org.freedesktop.impl.portal.Request` object representing this call
+        @app_id: App id of the application
+        @parent_window: Identifier for the application window, see :doc:`window-identifiers`
+        @title: Title for the print dialog
+        @fd: File descriptor from which to read the content to print
+        @options: Vardict with optional further information
+        @response: Numeric response
+        @results: Vardict with the results of the call
+
+        Prints a file.
+
+        The file is given in the form of a file descriptor open for reading.
+
+        If a valid token is present in the @options, then this call will print
+        with the settings from the Print call that the token refers to. If
+        no token is present, then a print dialog will be presented to the user.
+
+        Note that it is up to the portal implementation to determine how long
+        it considers tokens valid.
+
+        Supported keys in the @options vardict:
+
+        * ``modal`` (``b``)
+
+          Whether to make the dialog modal. Defaults to yes.
+
+        * ``token`` (``u``)
+
+          Token that was returned by a previous org.freedesktop.impl.portal.Print.PreparePrint() call.
+    -->
+    <method name="Print">
+      <annotation name="org.gtk.GDBus.C.UnixFD" value="true"/>
+      <arg type="o" name="handle" direction="in"/>
+      <arg type="s" name="app_id" direction="in"/>
+      <arg type="s" name="parent_window" direction="in"/>
+      <arg type="s" name="title" direction="in"/>
+      <arg type="h" name="fd" direction="in"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In5" value="QVariantMap"/>
+      <arg type="a{sv}" name="options" direction="in"/>
+      <arg type="u" name="response" direction="out"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.Out1" value="QVariantMap"/>
+      <arg type="a{sv}" name="results" direction="out"/>
+    </method>
+  </interface>
+</node>

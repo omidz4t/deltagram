@@ -1,0 +1,10 @@
+#ifndef IGNORE_HPP
+#define IGNORE_HPP
+
+static const char *GI_DATA_IGNORE = R"|(
+@CPPGIR_IGNORE@
+@CPPGIR_UNIX_IGNORE@
+@CPPGIR_WIN_IGNORE@
+)|";
+
+#endif // IGNORE_HPP

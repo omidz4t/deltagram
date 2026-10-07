@@ -1,0 +1,119 @@
+<node>
+	<interface name='org.desktop_app.GtkIntegration.Webview.Master'>
+		<method name='GetStartData'>
+			<arg type='i' name='platform' direction='out'/>
+			<arg type='i' name='mode' direction='out'/>
+			<arg type='s' name='waylandDisplay' direction='out'/>
+			<arg type='s' name='appId' direction='out'/>
+		</method>
+		<method name='MessageReceived'>
+			<arg type='ay' name='message' direction='in'/>
+			<arg type='s' name='sourceUrl' direction='in'/>
+		</method>
+		<method name='NavigationStarted'>
+			<arg type='s' name='uri' direction='in'/>
+			<arg type='b' name='newWindow' direction='in'/>
+			<arg type='b' name='result' direction='out'/>
+		</method>
+		<method name='NavigationDone'>
+			<arg type='b' name='success' direction='in'/>
+		</method>
+		<method name='ExternalWindowClosed'/>
+		<method name='FullscreenChanged'>
+			<arg type='b' name='fullscreen' direction='in'/>
+		</method>
+		<method name='ScriptDialog'>
+			<arg type='i' name='type' direction='in'/>
+			<arg type='s' name='text' direction='in'/>
+			<arg type='s' name='value' direction='in'/>
+			<arg type='b' name='accepted' direction='out'/>
+			<arg type='s' name='text' direction='out'/>
+		</method>
+		<method name='NavigationStateUpdate'>
+			<arg type='s' name='url' direction='in'/>
+			<arg type='s' name='title' direction='in'/>
+			<arg type='b' name='canGoBack' direction='in'/>
+			<arg type='b' name='canGoForward' direction='in'/>
+		</method>
+		<method name='UserInteraction'/>
+		<signal name='DataServerStarted'>
+			<arg type='q' name='port'/>
+			<arg type='s' name='password'/>
+		</signal>
+	</interface>
+	<interface name='org.desktop_app.GtkIntegration.Webview.Helper'>
+		<method name='Create'>
+			<arg type='b' name='debug' direction='in'/>
+			<arg type='i' name='r' direction='in'/>
+			<arg type='i' name='g' direction='in'/>
+			<arg type='i' name='b' direction='in'/>
+			<arg type='i' name='a' direction='in'/>
+			<arg type='s' name='path' direction='in'/>
+			<arg type='i' name='mode' direction='in'/>
+			<arg type='i' name='windowStyle' direction='in'/>
+			<arg type='s' name='shellMessageToken' direction='in'/>
+			<arg type='i' name='marginLeft' direction='in'/>
+			<arg type='i' name='marginRight' direction='in'/>
+			<arg type='i' name='marginTop' direction='in'/>
+			<arg type='i' name='marginBottom' direction='in'/>
+			<arg type='i' name='initialWidth' direction='in'/>
+			<arg type='i' name='initialHeight' direction='in'/>
+			<arg type='b' name='allowThirdPartyCookies' direction='in'/>
+			<arg type='s' name='restrictedOrigin' direction='in'/>
+			<arg type='s' name='restrictedContentSecurityPolicy' direction='in'/>
+		</method>
+		<method name='Reload'/>
+		<method name='Resolve'>
+			<arg type='i' name='result' direction='out'/>
+		</method>
+		<method name='Navigate'>
+			<arg type='s' name='url' direction='in'/>
+		</method>
+		<method name='LoadHtml'>
+			<arg type='ay' name='html' direction='in'/>
+			<arg type='s' name='baseUrl' direction='in'/>
+		</method>
+		<method name='Resize'>
+			<arg type='i' name='w' direction='in'/>
+			<arg type='i' name='h' direction='in'/>
+		</method>
+		<method name='SetFullscreen'>
+			<arg type='b' name='fullscreen' direction='in'/>
+		</method>
+		<method name='Init'>
+			<arg type='ay' name='js' direction='in'/>
+		</method>
+		<method name='InitAllFrames'>
+			<arg type='ay' name='js' direction='in'/>
+		</method>
+		<method name='Eval'>
+			<arg type='ay' name='js' direction='in'/>
+		</method>
+		<method name='Focus'>
+			<arg type='s' name='token' direction='in'/>
+		</method>
+		<method name='SetOpaqueBg'>
+			<arg type='i' name='r' direction='in'/>
+			<arg type='i' name='g' direction='in'/>
+			<arg type='i' name='b' direction='in'/>
+			<arg type='i' name='a' direction='in'/>
+		</method>
+		<method name='GetWinId'>
+			<arg type='t' name='result' direction='out'/>
+		</method>
+		<method name='GetWindowAnchor'>
+			<arg type='i' name='parentPlatform' direction='out'/>
+			<arg type='t' name='x11Id' direction='out'/>
+			<arg type='s' name='waylandHandle' direction='out'/>
+			<arg type='b' name='hasGeometry' direction='out'/>
+			<arg type='i' name='x' direction='out'/>
+			<arg type='i' name='y' direction='out'/>
+			<arg type='i' name='width' direction='out'/>
+			<arg type='i' name='height' direction='out'/>
+			<arg type='b' name='hasOuterSize' direction='out'/>
+			<arg type='i' name='outerWidth' direction='out'/>
+			<arg type='i' name='outerHeight' direction='out'/>
+		</method>
+		<signal name='Started'/>
+	</interface>
+</node>

@@ -1,0 +1,40 @@
+#!/bin/sh
+set -eu
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+export QT_PLUGIN_PATH="$HERE/telegram-plugins"
+export XKB_CONFIG_ROOT="$HERE/usr/share/X11/xkb"
+export XLOCALEDIR="$HERE/usr/share/X11/locale"
+export QT_IM_MODULE="${QT_IM_MODULE:-compose}"
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
+export FONTCONFIG_FILE="$HERE/fonts.conf"
+export FONTCONFIG_PATH="$HERE"
+export DELTA_TEL_RPC="$HERE/telegram-lib/deltachat-rpc-server"
+export DELTA_RPC_LDSO="$HERE/telegram-lib/rpc-rt/ld-linux-x86-64.so.2"
+export DELTA_RPC_LIB="$HERE/telegram-lib/rpc-rt"
+export DELTA_TEL_WRAPPER="$HERE/AppRun"
+export SSL_CERT_FILE="$HERE/usr/share/ca-bundle.crt"
+export WEBKIT_EXEC_PATH="$HERE/usr/lib/x86_64-linux-gnu/webkitgtk-6.0"
+export WEBKIT_INSPECTOR_RESOURCES_PATH="$HERE/usr/share/webkitgtk-6.0"
+export GIO_MODULE_DIR="$HERE/usr/lib/x86_64-linux-gnu/gio/modules"
+export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export SPA_PLUGIN_DIR="$HERE/telegram-lib/spa-0.2"
+export PIPEWIRE_MODULE_DIR="$HERE/telegram-lib/pipewire-0.3"
+export PIPEWIRE_CONFIG_PREFIX="$HERE/telegram-lib/pipewire-conf"
+export QT_XCB_GL_INTEGRATION="${QT_XCB_GL_INTEGRATION:-none}"
+export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}"
+unset LD_LIBRARY_PATH
+if [ "${1:-}" = --bundle-version ]; then cat "$HERE/Telegram.version"; exit; fi
+if [ "${1:-}" = --bundle-rpc ]; then
+  shift
+  exec "$DELTA_RPC_LDSO" --library-path "$DELTA_RPC_LIB" "$DELTA_TEL_RPC" "$@"
+fi
+WORKDIR="${DELTA_TEL_WORKDIR:-${XDG_DATA_HOME:-$HOME/.local/share}/deltagram/desktop}"
+mkdir -p "$WORKDIR"
+if [ "${1:-}" = -webviewhelper ]; then
+  exec "$HERE/telegram-lib/ld-linux-x86-64.so.2.real" \
+    --library-path "$HERE/telegram-lib:/usr/lib/x86_64-linux-gnu:/usr/lib:/usr/lib64" \
+    --preload "$HERE/telegram-lib/libspawnfix.so" "$HERE/Telegram" "$@"
+fi
+exec "$HERE/telegram-lib/ld-linux-x86-64.so.2.real" \
+  --library-path "$HERE/telegram-lib:/usr/lib/x86_64-linux-gnu:/usr/lib:/usr/lib64" \
+  --preload "$HERE/telegram-lib/libspawnfix.so" "$HERE/Telegram" -workdir "$WORKDIR" "$@"

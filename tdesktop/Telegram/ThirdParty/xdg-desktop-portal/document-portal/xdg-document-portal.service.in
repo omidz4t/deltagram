@@ -1,0 +1,11 @@
+[Unit]
+Description=flatpak document portal service
+PartOf=graphical-session.target
+Requires=dbus.service
+After=dbus.service
+
+[Service]
+BusName=org.freedesktop.portal.Documents
+ExecStart=@libexecdir@/xdg-document-portal
+Type=dbus
+Slice=session.slice

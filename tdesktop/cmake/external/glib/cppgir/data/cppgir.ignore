@@ -1,0 +1,181 @@
+# generic
+.*_unref
+.*_free
+.*_ref
+.*_ref_sink
+
+# GLib
+GLib:constant:LOG_DOMAIN
+GLib:record:Error
+# deprecated
+GLib:function:g_assert_warning
+GLib:function:g_slice_.et_config
+GLib:function:g_variant_get_gtype
+GLib:function:g_thread_init_with_errorcheck_mutexes
+# GVariantIter apparently represents 2 distinct types;
+# + a C-boxed type (used with _init)
+# + a heap-based behaving like GBoxed (with _copy and _free)
+# however, annotations do not cover/mention anything of the latter
+# so drop those parts here
+GLib:method:g_variant_iter_new
+GLib:method:g_variant_iter_copy
+# too tricky with generic signature
+GLib:method:g_source_set_callback.*
+# annotation problem
+GLib:function:g_strv_contains.*
+GLib:function:g_unichar_to_utf8
+# not needed; cause trouble otherwise
+#GLib:record:ByteArray
+#GLib:record:Bytes
+GLib:record:PtrArray
+GLib:record:Array
+GLib:record:S?List
+GLib:record:HashTable
+GLib:record:HashTableIter
+GLib:record:Queue
+# annotation problem
+GLib:VariantType:string_scan
+# conditional constants
+GLib:constant:macro__has_attribute.*
+GLib:constant:.*GETTEXT_DOMAIN
+GLib:constant:WIN32.*
+# not defined for C++ compiler
+GLib:constant:.*C_STD_VERSION*
+
+# GObject
+GObject:record:Value
+# deprecated
+GObject:record:ValueArray
+
+# GIO
+# deprecated
+Gio:interface:DesktopAppInfoLookup
+Gio:method:g_notification_set_urgent
+Gio:method:g_settings_list_keys
+# annotation problem
+Gio:virtual-method:ask_question
+# not covered by header includes
+Gio:function:g_networking_init
+# external plugin module API
+Gio:method:g_io_module_(load|unload)
+Gio:function:g_io_module_query
+
+# private parts of the above; these should not make into the GIRs
+# but they might if gobject-introspection was built with embedded glib (meson wrapper)
+GModule:constant:MODULE_IMPL_.*
+GLib:constant:TRACE_.*
+GLib:function:trace_.*
+GLib:function:set_prgname_once
+Gio:function:to_rrtype
+Gio:class:ThreadedResolver
+GObject:bitfield:IOCondition
+
+# Gst
+Gst:constant:ERROR_SYSTEM
+Gst:callback:DebugFuncPtr
+# GstBase
+# actually macros, but with gtk-doc comment
+GstBase:method:gst_byte_writer_put_buffer
+GstBase:method:gst_bit_writer_get_remaining
+# missing G_BEGIN_DECLS in video-blend.h header in some versions
+# (leads to C/C++ link mismatch)
+GstVideo:function:gst_video_blend_scale_linear_RGBA
+GstVideo:function:gst_video_blend
+# likewise missing G_BEGIN_DECLS in gstaudioiec61937.h
+GstAudio:function:gst_audio_iec61937_frame_size
+GstAudio:function:gst_audio_iec61937_payload
+# GstNtpClock is child of GstNetClientClock
+# but it uses the same C struct type
+GstNet:class:NtpClock
+
+# Gtk and lower layers
+#
+# deprecated
+GdkPixbuf:record:Pixdata.*
+GdkPixbuf:bitfield:Pixdata.*
+GdkPixbuf:constant:PIXBUF_MAGIC_NUMBER
+GdkPixbuf:constant:PIXDATA_HEADER_LENGTH
+
+# wrong annotation
+cairo:function:image_surface_create
+# repeated as GdkRectangle
+cairo:record:RectangleInt
+
+# from generated code
+Pango:record:ScriptForLang
+
+# in a header without extern C guard
+Atk:function:get_major_version
+Atk:function:get_minor_version
+Atk:function:get_micro_version
+Atk:function:get_binary_age
+Atk:function:get_interface_age
+
+# private
+Gdk:method:destroy_notify
+Gdk:function:synthesize_window_state
+
+# xlib GIR does not specify header
+# and including that one makes things really messy
+# (due to all sorts of define's)
+xlib:.*
+
+# recent GIR describes way more than it specifies headers
+# also pretty low level, so let's sidestep altogether
+HarfBuzz:.*
+
+# likwise so for freetype2
+freetype2:.*
+
+# Gsk
+# deprecated
+Gsk:class:GLRenderer
+# in separate gtk4-broadway.pc
+Gsk:class:BroadwayRenderer
+
+# likewise filter out some related GtkX parts
+# (should be in a separate ns btw for good measure)
+Gtk:class:Plug
+Gtk:class:Socket
+# private
+Gtk:method:gtk_widget_path_iter_add_qclass
+# missing in summary header gtk-a11y.h
+Gtk:class:HeaderBarAccessible
+Gtk:class:FileChooserWidgetAccessible
+# generated dbus sekeleton parts made it into GIR but otherwise missing
+Gtk:record:_MountOperation.*
+
+# Gtk4
+# header not part of included headers
+Gtk:constant:IM_MODULE_EXTENSION_POINT_NAME
+# Gtk 4.9.1 deprecates TreeView and Cell Renderers
+# alternatives appear not so binding-friendly
+# so arrange to not discard these
+deprecated:Gtk:4.0
+
+# misc config; specify substitute c:type for GtkSnapshot (defined in override)
+#!ctype:Gtk.Snapshot:GI_PATCH_GtkSnapshot
+
+# signal emission method wrappers
+# undocumented; and should not be wrapped either
+# (with some problematic parameter types)
+Soup:method:soup_message_content_sniffed
+Soup:method:soup_message_wrote_chunk
+Soup:method:soup_message_wrote_headers
+Soup:method:soup_message_wrote_body
+Soup:method:soup_message_wrote_informational
+Soup:method:soup_message_got_chunk
+Soup:method:soup_message_got_headers
+Soup:method:soup_message_got_body
+Soup:method:soup_message_got_informational
+Soup:method:soup_message_starting
+Soup:method:soup_message_restarted
+Soup:method:soup_message_finished
+# deprecated interface since 13 years
+Soup:interface:PasswordManager
+# private
+Soup:function:soup_get_resource
+# unstable API
+Soup:class:Requester$
+Soup:method:soup_websocket_extension.*
+Soup:enumeration:RequesterError
