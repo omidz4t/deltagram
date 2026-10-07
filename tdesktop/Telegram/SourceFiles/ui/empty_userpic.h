@@ -26,6 +26,7 @@ public:
 	[[nodiscard]] static QString InaccessibleName();
 
 	EmptyUserpic(const BgColors &colors, const QString &name);
+	EmptyUserpic(const QColor &color, const QString &name);
 
 	void paintCircle(
 		QPainter &p,
@@ -148,6 +149,7 @@ private:
 
 	void fillString(const QString &name);
 
+	const std::unique_ptr<style::owned_color> _ownedColor;
 	const BgColors _colors;
 	QString _string;
 

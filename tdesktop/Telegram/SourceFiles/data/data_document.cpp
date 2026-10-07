@@ -1169,6 +1169,20 @@ ChatRestriction DocumentData::requiredSendRight() const {
 		: ChatRestriction::SendFiles;
 }
 
+void DocumentData::setLocalVideo(
+		const QString &name,
+		const QString &mime,
+		const QSize &videoDimensions,
+		int durationMs) {
+	setFileName(name);
+	setMimeString(mime);
+	type = VideoDocument;
+	dimensions = videoDimensions.isEmpty() ? QSize(320, 180) : videoDimensions;
+	_duration = crl::time(std::max(durationMs, 0));
+	_additional = std::make_unique<VideoData>();
+	setNotSupportsStreaming();
+}
+
 void DocumentData::setFileName(const QString &remoteFileName) {
 	_filename = remoteFileName;
 

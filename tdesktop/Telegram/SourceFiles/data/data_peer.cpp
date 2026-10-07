@@ -377,13 +377,21 @@ void PeerData::updateNameDelayed(
 }
 
 not_null<Ui::EmptyUserpic*> PeerData::ensureEmptyUserpic() const {
+	const auto color = isSelf() ? Delta::SelfAvatarColor() : QColor();
+	if (_userpicEmpty && color.isValid()
+		&& uint32(_userpicEmpty->uniqueKey().first)
+			!= anim::getPremultiplied(color)) {
+		_userpicEmpty = nullptr;
+	}
 	if (!_userpicEmpty) {
 		const auto user = asUser();
-		_userpicEmpty = std::make_unique<Ui::EmptyUserpic>(
-			Ui::EmptyUserpic::UserpicColor(colorIndex()),
-			((user && user->isInaccessible())
-				? Ui::EmptyUserpic::InaccessibleName()
-				: name()));
+		const auto text = (user && user->isInaccessible())
+			? Ui::EmptyUserpic::InaccessibleName()
+			: name();
+		_userpicEmpty = color.isValid()
+			? std::make_unique<Ui::EmptyUserpic>(color, text)
+			: std::make_unique<Ui::EmptyUserpic>(
+				Ui::EmptyUserpic::UserpicColor(colorIndex()), text);
 	}
 	return _userpicEmpty.get();
 }

@@ -593,6 +593,8 @@ HistoryItem::HistoryItem(
 		}
 	}
 
+	Delta::ApplyMessageData(this);
+
 	if (const auto until = data.vreport_delivery_until_date()) {
 		if (base::unixtime::now() < TimeId(until->v)) {
 			history->owner().histories().reportDelivery(this);
@@ -4411,7 +4413,26 @@ bool HistoryItem::isService() const {
 	return Has<HistoryServiceData>();
 }
 
+void HistoryItem::setLocalVideo(
+		not_null<DocumentData*> document,
+		const QString &caption) {
+	if (!_media || _media->document() != document) {
+		_media = std::make_unique<Data::MediaFile>(
+			this, document, Data::MediaFile::Args{});
+	}
+	setText(TextWithEntities{ caption });
+	_history->owner().requestItemViewRefresh(this);
+}
+
 bool HistoryItem::unread(not_null<Data::Thread*> thread) const {
+	if (Delta::Active()) {
+		if (const auto state = Delta::MessageDelivery(id.bare)) {
+			return *state != Delta::DeliveryState::Read;
+		}
+		if (out()) {
+			return !_history->peer->isSelf();
+		}
+	}
 	// Messages from myself are always read, unless scheduled.
 	if (_history->peer->isSelf() && !isFromScheduled()) {
 		return false;

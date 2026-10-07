@@ -32,6 +32,7 @@ also requires a running Docker daemon):
 make init     # fetch context sources and install the local Nix toolchain
 make build    # debug Core RPC server and Qt client
 make test     # offline regression tests and source publication audit
+make version  # prepare version and changelogs from Conventional Commits
 make release  # one portable dist/deltagram executable, four GUI jobs
 make release-all # executable plus Debian, RPM, Arch and portable tar packages
 make clean    # remove disposable distribution/export output
@@ -40,6 +41,8 @@ make clean    # remove disposable distribution/export output
 The Nix store and build caches live under ignored `data/`. ccache defaults to
 5 GB. `clean` preserves compiler caches and Ninja's incremental records.
 See [development details](docs/DEVELOPMENT.md) for limits and overrides.
+Version preparation is documented in [the release guide](docs/RELEASING.md);
+release notes are in [CHANGELOG.md](CHANGELOG.md).
 
 The GitHub Actions build workflow is retained but currently disabled. Builds use
 flake.lock. Telegram conference encryption is

@@ -32,8 +32,6 @@ if [[ ! -f "$BUILD_DIR/build.ninja" ]]; then
   cmake "${cmake_args[@]}"
 fi
 
-python3 "$ROOT/nix/bump-version.py" \
-  "$ROOT/tdesktop/Telegram/build/version" \
-  "$ROOT/tdesktop/Telegram/SourceFiles/core/version.h"
+# scripts/semantic-release.py updates versions before release preparation.
 cmake --build "$BUILD_DIR" --target Telegram -j "${NIX_BUILD_CORES:-$(nproc)}"
 echo "Binary: $BUILD_DIR/bin/Telegram"

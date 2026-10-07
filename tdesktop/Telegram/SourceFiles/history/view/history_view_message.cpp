@@ -5421,11 +5421,16 @@ void Message::drawInfo(
 		const auto dateH = size.height() + 2 * st::msgDateImgPadding.y();
 		Ui::FillRoundRect(p, dateX - st::msgDateImgPadding.x(), dateY - st::msgDateImgPadding.y(), dateW, dateH, sti->msgServiceBg, sti->msgServiceBgCornersSmall);
 	}
+	const auto delivery = Delta::Active()
+		? Delta::MessageDelivery(data()->id.bare)
+		: std::nullopt;
 	_bottomInfo.paint(
 		p,
 		{ dateX, dateY },
 		width,
-		delegate()->elementShownUnread(this),
+		delivery
+			? *delivery != Delta::DeliveryState::Read
+			: delegate()->elementShownUnread(this),
 		invertedsprites,
 		context);
 }

@@ -39,10 +39,13 @@ Intermediate GUI outputs remain in `data/tdesktop-release/bin/Telegram` and
 staging and container downloads stay in `data/release-stage` and
 `data/container-build`. No manual copy into an older dist bundle is needed.
 
-Both GUI build scripts increment the semantic patch version before each build
-attempt. The major/minor version and beta setting are preserved. Build metadata
-and `SourceFiles/core/version.h` change together. A failed build consumes a patch
-number; retrying can increment it again. No cache cleaning is required.
+GUI builds use the prepared version without incrementing it, so retries retain
+the same version and compiler caches. Before preparing a new release, run
+`python3 scripts/semantic-release.py --dry-run`, then `make version` to update
+`.version`, the app metadata/header and changelogs from committed Conventional
+Commits. See [RELEASING.md](RELEASING.md). No cache cleaning is required.
+The pipeline's caching and optional packaging are described in
+[DEVELOPMENT.md](DEVELOPMENT.md).
 
 `nix/release.sh` locks the complete build/stage/package sequence.
 `nix/build-release.sh` also holds `.build.lock` in the release tree. Run one heavy

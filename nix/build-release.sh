@@ -29,9 +29,8 @@ if [[ ! -f "$RELEASE_DIR/build.ninja" ]]; then
     -DDESKTOP_APP_DISABLE_AUTOUPDATE=ON
 fi
 
-VERSION=$(python3 "$ROOT/nix/bump-version.py" \
-  "$ROOT/tdesktop/Telegram/build/version" \
-  "$ROOT/tdesktop/Telegram/SourceFiles/core/version.h")
+# Release preparation owns version changes; compilation is repeatable.
+VERSION=$(awk '$1 == "AppVersionStr" { print $2 }' "$ROOT/tdesktop/Telegram/build/version")
 echo "Building Delta Tel $VERSION"
 cmake --build "$RELEASE_DIR" --target Telegram -j "$JOBS"
 strip --strip-all -o "$RELEASE_DIR/bin/Telegram.stripped" "$RELEASE_DIR/bin/Telegram"

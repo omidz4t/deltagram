@@ -262,6 +262,12 @@ EmptyUserpic::EmptyUserpic(const BgColors &colors, const QString &name)
 	fillString(name);
 }
 
+EmptyUserpic::EmptyUserpic(const QColor &color, const QString &name)
+: _ownedColor(std::make_unique<style::owned_color>(color))
+, _colors({ _ownedColor->color(), _ownedColor->color() }) {
+	fillString(name);
+}
+
 QString EmptyUserpic::ExternalName() {
 	return QChar(0) + u"external"_q;
 }

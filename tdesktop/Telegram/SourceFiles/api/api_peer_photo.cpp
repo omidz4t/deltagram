@@ -29,6 +29,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "storage/localimageloader.h"
 #include "storage/storage_user_photos.h"
 #include "ui/image/image_location.h"
+#include "ui/toast/toast.h"
 
 #include <QtCore/QBuffer>
 #include <QtCore/QTemporaryFile>
@@ -340,10 +341,14 @@ void PeerPhoto::upload(
 	peer = peer->migrateToOrMe();
 	if (Delta::Active() && peer->isSelf()) {
 		const auto file = std::make_shared<QTemporaryFile>(
-			QDir::temp().filePath(u"delta-tel-avatar-XXXXXX.jpg"_q));
+			QDir::temp().filePath(u"delta-tel-avatar-XXXXXX.png"_q));
 		const auto image = photo.image;
-		if (image.isNull() || !file->open() || !image.save(file.get(), "JPG", 90)) {
+		// PNG is built into Qt; saving the crop must not require a JPEG writer
+		// plugin. Core owns conversion to its stored/distributed avatar format.
+		if (image.isNull() || !file->open()
+			|| !image.save(file.get(), "PNG") || !file->flush()) {
 			_uploadFailed.fire_copy(peer);
+			Ui::Toast::Show(u"Could not save the cropped profile photo."_q);
 			return;
 		}
 		file->close();
@@ -352,6 +357,7 @@ void PeerPhoto::upload(
 			file->remove();
 			if (!error.isEmpty()) {
 				_uploadFailed.fire_copy(peer);
+				Ui::Toast::Show(u"Could not update the profile photo: "_q + error);
 				return;
 			}
 			_uploadProgress.fire({ peer, 1. });

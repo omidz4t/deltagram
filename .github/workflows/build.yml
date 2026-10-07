@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      package:
+        description: Build and verify the portable executable after compilation
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -20,17 +25,59 @@ jobs:
     env:
       DELTA_TEL_USE_SYSTEM_NIX: '1'
       DELTA_TEL_JOBS: '4'
-      CCACHE_MAXSIZE: 2G
+      DELTA_TEL_CONTEXT_CORE_ONLY: '1'
+      CCACHE_MAXSIZE: 5G
+      # GCC/CMake uses -include for PCH. These settings enable its caching.
+      CCACHE_SLOPPINESS: pch_defines,time_macros
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Offline tests and source audit (before toolchain downloads)
+        run: |
+          python3 nix/test-bump-version.py
+          python3 nix/test-build-release.py
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          for script in nix/*.sh docker/*.sh; do bash -n "$script"; done
+          python3 nix/audit-source.py
       - uses: cachix/install-nix-action@b85815f71a6de0ddee80b8a80a98d43f4bcc66c7 # v31
-      - name: Initialize the pinned toolchain
-        run: make init
-      - name: Offline tests and source audit
-        run: make test
-      - name: Build Core RPC and Qt release
-        run: make release
-      - name: Core RPC smoke test
-        run: ./nix/develop.sh --command bash nix/test-rpc.sh
+      - name: Restore pinned Nix toolchain
+        uses: nix-community/cache-nix-action@b16f249a0248efec86dd9d4224cb75f1ffa48bcc
+        with:
+          primary-key: nix-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          # Only main populates shared caches; PRs can restore them.
+          save: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+          # No garbage collection: compiled programs reference store libraries.
+      - name: Restore compiler and Rust caches
+        uses: actions/cache@3edfce9056124e459a23f683a21433670d47daca
+        with:
+          path: |
+            data/ccache
+            data/cargo-home/registry
+            data/cargo-home/git
+            data/cargo-target
+          key: compile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/context-sources.sh', 'nix/build-release.sh', 'nix/build-rpc.sh') }}-${{ github.sha }}
+          restore-keys: |
+            compile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/context-sources.sh', 'nix/build-release.sh', 'nix/build-rpc.sh') }}-
+      - name: Initialize Core sources and dependency shell
+        run: |
+          bash nix/init-context.sh
+          ./nix/develop.sh --command true
+      - name: Build Core RPC and Qt release, then smoke-test RPC
+        run: |
+          ./nix/develop.sh --command bash -euo pipefail -c '
+            ccache --zero-stats
+            bash nix/build-rpc.sh
+            bash nix/build-release.sh
+            bash nix/test-rpc.sh
+            ccache --show-stats
+          '
+      - name: Package and verify portable executable (manual opt-in)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.package }}
+        run: |
+          ./nix/develop.sh --command python3 nix/stage-release.py
+          bash docker/build.sh
+          bash docker/verify.sh
+      - name: Cache and disk usage
+        if: always()
+        run: du -sh data/ccache data/cargo-target /nix/store 2>/dev/null || true

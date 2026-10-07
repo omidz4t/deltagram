@@ -24,4 +24,6 @@ clone_source() (
 )
 
 clone_source core "$CORE_URL" "$CORE_REV"
-clone_source deltachat-desktop "$DESKTOP_URL" "$DESKTOP_REV"
+if [[ "${DELTA_TEL_CONTEXT_CORE_ONLY:-0}" != 1 ]]; then
+    clone_source deltachat-desktop "$DESKTOP_URL" "$DESKTOP_REV"
+fi

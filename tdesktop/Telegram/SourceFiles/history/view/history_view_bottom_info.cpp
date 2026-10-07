@@ -713,7 +713,12 @@ BottomInfo::Data BottomInfoDataFromMessage(not_null<Message*> message) {
 	if (Delta::Active()) {
 		if (const auto count = Delta::ChannelViewCount(item->id.bare)) result.views = *count;
 	}
-	if (item->isSending() || item->hasFailed()) {
+	const auto delivery = Delta::Active()
+		? Delta::MessageDelivery(item->id.bare)
+		: std::nullopt;
+	if (item->isSending() || item->hasFailed()
+		|| (delivery && (*delivery == Delta::DeliveryState::Pending
+			|| *delivery == Delta::DeliveryState::Failed))) {
 		result.flags |= Flag::Sending;
 	}
 	if (item->isEphemeral()

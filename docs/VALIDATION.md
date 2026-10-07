@@ -93,3 +93,53 @@ passes. No binary artifacts are tracked and GitHub Actions remains disabled.
 These checks cover startup, input and packaging on Linux x86-64. They do not
 establish Windows/macOS/ARM support, live messaging, every graphics driver,
 complete WebKit functionality or all features in the compatibility tracker.
+
+## Profile photo and account color regression checks — 2026-10-07
+
+The locally modified client built successfully with four release compiler jobs,
+preserving the existing Ninja and ccache records. A disposable three-account
+fixture used the real Core RPC server with mail IO suppressed by a test proxy.
+Settings image selection, cropping and confirmation saved a PNG through Core
+and immediately repainted Settings and the sidebar. Replacing the photo and
+restarting the client retained the new image. An injected Core save
+failure displayed an error toast and retained the existing avatar. Holding an
+old, empty avatar response for 40 seconds did not erase a newly saved photo.
+Switching between two accounts without photos produced the exact Core colors
+`#b23100` and `#c50000` in the selected sidebar avatar, matching their rows.
+
+A separate Qt check disabled image plugin discovery and successfully encoded
+and decoded the PNG used for the crop handoff. This avoids depending on the
+JPEG encoder for that step. The development shell now exposes the Qt image
+plugin paths for native runs. Offline project tests and the source audit passed.
+These checks do not establish live avatar distribution to other devices.
+
+`make release` produced the updated `dist/deltagram`. Its isolated Debian
+verification passed the bundled Core RPC check, GUI startup and profile-name
+keyboard input with networking disabled. The binary remains gitignored.
+
+## Video forwarding and delivery indicators — 2026-10-07
+
+The locally modified release client sent and forwarded an MP4 using the real
+Core RPC server in a disposable account with mail IO suppressed. Forwarding
+preserved the attachment bytes. The GUI Forward action successfully copied a
+video without a caption into Saved Messages; both the inline player and full
+media viewer played the video instead of displaying `[Video] filename`.
+The attachment picker also sent a silent MP4 with `viewtype: Video`, covering
+the donor's animation classification for videos without audio.
+
+Delivery checks seeded the fixture database with Core pending and delivered
+states and an MDN, then injected matching Core events through the test proxy.
+The open chat and chat list changed from a clock to one check, then two checks.
+The client queries Core's receipt count for delivered outgoing messages rather
+than assuming every outgoing message is read. A fresh self-message also showed
+one check for Core delivery without a read receipt, despite Saved Messages
+using different donor flags for locally created messages.
+
+The release compiler ran with four jobs and retained the incremental build
+records. Offline project tests and the source audit passed. These checks cover
+local MP4 rendering, forwarding and status transitions; they do not establish
+live cross-client transport, every video codec or multi-recipient receipt
+semantics.
+
+The updated `dist/deltagram` passed the isolated Debian GUI startup, keyboard
+input and bundled Core RPC checks with network access disabled.

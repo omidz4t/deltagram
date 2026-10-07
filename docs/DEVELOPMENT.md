@@ -1,107 +1,271 @@
-# Development and storage
+# Development guide
 
-## Commit conventions
+This guide covers the supported development workflow, contribution conventions,
+build storage and continuous integration for Deltagram. The project is
+experimental; consult the [compatibility tracker](COMPATIBILITY.md) before
+assuming a feature is implemented or verified.
+
+## Architecture and project layout
+
+Deltagram uses Telegram Desktop as its Qt UI donor and Chatmail Core as its
+messaging backend. Core owns persistence, encryption and networking. New
+messaging paths must use Core JSON-RPC; they must not introduce MTProto requests
+or reimplement IMAP, SMTP or OpenPGP.
+
+Read [ONBOARDING.md](ONBOARDING.md),
+[ARCHITECTURE-RECON.md](ARCHITECTURE-RECON.md) and [MVP-PLAN.md](MVP-PLAN.md)
+before changing messaging behavior. Follow the repository's `AGENTS.md`
+instructions and the donor's applicable code conventions.
+
+| Location | Purpose | Git status |
+| --- | --- | --- |
+| `tdesktop/` | Edited Qt client and donor sources | Tracked |
+| `context/core/` | Pinned Chatmail Core checkout | Ignored |
+| `context/deltachat-desktop/` | Pinned Desktop reference checkout | Ignored |
+| `nix/` | Toolchain, build and validation scripts | Tracked |
+| `scripts/` | Project automation, including version preparation | Tracked |
+| `data/` | Local toolchain, caches and incremental build state | Ignored |
+| `dist/` | Generated executables and distribution packages | Ignored |
+| `.version` and `CHANGELOG.md` | Prepared project version and release notes | Tracked |
+
+Delta Chat Desktop is a behavior reference, not a build dependency. Upstream
+source URLs and revisions are recorded in `nix/context-sources.sh`.
+
+## Set up the development environment
+
+The current build workflow targets x86-64 Linux. Local Nix installation requires
+unprivileged user namespaces. Git, Bash, Make, curl and standard Linux utilities
+must be available; initialization also requires network access. Portable release
+packaging requires Docker and a running daemon.
+
+From the project root:
+
+```sh
+make init
+make build
+make test
+```
+
+`make init` fetches missing context checkouts, installs the project-local Nix
+toolchain, builds the locked dependency closure and verifies shell entry. It
+preserves existing context directories and local edits, including source
+snapshots without Git metadata. Existing directories are not reset to their
+pinned revisions; inspect them when validating reproducibility.
+
+Enter the dependency shell for manual commands:
+
+```sh
+./nix/develop.sh
+```
+
+For GUI automation and debugging tools, including Xvfb, xdotool, image tools,
+GDB and UPX, select the optional UI shell:
+
+```sh
+DELTA_TEL_SHELL=ui ./nix/develop.sh
+```
+
+The default shell omits those tools to reduce its dependency closure. See
+[NIX.md](NIX.md) for toolchain setup and storage details.
+
+## Build and validation commands
+
+| Command | Result |
+| --- | --- |
+| `make init` | Initialize context sources and the locked toolchain |
+| `make build` | Build Core RPC and the Qt client for development |
+| `make test` | Run offline Python regressions, shell syntax checks and the source audit |
+| `make version` | Prepare the version and changelogs from committed Conventional Commits |
+| `make release` | Build and verify the portable `dist/deltagram` executable |
+| `make release-all` | Also produce Debian, RPM, Arch and portable archive packages |
+| `make clean` | Remove `dist/` and `publish-output/` |
+
+A successful dependency-shell initialization does not verify the application.
+Run the relevant build target after source changes, and record the checks that
+support the change.
+
+After building Core, exercise account creation and chat-list loading through
+the real Qt/Core RPC transport:
+
+```sh
+./nix/develop.sh --command bash nix/test-rpc.sh
+```
+
+The smoke test uses disposable account data, performs no mail IO and limits the
+application process to 30 seconds. Review IPv4 literals separately when preparing
+source for publication:
+
+```sh
+./nix/develop.sh --command python3 nix/audit-source.py --ips
+```
+
+Public endpoints, loopback addresses and test fixtures can legitimately appear
+in donor sources. Automated pattern checks complement manual review; they do
+not establish that a checkout contains no secrets. See
+[VALIDATION.md](VALIDATION.md) for recorded results and
+[PUBLISHING.md](PUBLISHING.md) for source publication requirements.
+
+## Incremental builds and storage
+
+The toolchain is pinned by `flake.nix` and `flake.lock`. Only those definitions
+are copied into the temporary Nix input; application and Core sources build
+outside the store using CMake, Ninja, Cargo and ccache. Source edits therefore
+reuse the dependency closure and existing compilation state.
+
+| Default path | Contents | Override |
+| --- | --- | --- |
+| `data/nix` | Project-local Nix installation and store | `DELTA_TEL_NIX_ROOT` |
+| `data/cache` | Application/tool cache files | `XDG_CACHE_HOME` |
+| `data/ccache` | Compressed C/C++ compiler cache | `CCACHE_DIR` |
+| `data/cargo-home` | Cargo registry and Git dependencies | `CARGO_HOME` |
+| `data/cargo-target` | Rust build outputs | `CARGO_TARGET_DIR` |
+| `data/tdesktop-out` | Development GUI build tree | `CMAKE_BUILD_DIR` |
+| `data/tdesktop-release` | Release GUI build tree | `RELEASE_DIR` |
+| `data/tmp` | Temporary build files | `TMPDIR` |
+
+Set `DELTA_TEL_DATA` before initialization to choose another base directory.
+Individual overrides take precedence. Keep existing CMake trees at their
+original paths: their configuration and incremental records contain absolute
+paths.
+
+ccache compresses entries and defaults to a 5 GB limit; use `CCACHE_MAXSIZE` to
+adjust it. The Nix store and Cargo outputs have no automatic size cap. Installer
+downloads and packaging stages also use `data/`, while Docker images use Docker's
+own storage. Avoid automatic Nix store garbage collection because staged runtimes
+can reference store libraries.
+
+**Preserve incremental build state.** Do not delete, rename or replace the
+release build directory, ccache, `build.ninja`, `.ninja_deps` or `.ninja_log`
+when recovering from a Ninja warning or crash. A premature-end-of-file warning
+requires retrying the same build command. `make clean` preserves these records,
+compiler caches, build trees and account data.
+
+Run one heavy build at a time. Release GUI compilation must use
+`DELTA_TEL_JOBS=4`; using every CPU can exhaust memory. Release scripts hold locks
+to serialize compilation and packaging. Other CMake, Ninja and Cargo builds use
+`nproc` as specified by the project instructions.
+
+## Contribution and commit conventions
 
 All contributors, including coding agents, must use Conventional Commits and
 sign every commit with their own configured Git identity and signing key.
-Use `type(scope): summary`, with an optional scope and a short imperative
-summary. Choose the type that describes the change:
 
-- `feat`: add a feature.
-- `fix`: correct a bug.
-- `docs`: update documentation.
-- `build`: change build tools, dependencies or packaging.
-- `ci`: change automation workflows.
-- `test`: add or update tests.
-- `refactor`: restructure code without changing behavior.
-- `perf`: improve performance.
-- `style`: change formatting without changing behavior.
-- `chore`: perform maintenance.
-- `revert`: revert an earlier change.
+```text
+type(scope): imperative summary
+```
 
-Examples: `feat(chat): add account switching`, `fix(rpc): handle disconnects`,
-and `docs: clarify release prerequisites`. Mark breaking changes with `!`
-after the type or scope and explain them in a `BREAKING CHANGE:` footer.
-Use the commit body to explain the reason and relevant validation when needed.
+The scope is optional. Keep the summary concise and use the body to explain the
+reason for the change and relevant validation when needed.
 
-Configure `user.name`, `user.email`, `user.signingkey` and `commit.gpgsign=true`
-before contributing, then commit with `git commit -S -m 'docs: clarify setup'`.
-Check the signature with `git verify-commit HEAD`. Keep generated binaries,
-credentials and local context sources out of commits. When squashing a branch,
-give the resulting commit a conventional message and sign it again.
+| Type | Use |
+| --- | --- |
+| `feat` | Introduce a feature |
+| `fix` | Correct a bug |
+| `perf` | Improve performance |
+| `refactor` | Restructure code without changing behavior |
+| `docs` | Update documentation |
+| `test` | Add or update tests |
+| `build` | Change build tools, dependencies or packaging |
+| `ci` | Change automation workflows |
+| `style` | Change formatting without changing behavior |
+| `chore` | Perform maintenance |
+| `revert` | Revert an earlier change |
 
-## Local builds
+Examples:
 
-Run `make init` once, then `make build` or `make release`. The shell copies only
-flake.nix and flake.lock into a temporary directory; application sources never
-become a Nix store snapshot. The edited Qt donor lives in `tdesktop/`.
-`make init` fetches pinned Chatmail Core and Delta Chat Desktop sources into
-ignored `context/core/` and `context/deltachat-desktop/`. Desktop is a behavior
-reference, not a build input. Source URLs and revisions are recorded in
-`nix/context-sources.sh`. Initialization preserves existing directories and local
-edits, including materialized snapshots without Git metadata; it never resets
-them to the pinned revisions. Fresh checkouts need Git and network access.
+```text
+feat(chat): add account switching
+fix(rpc): handle disconnects
+build: reduce release packaging time
+docs: clarify development prerequisites
+```
 
-Defaults are project-local: `data/nix`, `data/cache`, `data/ccache`,
-`data/cargo-home`, `data/cargo-target`, `data/tdesktop-out` and
-`data/tdesktop-release`. Set `DELTA_TEL_DATA` to choose another data directory.
-Individual `DELTA_TEL_NIX_ROOT`, `CCACHE_DIR`, `CMAKE_BUILD_DIR`, `RELEASE_DIR`,
-`CARGO_HOME` and `CARGO_TARGET_DIR` overrides remain supported. Do not relocate
-an existing CMake tree: its absolute paths and incremental records matter.
+Mark a breaking change with `!` after the type or scope, and explain the impact
+in a `BREAKING CHANGE:` footer:
 
-ccache compresses entries and defaults to 5 GB (`CCACHE_MAXSIZE` overrides it).
-The store and Cargo output have no automatic size cap. Do not run automatic
-store garbage collection: portable bundles can reference store libraries.
-`make clean` deletes only `dist/` and `publish-output/`; it never deletes build
-trees, Ninja records, accounts or ccache. Release builds use four compiler jobs
-and a lock. Run one heavy build at a time.
+```text
+feat(rpc)!: replace the account selection API
 
-`make test` runs offline Python regressions, shell syntax checks and a source
-audit. Run `python3 nix/audit-source.py --ips` inside the development shell to
-review IPv4 literals. Public endpoints, loopback and fixture addresses are
-expected in donor sources. Pattern matching cannot prove absence of secrets.
+BREAKING CHANGE: callers must provide an explicit account identifier.
+```
 
-Both Core and the Qt client use the Rust/compiler dependencies pinned in
-flake.lock. WebRTC and animation packages are supplied by the dependency
-closure. A successful dependency shell alone is not proof of an application
-build; run the build target to verify the current source.
+Configure `user.name`, `user.email`, `user.signingkey` and
+`commit.gpgsign=true` before contributing. Create and verify signed commits with:
 
-Installer downloads and default temporary build files also live under `data/`,
-which avoids filling a small tmpfs at /tmp. Set TMPDIR to override this explicitly.
-UPX output is optional (`DELTA_TEL_PACK_UPX=1`); ordinary releases keep only the
-normal and stripped intermediate executables. `make release` then stages their
-runtime and uses Docker to produce the single-file `dist/deltagram` executable.
-`make release-all` also produces Debian, RPM, Arch and portable archive packages
-under `dist/packages/`. A running Docker daemon is required. Packaging stages
-stay under `data/`; Docker images use Docker's own storage. See
-[the release guide](../docker/README.md). Validation results are in VALIDATION.md.
+```sh
+git commit -S -m 'docs: clarify development prerequisites'
+git verify-commit HEAD
+```
 
-## CI and Telegram conference removal
+Keep credentials, local context sources and generated binaries out of commits.
+When squashing a branch, give the resulting commit a conventional message and
+sign it again. Version bump rules are documented in [RELEASING.md](RELEASING.md).
 
-The root `.github/workflows/build.yml` is retained but currently disabled on
-GitHub. When enabled, it installs Nix, initializes the locked dependency toolchain,
-runs offline tests and the source audit, and builds Core RPC followed by the Qt
-release. GUI compilation uses four jobs. It does not commit or upload binaries.
-Release packaging also requires the runner's Docker daemon.
-The workflow has read-only repository permissions and pins its actions to commit
-IDs. `DELTA_TEL_USE_SYSTEM_NIX=1` uses the runner's existing /nix installation;
-local builds retain the project-local single-user store.
+## Version preparation and release packaging
 
-The toolchain now pins nixos-unstable in flake.lock, providing a sufficiently new
-Rust compiler, tg_owt and tlottie. Core no longer fetches a separate floating
-Rust toolchain. These are dependency packages only: the application and Core
-sources still build incrementally outside the Nix store.
+`.version` is the source of truth. `scripts/semantic-release.py` reads committed
+Conventional Commits and synchronizes the project changelog, app changelog,
+build metadata and compiled version header. Builds use the prepared version and
+never increment it automatically.
 
-The application no longer links tde2e or compiles its Telegram adapter. Telegram
-conference starts and joins are refused; no substitute encryption is provided.
-Chatmail Core remains responsible for messaging encryption. Delta Chat calling
-support is not implemented by this change. The donor's remaining call code still
-needs WebRTC; complete removal of that donor subsystem is separate work.
+Commit the source changes before preparing a release, then preview the result:
 
-Normal builds omit the optional GUI automation and debugging tools. Use
-`DELTA_TEL_SHELL=ui ./nix/develop.sh` for Xvfb, xdotool, image tools, GDB and
-UPX. This keeps the default local/CI dependency closure smaller.
+```sh
+./nix/develop.sh --command python3 scripts/semantic-release.py --dry-run
+make version
+```
 
-After building Core, run `./nix/develop.sh --command bash nix/test-rpc.sh` for the
-existing Qt/Core RPC account-and-chat-list self-test. It uses disposable account
-data, no mail IO, and a 30-second process timeout. CI runs it after the build.
+Review the generated files and commit them together with a signed conventional
+message before distributing a release. See [RELEASING.md](RELEASING.md) for
+history boundaries, bump rules and repeat-run behavior.
+
+`make release` builds Core and the GUI, stages their runtime and uses Docker to
+produce one executable. `make release-all` also writes distribution packages to
+`dist/packages/`. The portable executable targets Linux x86-64; platform
+requirements and installation instructions are in the
+[packaging guide](../docker/README.md).
+
+Normal releases retain the ordinary and stripped intermediate GUI executables.
+`DELTA_TEL_PACK_UPX=1` optionally compresses an intermediate copy when UPX is
+available; it is not required for portable packaging.
+
+## Continuous integration
+
+The workflow in [`.github/workflows/build.yml`](../.github/workflows/build.yml)
+is retained, with GitHub Actions currently disabled. When enabled, it:
+
+1. Runs offline regressions, shell syntax checks and the source audit before downloading the toolchain.
+2. Restores dependency and compiler caches, then initializes Core and the dependency shell.
+3. Builds Core RPC and the Qt release sequentially, with four GUI compiler jobs.
+4. Runs the Qt/Core RPC smoke test and reports compiler cache statistics.
+5. Packages and verifies the portable executable when `package` is selected in a manual workflow dispatch.
+
+Routine pushes and pull requests compile and validate RPC without portable
+packaging. CI omits the Desktop reference clone and separate dependency
+`buildEnv` construction. It uses the runner's existing `/nix` installation through
+`DELTA_TEL_USE_SYSTEM_NIX=1`; local builds retain the project-local store.
+
+The Nix cache is keyed by toolchain definitions and populated from `main`.
+Compiler and Cargo cache keys include the toolchain, Core source revision and
+build scripts, with a commit-specific key and compatible prefix for reuse across
+commits. ccache is capped at 5 GB. Cache eviction and transfer costs can affect
+performance; use per-run hit/miss statistics and timings to assess the benefit.
+Cache misses still perform normal builds, and no automatic store garbage
+collection runs.
+
+CI enables ccache's PCH settings, `pch_defines,time_macros`, for the donor's
+precompiled headers. These settings relax macro checks within PCH and can retain
+the original date in cached build-date strings. Compiler flags, header content
+and the toolchain remain part of cache validation.
+
+The workflow grants read-only repository permissions and pins third-party
+actions to commit IDs. It does not commit source changes or publish release
+artifacts.
+
+## Messaging and calling boundaries
+
+Chatmail Core provides messaging encryption. The client excludes the Telegram
+conference encryption dependency and adapter; Telegram conference starts and
+joins are refused. Delta Chat calling support remains unimplemented, while the
+donor's remaining call code still requires WebRTC. Consult the
+[compatibility tracker](COMPATIBILITY.md) for the current scope and evidence.

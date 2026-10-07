@@ -5,6 +5,7 @@ This file is part of Delta Tel, a Telegram Desktop based Delta Chat client.
 #include "delta/avatar_image.h"
 
 #include "base/weak_ptr.h"
+#include "core/file_location.h"
 #include "data/data_document.h"
 #include "data/data_changes.h"
 #include "data/data_photo.h"
@@ -94,7 +95,8 @@ void RememberSubtitle(int userId, qint64 lastSeen, const QString &line) {
 	}
 	const auto info = QFileInfo(path);
 	const auto photoId = qint64(qHash(
-		path + QString::number(info.lastModified().toSecsSinceEpoch())))
+		path + QString::number(info.lastModified().toMSecsSinceEpoch())
+			+ QString::number(info.size())))
 		+ 1;
 	AvatarFiles.insert(photoId, path);
 	return MTP_userProfilePhoto(
@@ -158,6 +160,8 @@ void RememberSubtitle(int userId, qint64 lastSeen, const QString &line) {
 
 QHash<qint64, QString> PhotoFiles;
 QHash<qint64, QString> DocumentFiles;
+QHash<int, QJsonObject> CoreMessages;
+QHash<int, int> CoreReadReceipts;
 QHash<QString, QString> PendingUploads;
 
 [[nodiscard]] QString PendingKey(uint64 peer, int64 msg) {
@@ -181,6 +185,22 @@ QHash<QString, QString> PendingUploads;
 		|| lower.endsWith(u".webp"_q)
 		|| lower.endsWith(u".gif"_q)
 		|| lower.endsWith(u".bmp"_q);
+}
+
+[[nodiscard]] bool LooksLikeVideo(
+		const QString &kind,
+		const QString &mime,
+		const QString &path) {
+	if (kind == u"Video"_q || mime.startsWith(u"video/"_q, Qt::CaseInsensitive)) {
+		return true;
+	}
+	const auto lower = path.toLower();
+	return lower.endsWith(u".mp4"_q)
+		|| lower.endsWith(u".m4v"_q)
+		|| lower.endsWith(u".mov"_q)
+		|| lower.endsWith(u".webm"_q)
+		|| lower.endsWith(u".mkv"_q)
+		|| lower.endsWith(u".avi"_q);
 }
 
 [[nodiscard]] bool LooksLikeVoice(
@@ -490,6 +510,7 @@ QHash<QString, QString> PendingUploads;
 [[nodiscard]] MTPMessage MessageFromJson(
 		int peerUser,
 		const QJsonObject &data) {
+	CoreMessages.insert(data.value(u"id"_q).toInt(), data);
 	auto text = data.value(u"text"_q).toString();
 	const auto kind = data.value(u"viewType"_q).toString();
 	if (kind == u"Vcard"_q) {
@@ -707,6 +728,7 @@ private:
 class Bridge;
 Bridge *GlobalBridge = nullptr;
 QString GlobalSelfAddress;
+QColor GlobalSelfAvatarColor;
 QSet<int> GlobalSystemUsers;
 
 class Bridge final {
@@ -730,6 +752,9 @@ public:
 	~Bridge() {
 		if (GlobalBridge == this) {
 			GlobalBridge = nullptr;
+			GlobalSelfAvatarColor = QColor();
+			CoreMessages.clear();
+			CoreReadReceipts.clear();
 		}
 	}
 
@@ -753,11 +778,26 @@ public:
 	void loadSelfAvatar() {
 		const auto guard = _alive;
 		const auto accountId = _accountId;
+		const auto revision = ++_selfAvatarRevision;
+		_rpc->call(
+			u"get_account_info"_q,
+			{ accountId },
+			[=](QJsonObject reply) {
+				if (guard.expired() || accountId != _accountId
+					|| revision != _selfAvatarRevision || HasError(reply)) {
+					return;
+				}
+				GlobalSelfAvatarColor = QColor(reply.value(u"result"_q)
+					.toObject().value(u"color"_q).toString());
+				_session->changes().peerUpdated(
+					_session->user(), Data::PeerUpdate::Flag::Photo);
+			});
 		_rpc->call(
 			u"get_config"_q,
 			{ accountId, u"selfavatar"_q },
 			[=](QJsonObject reply) {
-				if (guard.expired() || accountId != _accountId || HasError(reply)) {
+				if (guard.expired() || accountId != _accountId
+					|| revision != _selfAvatarRevision || HasError(reply)) {
 					return;
 				}
 				const auto path = reply.value(u"result"_q).toString();
@@ -769,6 +809,8 @@ public:
 	void showSelfAvatar() {
 		_session->data().processUsers(MTP_vector<MTPUser>(
 			QVector<MTPUser>{ selfUser() }));
+		_session->changes().peerUpdated(
+			_session->user(), Data::PeerUpdate::Flag::Photo);
 	}
 
 	void refreshConnectivity() {
@@ -857,7 +899,7 @@ public:
 							&& QFileInfo::exists(path)
 							&& QFileInfo(path).size() > 0;
 						const auto limit = 8;
-						if ((image || voice) && !ready && *tries < limit) {
+						if ((image || voice || LooksLikeVideo(kind, mime, path)) && !ready && *tries < limit) {
 							++(*tries);
 							_rpc->call(
 								u"download_full_message"_q,
@@ -873,11 +915,16 @@ public:
 					const auto data = one.value(u"result"_q).toObject();
 					const auto chatId = data.value(u"chatId"_q).toInt();
 					if (!HasError(one) && !data.value(u"isInfo"_q).toBool()
-						&& ChannelInfos.value(chatId).value(u"chatType"_q).toString() == u"OutBroadcast"_q) {
+						&& (ChannelInfos.value(chatId).value(u"chatType"_q).toString() == u"OutBroadcast"_q
+							|| (data.value(u"fromId"_q).toInt() == 1
+								&& data.value(u"state"_q).toInt() >= 26))) {
 						_rpc->call(u"get_message_read_receipt_count"_q, { accountId, msgId }, [=](QJsonObject count) {
 							if (guard.expired() || epoch != _dialogsEpoch || _deletedMessages.contains(msgId)) return;
 							if (!HasError(count)) {
-								ChannelViews.insert(msgId, count.value(u"result"_q).toInt());
+								CoreReadReceipts.insert(msgId, count.value(u"result"_q).toInt());
+								if (ChannelInfos.value(chatId).value(u"chatType"_q).toString() == u"OutBroadcast"_q) {
+									ChannelViews.insert(msgId, count.value(u"result"_q).toInt());
+								}
 								if (const auto item = _session->data().message(peerFromUser(UserId(chatId)), MsgId(msgId))) {
 									_session->data().notifyItemDataChange(item);
 									_session->data().requestItemResize(item);
@@ -978,7 +1025,10 @@ public:
 					done(0, ErrorText(result));
 					return;
 				}
-				done(result.value(u"result"_q).toInt(), QString());
+				const auto id = result.value(u"result"_q).toInt();
+				CoreMessages.insert(id, QJsonObject{{ u"state"_q, 20 }});
+				done(id, QString());
+				addIncoming(chatForPeerUser(userId), id);
 			});
 	}
 
@@ -1012,7 +1062,10 @@ public:
 					done(0, ErrorText(result));
 					return;
 				}
-				done(result.value(u"result"_q).toInt(), QString());
+				const auto id = result.value(u"result"_q).toInt();
+				CoreMessages.insert(id, QJsonObject{{ u"state"_q, 20 }});
+				done(id, QString());
+				addIncoming(chatForPeerUser(userId), id);
 			});
 	}
 
@@ -1167,6 +1220,8 @@ public:
 	void setSelfAvatar(const QString &path, Fn<void(QString)> done) {
 		const auto guard = _alive;
 		const auto accountId = _accountId;
+		const auto epoch = _dialogsEpoch;
+		++_selfAvatarRevision;
 		_rpc->call(
 			u"set_config"_q,
 			{ accountId, u"selfavatar"_q, path },
@@ -1189,8 +1244,14 @@ public:
 							done(ErrorText(reply));
 							return;
 						}
-						if (accountId == _accountId) {
-							_selfAvatar = reply.value(u"result"_q).toString();
+						const auto savedPath = reply.value(u"result"_q).toString();
+						if (!path.isEmpty() && (savedPath.isEmpty()
+							|| Images::Read({ .path = savedPath }).image.isNull())) {
+							done(u"The saved profile photo could not be loaded."_q);
+							return;
+						}
+						if (accountId == _accountId && epoch == _dialogsEpoch) {
+							_selfAvatar = savedPath;
 							showSelfAvatar();
 						}
 						done(QString());
@@ -1357,16 +1418,20 @@ public:
 
 	void resetAccountView() {
 		++_dialogsEpoch;
+		++_selfAvatarRevision;
 		_deletedMessages.clear();
 		_names.clear();
 		_avatars.clear();
 		_selfChat = 0;
 		_selfAvatar.clear();
+		GlobalSelfAvatarColor = QColor();
 		GlobalSystemUsers.clear();
 		PeerSubtitles.clear();
 		ChannelInfos.clear();
 		ChannelViews.clear();
 		SharedContacts.clear();
+		CoreMessages.clear();
+		CoreReadReceipts.clear();
 		ChannelRevision = ChannelRevision.current() + 1;
 		auto users = std::vector<not_null<PeerData*>>();
 		_session->data().enumerateUsers([&](not_null<UserData*> user) {
@@ -1395,24 +1460,37 @@ public:
 			}
 			_accountId = accountId;
 			resetAccountView();
+			const auto epoch = _dialogsEpoch;
 			_rpc->call(u"start_io"_q, { accountId }, [=](QJsonObject) {});
 			struct Self {
 				QString name;
 				QString avatar;
-				int left = 2;
+				QColor color;
+				int left = 3;
 			};
 			const auto self = std::make_shared<Self>();
 			const auto finish = [=] {
-				if (guard.expired() || --self->left) {
+				if (guard.expired() || accountId != _accountId
+					|| epoch != _dialogsEpoch || --self->left) {
 					return;
 				}
 				_selfName = self->name.isEmpty() ? u"Me"_q : self->name;
 				_selfAvatar = self->avatar;
-				_session->data().processUsers(MTP_vector<MTPUser>(
-					QVector<MTPUser>{ selfUser() }));
+				GlobalSelfAvatarColor = self->color;
+				showSelfAvatar();
 				loadDialogs();
 				done(QString());
 			};
+			_rpc->call(
+				u"get_account_info"_q,
+				{ accountId },
+				[=](QJsonObject reply) {
+					if (!guard.expired() && !HasError(reply)) {
+						self->color = QColor(reply.value(u"result"_q)
+							.toObject().value(u"color"_q).toString());
+					}
+					finish();
+				});
 			_rpc->call(
 				u"get_config"_q,
 				{ accountId, u"displayname"_q },
@@ -2507,7 +2585,9 @@ private:
 		if (kind == u"ConnectivityChanged"_q) {
 			refreshConnectivity();
 		}
-		if (kind == u"SelfavatarChanged"_q) {
+		if (kind == u"SelfavatarChanged"_q
+			|| (kind == u"ConfigSynced"_q
+				&& event.value(u"key"_q).toString() == u"selfavatar"_q)) {
 			loadSelfAvatar();
 		}
 		if (kind == u"MsgDeleted"_q) {
@@ -2527,7 +2607,9 @@ private:
 			|| kind == u"ReactionsChanged"_q
 			|| kind == u"IncomingReaction"_q
 			|| kind == u"MsgRead"_q
-			|| kind == u"MsgReadCountChanged"_q) {
+			|| kind == u"MsgReadCountChanged"_q
+			|| kind == u"MsgDelivered"_q
+			|| kind == u"MsgFailed"_q) {
 			const auto chatId = event.value(u"chatId"_q).toInt();
 			const auto msgId = event.value(u"msgId"_q).toInt();
 			if (chatId > 0 && msgId > 0) {
@@ -2570,6 +2652,9 @@ private:
 					hasPhoto = media
 						&& (media->type() == mtpc_messageMediaPhoto
 							|| media->type() == mtpc_messageMediaDocument);
+				}
+				if (existing) {
+					ApplyMessageData(existing);
 				}
 				if (existing && !hasPhoto) {
 					return;
@@ -2819,6 +2904,7 @@ public:
 	int _accountId = 0;
 	QString _selfName;
 	QString _selfAvatar;
+	int _selfAvatarRevision = 0;
 	int _dialogsEpoch = 0;
 	QSet<int> _deletedMessages;
 	bool _ignoreEvents = false;
@@ -2974,6 +3060,50 @@ QImage AvatarImage(quint64 photoId) {
 		.path = path,
 		.maxSize = QSize(256, 256),
 	}).image;
+}
+
+std::optional<DeliveryState> MessageDelivery(int messageId) {
+	const auto i = CoreMessages.constFind(messageId);
+	if (i == CoreMessages.cend()
+		|| (i->contains(u"fromId"_q) && i->value(u"fromId"_q).toInt() != 1)) {
+		return std::nullopt;
+	}
+	const auto state = i->value(u"state"_q).toInt();
+	return (state == 28 || (state == 26 && CoreReadReceipts.value(messageId) > 0))
+		? DeliveryState::Read
+		: state == 26 ? DeliveryState::Sent
+		: state == 24 ? DeliveryState::Failed
+		: DeliveryState::Pending;
+}
+
+void ApplyMessageData(not_null<HistoryItem*> item) {
+	if (!Active()) {
+		return;
+	}
+	const auto data = CoreMessages.value(item->id.bare);
+	const auto path = data.value(u"file"_q).toString();
+	const auto mime = data.value(u"fileMime"_q).toString();
+	if (LooksLikeVideo(data.value(u"viewType"_q).toString(), mime, path)
+		&& !path.isEmpty() && QFileInfo::exists(path)) {
+		const auto id = DocumentId(0x6000000000000000ULL | uint64(item->id.bare));
+		const auto document = item->history()->owner().document(id);
+		if (document->filepath(true) != path) {
+			document->setLocalVideo(
+				data.value(u"fileName"_q).toString(),
+				mime.isEmpty() ? u"video/mp4"_q : mime,
+				QSize(data.value(u"dimensionsWidth"_q).toInt(),
+					data.value(u"dimensionsHeight"_q).toInt()),
+				data.value(u"duration"_q).toInt());
+			document->size = QFileInfo(path).size();
+			document->setLocation(Core::FileLocation(path));
+		}
+		item->setLocalVideo(document, data.value(u"text"_q).toString());
+	}
+	item->history()->owner().requestItemViewRefresh(item);
+}
+
+QColor SelfAvatarColor() {
+	return GlobalSelfAvatarColor;
 }
 
 QImage PhotoImage(uint64 photoId) {
@@ -3151,6 +3281,10 @@ bool SendItemMedia(not_null<HistoryItem*> item, Fn<void(bool)> done) {
 		} else if (const auto document = media->document()) {
 			if (document->isVoiceMessage()) {
 				viewType = u"Voice"_q;
+			} else if (document->isVideoFile() || document->isVideoMessage()
+				|| (document->isAnimation()
+					&& LooksLikeVideo(QString(), document->mimeString(), path))) {
+				viewType = u"Video"_q;
 			}
 		}
 	}

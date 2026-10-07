@@ -840,7 +840,13 @@ void PaintRow(
 					context.selected);
 			}
 		} else if (item && !item->isEmpty() && item->needCheck()) {
-			if (!item->isSending() && !item->hasFailed()) {
+			const auto delivery = Delta::Active()
+				? Delta::MessageDelivery(item->id.bare)
+				: std::nullopt;
+			const auto pending = delivery
+				&& (*delivery == Delta::DeliveryState::Pending
+					|| *delivery == Delta::DeliveryState::Failed);
+			if (!item->isSending() && !item->hasFailed() && !pending) {
 				if (item->unread(thread)) {
 					return &ThreeStateIcon(
 						st::dialogsSentIcon,

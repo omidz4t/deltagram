@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_session.h"
+#include "delta/delta_bridge.h"
 
 #include "main/main_session.h"
 #include "main/main_session_settings.h"
@@ -3054,6 +3055,7 @@ bool Session::updateExistingMessage(const MTPDmessage &data) {
 		return false;
 	}
 	existing->applySentMessage(data);
+	Delta::ApplyMessageData(existing);
 	const auto result = (existing->mainView() != nullptr);
 	if (result) {
 		stickers().checkSavedGif(existing);
@@ -3614,6 +3616,9 @@ HistoryItem *Session::addNewMessage(
 		data,
 		localFlags,
 		type);
+	if (result) {
+		Delta::ApplyMessageData(result);
+	}
 	if (type == NewMessageType::Unread) {
 		CheckForSwitchInlineButton(result);
 	}

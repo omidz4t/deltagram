@@ -105,6 +105,7 @@
           export CCACHE_BASEDIR="$DELTA_TEL_ROOT"
           export CCACHE_COMPRESS=1
           export DELTA_TEL_EXTRA_QT_PLUGIN_ROOTS="${pkgs.qt6.qtimageformats}/lib/qt-6/plugins:${pkgs.qt6.qtsvg}/lib/qt-6/plugins"
+          export QT_PLUGIN_PATH="${pkgs.qt6.qtbase}/lib/qt-6/plugins:$DELTA_TEL_EXTRA_QT_PLUGIN_ROOTS''${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
           mkdir -p "$CCACHE_DIR" "$CMAKE_BUILD_DIR" "$CARGO_TARGET_DIR" "$CARGO_HOME"
           ccache --max-size "$CCACHE_MAXSIZE" >/dev/null
           export CMAKE_C_COMPILER_LAUNCHER=ccache
