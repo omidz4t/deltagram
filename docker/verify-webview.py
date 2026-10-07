@@ -1,4 +1,4 @@
-"""Require JavaScript executed by the bundled WebKit process, offline."""
+"""Require an animated canvas rendered by bundled WebKit, offline."""
 import ctypes as c
 import time
 x = c.CDLL('/test-deps/usr/lib/x86_64-linux-gnu/libX11.so.6')
@@ -26,7 +26,7 @@ for attempt in range(60):
         x.XFree(children)
     if found:
         x.XCloseDisplay(display)
-        print('Bundled WebKit loaded HTML and executed JavaScript.')
+        print('Bundled WebKit rendered an animated canvas without GPU drivers.')
         break
     time.sleep(1)
 else:

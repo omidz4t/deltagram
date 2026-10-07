@@ -33,6 +33,10 @@ export PIPEWIRE_MODULE_DIR="$HERE/telegram-lib/pipewire-0.3"
 export PIPEWIRE_CONFIG_PREFIX="$HERE/telegram-lib/pipewire-conf"
 export QT_XCB_GL_INTEGRATION="${QT_XCB_GL_INTEGRATION:-none}"
 export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}"
+# WebKit and GTK have their own renderers, independent of Qt.
+export GSK_RENDERER="${GSK_RENDERER:-cairo}"
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+export WEBKIT_SKIA_ENABLE_CPU_RENDERING="${WEBKIT_SKIA_ENABLE_CPU_RENDERING:-1}"
 unset LD_LIBRARY_PATH
 if [ "${1:-}" = --bundle-version ]; then cat "$HERE/deltagram.version"; exit; fi
 if [ "${1:-}" = --bundle-rpc ]; then

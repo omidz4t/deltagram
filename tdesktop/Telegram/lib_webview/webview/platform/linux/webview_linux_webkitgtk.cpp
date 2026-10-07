@@ -1129,7 +1129,9 @@ bool Instance::create(Config config) {
 		G_CALLBACK(+[](Instance *instance) {
 			instance->clearWaylandPopupAnchorExport();
 			instance->_window = nullptr;
-			Gio::Application::get_default().quit();
+			if (auto app = Gio::Application::get_default()) {
+				app.quit();
+			}
 		}),
 		this);
 	g_signal_connect_swapped(
@@ -1173,7 +1175,9 @@ bool Instance::create(Config config) {
 				Instance *instance,
 				WebKitWebProcessTerminationReason reason) {
 			g_critical("Web process terminated: %d.", reason);
-			Gio::Application::get_default().quit();
+			if (auto app = Gio::Application::get_default()) {
+				app.quit();
+			}
 		}),
 		this);
 	g_signal_connect_swapped(
@@ -1185,7 +1189,9 @@ bool Instance::create(Config config) {
 			if (!webkit_web_view_get_is_web_process_responsive(
 					instance->_webview)) {
 				g_critical("Web process became unresponsive.");
-				Gio::Application::get_default().quit();
+				if (auto app = Gio::Application::get_default()) {
+					app.quit();
+				}
 			}
 		}),
 		this);
@@ -1354,6 +1360,13 @@ bool Instance::create(Config config) {
 	const GdkRGBA rgba{ 0.f, 0.f, 0.f, 0.f, };
 	webkit_web_view_set_background_color(_webview, &rgba);
 	const auto settings = webkit_web_view_get_settings(_webview);
+	if (qEnvironmentVariable("GSK_RENDERER") == u"cairo"_q) {
+		// GTK4 removed ON_DEMAND from the policy enum: NEVER is 1,
+		// while the GTK3 ABI uses 2. Disable web content acceleration too.
+		g_object_set(settings,
+			"hardware-acceleration-policy", gtk_window_set_child ? 1 : 2,
+			nullptr);
+	}
 	if (_debug) {
 		webkit_settings_set_enable_developer_extras(settings, true);
 	}
@@ -2740,16 +2753,15 @@ void Instance::startProcess() {
 	auto serviceLauncher = Gio::SubprocessLauncher::new_(
 		Gio::SubprocessFlags::NONE_);
 
-	if (_platform == Platform::Wayland
-			&& _mode != WindowMode::External
-			&& _glBackend == Ui::GL::Backend::Raster) {
+	if (_glBackend == Ui::GL::Backend::Raster) {
 		serviceLauncher.setenv("LIBGL_ALWAYS_SOFTWARE", "1", true);
 		serviceLauncher.setenv("GSK_RENDERER", "cairo", true);
 		serviceLauncher.setenv("GDK_DISABLE", "gl", true);
-		serviceLauncher.setenv("GDK_DEBUG", "gl-disable", true);
-		serviceLauncher.setenv("GDK_GL", "disable", true);
 		serviceLauncher.setenv("WEBKIT_DISABLE_COMPOSITING_MODE", "1", true);
-	} else if (_platform == Platform::Any || _mode == WindowMode::External) {
+		serviceLauncher.setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1", true);
+		serviceLauncher.setenv("WEBKIT_SKIA_ENABLE_CPU_RENDERING", "1", true);
+	}
+	if (_platform == Platform::Any || _mode == WindowMode::External) {
 		const auto token = ::base::Platform::XdgActivationToken().toStdString();
 		if (!token.empty()) {
 			serviceLauncher.setenv("XDG_ACTIVATION_TOKEN", token, true);

@@ -341,3 +341,23 @@ A disposable Core channel with mail IO suppressed checked wide modal and narrow
 page avatar clicks, full-image rendering, zoom, copy, saving a valid JPEG and
 Escape returning to channel info. The portable GUI/Core/WebKit/cursor checks,
 offline tests and source audit passed. No real account data was used.
+
+## Web app software rendering — 2026-10-07
+
+The portable launcher now configures GTK and WebKit software rendering in
+addition to Qt. Raster-mode native webview helpers apply the same settings
+on X11 and in external windows. Web content hardware acceleration is disabled
+for the Cairo renderer; accelerated Qt configurations retain their existing
+behavior. WebKit shutdown checks for an application instance before quitting.
+
+The offline container regression renders a transformed, animated canvas with
+missing graphics-driver paths and no GPU device. It starts a session bus to
+exercise WebKit's sandboxed D-Bus proxy, which is now bundled and relocated
+including its read-only sandbox mount arguments. WebKit's namespace and
+seccomp policies remain enabled. These checks do not establish WebGL, camera,
+WebRTC or every web app's functionality.
+
+A disposable account also opened the actual Apps window from the attachment
+menu and loaded the HTTPS app directory with unavailable GPU driver paths.
+The native WebKit helper, sandboxed web process and session-bus proxy stayed
+running without the reported GBM/EGL or GLib shutdown errors.

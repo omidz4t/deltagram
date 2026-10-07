@@ -28,10 +28,27 @@ sleep 2
 kill -0 "$DISPLAY_PID" || { cat /tmp/xvfb.log; exit 1; }
 mkdir -p /tmp/home /tmp/run
 chmod 700 /tmp/run
-HOME=/tmp/home XDG_RUNTIME_DIR=/tmp/run DISPLAY=:99 GSK_RENDERER=cairo \
- "$BUNDLE" --bundle-webview-test 'data:text/html,<script>document.title="Deltagram WebView JavaScript passed"</script>' > /tmp/webview.log 2>&1 &
+# Exercise WebKit's sandboxed session-bus proxy without host executables.
+cat > /tmp/session.conf <<'DBUS'
+<busconfig><type>session</type><listen>unix:path=/tmp/session-bus</listen>
+<policy context="default"><allow send_destination="*"/><allow own="*"/><allow receive_sender="*"/></policy>
+</busconfig>
+DBUS
+"$DEPS/ld-linux-x86-64.so.2" --library-path "$DEPS" \
+ /test-deps/usr/bin/dbus-daemon --config-file=/tmp/session.conf --nofork \
+ > /tmp/dbus.log 2>&1 &
+DBUS_PID=$!
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/session-bus
+sleep 1
+kill -0 "$DBUS_PID" || { cat /tmp/dbus.log; exit 1; }
+HOME=/tmp/home XDG_RUNTIME_DIR=/tmp/run DISPLAY=:99 LIBGL_DRIVERS_PATH=/missing-drivers GBM_BACKENDS_PATH=/missing-gbm \
+ "$BUNDLE" --bundle-webview-test 'data:text/html,<canvas id=c width=100 height=100 style="transform:rotate(10deg)"></canvas><script>let x=c.getContext("2d");let n=0;function draw(){x.fillStyle="red";x.fillRect(0,0,100,100);if(++n<30){requestAnimationFrame(draw)}else if(x.getImageData(5,5,1,1).data[0]===255){document.title="Deltagram WebView JavaScript passed"}}requestAnimationFrame(draw)</script>' > /tmp/webview.log 2>&1 &
 WEBVIEW_PID=$!
 if ! DISPLAY=:99 python /verify-webview.py; then
+  cat /tmp/webview.log
+  exit 1
+fi
+if grep -Eq "EGL_BAD_PARAMETER|Failed to create GBM|Web process became unresponsive|GLib-GIO-CRITICAL" /tmp/webview.log; then
   cat /tmp/webview.log
   exit 1
 fi

@@ -33,7 +33,7 @@ assert contexts.is_dir(), 'Missing Qt text-input plugins in the release toolchai
 shutil.copytree(contexts, app / 'telegram-plugins/platforminputcontexts', symlinks=False, dirs_exist_ok=True)
 
 # Debian's GTK/WebKit, GL entry points and their ELF dependency closure.
-# Graphics drivers are supplied by the desktop; Qt defaults to software rendering.
+# Qt and WebKit default to software rendering without host graphics drivers.
 available = {}
 for folder in ('usr/lib/x86_64-linux-gnu', 'lib/x86_64-linux-gnu'):
     for path in (debian / folder).glob('*'):
@@ -48,6 +48,10 @@ bwrap = debian / 'usr/bin/bwrap'
 assert bwrap.is_file(), 'Missing WebKit sandbox launcher'
 copy(bwrap, app / 'usr/bin/bwrap')
 queue.append(bwrap)
+proxy = debian / "usr/bin/xdg-dbus-proxy"
+assert proxy.is_file(), "Missing WebKit session bus proxy"
+copy(proxy, app / "usr/bin/xdg-dbus-proxy")
+queue.append(proxy)
 webkit = debian / 'usr/lib/x86_64-linux-gnu/webkitgtk-6.0'
 for path in webkit.rglob('*'):
     if path.is_file():
@@ -127,18 +131,19 @@ for path in app.rglob('*'):
 # WebKit starts its helper executables directly. Their absolute ELF interpreter
 # would otherwise select the host loader against our newer bundled libc.
 helper_dir = app / 'usr/lib/x86_64-linux-gnu/webkitgtk-6.0'
-for name in ('WebKitWebProcess', 'WebKitNetworkProcess', 'WebKitGPUProcess'):
-    helper = helper_dir / name
+for helper in [helper_dir / name for name in (
+        'WebKitWebProcess', 'WebKitNetworkProcess', 'WebKitGPUProcess')] + [app / 'usr/bin/xdg-dbus-proxy']:
+    name = helper.name
     if not helper.is_file():
         continue
     helper.rename(helper.with_name(name + '.real'))
     helper.write_text('''#!/bin/sh
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-ROOT=$(CDPATH= cd -- "$HERE/../../../.." && pwd)
+ROOT=$(CDPATH= cd -- "$HERE/ROOT_RELATIVE" && pwd)
 exec "$ROOT/telegram-lib/ld-linux-x86-64.so.2.real" \\
   --library-path "$ROOT/telegram-lib" --preload "$ROOT/telegram-lib/libwebkitfix.so" --argv0 "$0" "$0.real" "$@"
-''')
+'''.replace('ROOT_RELATIVE', os.path.relpath(app, helper.parent)))
     helper.chmod(0o755)
 (app / 'deltagram.desktop').write_text('''[Desktop Entry]
 Type=Application
