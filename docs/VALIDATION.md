@@ -277,8 +277,8 @@ default and uses the existing persistent experimental options store. Enabling
 it immediately places profile shortcuts in the vertical folder strip; disabling
 it restores the existing folder/sidebar behavior. Each shortcut uses Core's
 photo, display name and color, and the selected profile has an active marker.
-Configured profiles switch through the backend; an unconfigured profile opens
-account setup. No folder, message or account data is changed by the toggle.
+Configured profiles switch through the backend. Unfinished setup accounts are
+hidden from the menu and sidebar; the menu retains one **Add profile** action. No folder, message or account data is changed by the toggle.
 
 A disposable Core account fixture with mail IO suppressed checked the actual
 settings row, repeated on/off toggling without restart, switching between

@@ -750,10 +750,11 @@ void MainMenu::fillProfiles() {
 			const auto id = account.value(u"id"_q).toInt();
 			const auto configured = account.value(u"kind"_q).toString()
 				== u"Configured"_q;
-			auto name = account.value(u"displayName"_q).toString().trimmed();
 			if (!configured) {
-				name = u"Set up profile"_q;
-			} else if (name.isEmpty()) {
+				continue;
+			}
+			auto name = account.value(u"displayName"_q).toString().trimmed();
+			if (name.isEmpty()) {
 				name = u"Profile"_q;
 			}
 			const auto tag = configured
@@ -778,10 +779,6 @@ void MainMenu::fillProfiles() {
 			row->setClickedCallback([=] {
 				const auto controller = _controller;
 				closeLayer();
-				if (!configured) {
-					controller->widget()->showDeltaAddProfile();
-					return;
-				}
 				Delta::SwitchProfile(id, [](QString) {});
 			});
 			row->setMenuActions(

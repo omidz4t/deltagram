@@ -434,6 +434,9 @@ void FiltersMenu::refreshProfiles() {
 			const auto id = account.value(u"id"_q).toInt();
 			const auto selected = account.value(u"selected"_q).toBool();
 			const auto configured = account.value(u"kind"_q).toString() == u"Configured"_q;
+			if (!configured) {
+				continue;
+			}
 			auto name = account.value(u"displayName"_q).toString().trimmed();
 			if (name.isEmpty()) {
 				name = u"Profile"_q;
@@ -445,9 +448,7 @@ void FiltersMenu::refreshProfiles() {
 				_profileList, name, path.isEmpty() ? QImage() : reader.read(),
 				QColor(account.value(u"color"_q).toString()), selected));
 			button->setClickedCallback([=] {
-				if (!configured) {
-					_session->widget()->showDeltaAddProfile();
-				} else if (!selected) {
+				if (!selected) {
 					Delta::SwitchProfile(id, crl::guard(&_outer, [=](QString error) {
 						if (!error.isEmpty()) {
 							_session->show(Ui::MakeInformBox(error));
