@@ -230,3 +230,22 @@ background appeared in another chat and after switching profiles and restarting
 the GUI. The chat menu contained no wallpaper action. The release GUI compiled
 with four jobs and preserved its incremental records. Full combinations of
 day/night themes, tiling, blur, and imported theme files remain unverified.
+
+
+## Adaptive channel information — 2026-10-07
+
+Channel information uses the donor's modal-width threshold: narrow windows
+show a navigation page, and wider windows show a centered modal over chat
+history. Resizing changes between these presentations in both directions.
+The More menu opens toward the inside of the panel. Clicking a channel photo
+opens the original local Core image in an aspect-preserving large preview;
+the preview width is limited to the available window width. Photo changes
+also update the preview's source. No server photo or theme request is added.
+
+A disposable offline Core profile verified modal rendering, transition to a
+380-pixel-wide page and back to a 900-pixel-wide modal, header visibility in
+the page, photo previews at both widths, repeated More menu opening, and
+return to channel history. The GUI compiled with four jobs using the preserved
+incremental build. These checks cover local window navigation and rendering;
+physical multi-monitor placement and platform-specific window scaling remain
+unverified.

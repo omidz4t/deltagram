@@ -46,6 +46,8 @@ This file is part of Delta Tel, a Telegram Desktop based Delta Chat client.
 #include "ui/widgets/scroll_area.h"
 #include "window/section_memento.h"
 #include "window/section_widget.h"
+#include "info/info_layer_widget.h"
+#include "ui/layers/layer_widget.h"
 #include <QtGui/QKeyEvent>
 
 #include <QtCore/QDir>
@@ -447,12 +449,34 @@ void FillChannelInfo(
 		const auto header = box->add(object_ptr<Ui::FixedHeightWidget>(box, 190), style::margins());
 		const auto peer = session->data().peer(peerFromUser(UserId(userId)));
 		const auto photo = Ui::CreateChild<Ui::UserpicButton>(header, peer, st::infoProfileCover.photo);
+		const auto photoPath = box->lifetime().make_state<QString>(info.value(u"profileImage"_q).toString());
+		photo->setClickedCallback([=] {
+			auto reader = QImageReader(*photoPath);
+			reader.setAutoTransform(true);
+			const auto image = reader.read();
+			if (image.isNull()) return;
+			controller->show(Box([=](not_null<Ui::GenericBox*> preview) {
+				preview->setTitle(rpl::single(*nameValue));
+				preview->setWidth(std::min(640, std::max(0, box->window()->width() - 32)));
+				const auto canvas = preview->addRow(object_ptr<Ui::FixedHeightWidget>(preview, 480), style::margins());
+				canvas->paintRequest() | rpl::on_next([=] {
+					QPainter painter(canvas);
+					const auto size = image.size().scaled(canvas->size(), Qt::KeepAspectRatio);
+					painter.drawImage(QRect(QPoint((canvas->width() - size.width()) / 2,
+						(canvas->height() - size.height()) / 2), size), image);
+				}, canvas->lifetime());
+				preview->addButton(tr::lng_close(), [=] { preview->closeBox(); });
+			}), Ui::LayerOption::KeepOther);
+		});
 		const auto nameStyle = header->lifetime().make_state<style::FlatLabel>(st::infoProfileCover.name);
 		nameStyle->align = style::al_center;
 		const auto statusStyle = header->lifetime().make_state<style::FlatLabel>(st::infoProfileCover.status);
 		statusStyle->align = style::al_center;
 		const auto name = Ui::CreateChild<Ui::FlatLabel>(header, *nameValue, *nameStyle);
 		const auto role = Ui::CreateChild<Ui::FlatLabel>(header, ChannelStatusValue(userId), *statusStyle);
+		photo->show();
+		name->show();
+		role->show();
 		header->widthValue() | rpl::on_next([=](int width) {
 			photo->moveToLeft((width - photo->width()) / 2, 18);
 			name->resizeToWidth(std::max(0, width - 40));
@@ -593,6 +617,7 @@ void FillChannelInfo(
 				ChannelRequest(userId, u"set_chat_profile_image"_q, { path }, [=](QJsonValue, QString failure) {
 					if (!weak) return;
 					if (!failure.isEmpty()) { Ui::show(Ui::MakeInformBox(failure)); return; }
+					*photoPath = path;
 					photo->showCustom(QImage(path));
 				});
 			});
@@ -603,7 +628,9 @@ void FillChannelInfo(
 			for (const auto &[text, action] : *menuActions) {
 				(*popup)->addAction(text, action);
 			}
-			(*popup)->popup(actions->mapToGlobal(QPoint(actions->width(), actions->height())));
+			(*popup)->setForcedOrigin(Ui::PanelAnimation::Origin::TopRight);
+			(*popup)->popup(Ui::PopupMenu::ConstrainToParentScreen(
+				popup->get(), actions->mapToGlobal(QPoint(actions->width() - 18, 56))));
 		});
 		const auto muted = box->lifetime().make_state<bool>(info.value(u"isMuted"_q).toBool());
 		const auto busy = box->lifetime().make_state<bool>(false);
@@ -644,22 +671,27 @@ class ChannelInfoMemento;
 
 class ChannelInfoSection final : public Window::SectionWidget {
 public:
-	ChannelInfoSection(QWidget *parent, not_null<Window::SessionController*> controller, int userId)
+	ChannelInfoSection(QWidget *parent, not_null<Window::SessionController*> controller, int userId, Fn<void()> close = nullptr)
 	: Window::SectionWidget(parent, controller)
 	, _userId(userId)
+	, _inLayer(bool(close))
+	, _close(close ? std::move(close) : Fn<void()>([=] { controller->showBackFromStack(); }))
 	, _scroll(this, st::defaultScrollArea) {
 		const auto back = Ui::CreateChild<Ui::IconButton>(this, st::infoTopBarBack);
-		back->setClickedCallback([=] { controller->showBackFromStack(); });
+		back->setClickedCallback(_close);
 		back->moveToLeft(0, 0);
 		const auto title = Ui::CreateChild<Ui::FlatLabel>(this, u"Channel Info"_q, st::boxTitle);
 		title->moveToLeft(64, 17);
 		const auto content = _scroll->setOwnedWidget(object_ptr<Ui::VerticalLayout>(this));
 		FillChannelInfo(content.data(), controller, userId, crl::guard(this, [=] {
-			controller->showBackFromStack();
+			_close();
 		}));
 		sizeValue() | rpl::on_next([=](QSize size) {
 			_scroll->setGeometry(0, st::infoTopBarHeight, size.width(), std::max(0, size.height() - st::infoTopBarHeight));
 			content->resizeToWidth(size.width());
+			if (!_inLayer && isVisible()) {
+				InvokeQueued(this, [=] { adaptToLayer(); });
+			}
 		}, lifetime());
 	}
 	bool showInternal(not_null<Window::SectionMemento*> memento, const Window::SectionShow &params) override;
@@ -677,19 +709,44 @@ protected:
 	}
 	void keyPressEvent(QKeyEvent *e) override {
 		if (e->key() == Qt::Key_Escape) {
-			controller()->showBackFromStack();
+			_close();
 		} else {
 			Window::SectionWidget::keyPressEvent(e);
 		}
 	}
 private:
+	void adaptToLayer();
 	int _userId;
+	bool _inLayer = false;
+	Fn<void()> _close;
 	object_ptr<Ui::ScrollArea> _scroll;
+};
+
+class ChannelInfoLayer final : public Ui::LayerWidget {
+public:
+	ChannelInfoLayer(not_null<Window::SessionController*> controller, int userId)
+	: Ui::LayerWidget(nullptr)
+	, _controller(controller)
+	, _userId(userId)
+	, _content(this, controller, userId, [=] { closeLayer(); }) {
+		_content->show();
+	}
+	void parentResized() override;
+private:
+	not_null<Window::SessionController*> _controller;
+	int _userId;
+	bool _moving = false;
+	object_ptr<ChannelInfoSection> _content;
 };
 
 class ChannelInfoMemento final : public Window::SectionMemento {
 public:
 	explicit ChannelInfoMemento(int userId) : userId(userId) {}
+	object_ptr<Ui::LayerWidget> createLayer(not_null<Window::SessionController*> controller,
+			const QRect &geometry) override {
+		return geometry.width() >= Info::LayerWidget::MinimalSupportedWidth()
+			? object_ptr<ChannelInfoLayer>(controller, userId) : nullptr;
+	}
 	object_ptr<Window::SectionWidget> createWidget(QWidget *parent,
 			not_null<Window::SessionController*> controller,
 			Window::Column column, const QRect &geometry) override {
@@ -699,6 +756,36 @@ public:
 	}
 	int userId;
 };
+
+void ChannelInfoSection::adaptToLayer() {
+	if (_inLayer || !isVisible()
+			|| window()->width() < Info::LayerWidget::MinimalSupportedWidth()) return;
+	_inLayer = true;
+	const auto navigation = controller();
+	const auto memento = createMemento();
+	navigation->showBackFromStack();
+	navigation->showSection(memento, Window::SectionShow(
+		Window::SectionShow::Way::Forward, anim::type::instant));
+}
+
+void ChannelInfoLayer::parentResized() {
+	if (_moving || !parentWidget()) return;
+	const auto size = parentWidget()->size();
+	if (size.width() < Info::LayerWidget::MinimalSupportedWidth()) {
+		_moving = true;
+		InvokeQueued(this, [=] {
+			_controller->hideSpecialLayer(anim::type::instant);
+		});
+		_controller->showSection(std::make_shared<ChannelInfoMemento>(_userId),
+			Window::SectionShow(Window::SectionShow::Way::Forward,
+				anim::type::instant, anim::activation::background));
+		return;
+	}
+	const auto width = std::min(420, size.width() - 2 * st::infoMinimalLayerMargin);
+	const auto height = std::max(0, size.height() - 2 * st::infoMinimalLayerMargin);
+	setGeometry((size.width() - width) / 2, (size.height() - height) / 2, width, height);
+	_content->setGeometry(rect());
+}
 
 bool ChannelInfoSection::showInternal(not_null<Window::SectionMemento*> memento,
 		const Window::SectionShow &params) {

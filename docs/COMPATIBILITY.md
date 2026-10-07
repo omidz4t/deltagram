@@ -28,7 +28,7 @@ are not copied here. Deltagram evidence comes from [PROGRESS.md](PROGRESS.md),
 | Shared contact cards | ✅ Locally checked | Send/import, card photo and profile navigation checked. Core does not import vCard NOTE biographies; available Core contact status is displayed. |
 | Group creation | ✅ Locally checked | Name/photo and member selection persist through Core; selection chips and stored members checked. |
 | Invitation links | ✅ Locally checked | Contact/group/channel previews, confirmation and navigation checked. SecureJoin completion over the network remains unverified. |
-| Channel profiles | ✅ Locally checked | Native profile navigation, centered cover, quick actions, description links, photo/name/description updates, mute control and Core media counts. Media rows open the selected message. |
+| Channel profiles | ✅ Locally checked | Adaptive page/modal navigation, centered cover, large photo preview, contained action menu, description links, photo/name/description updates, mute control and Core media counts. Media rows open the selected message. |
 | Broadcast channels | ✅ Locally checked | Creation and subscriber write restrictions checked. Owner counts are Core read receipts, not public view totals. |
 | Message information | ✅ Locally checked | Context action and Core-backed details checked. |
 | Reactions | ✅ Locally checked | Picker, stored reactions and rendering checked locally; multi-device delivery remains unverified. |
