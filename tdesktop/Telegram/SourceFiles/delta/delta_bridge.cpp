@@ -8,6 +8,7 @@ This file is part of Delta Tel, a Telegram Desktop based Delta Chat client.
 #include "core/file_location.h"
 #include "data/data_document.h"
 #include "data/data_changes.h"
+#include "data/data_histories.h"
 #include "data/data_photo.h"
 #include "data/data_photo_media.h"
 #include "data/data_peer.h"
@@ -27,6 +28,7 @@ This file is part of Delta Tel, a Telegram Desktop based Delta Chat client.
 #include "rpl/variable.h"
 #include "ui/image/image_location.h"
 #include "ui/image/image_prepare.h"
+#include "window/window_session_controller.h"
 
 #include <QBuffer>
 #include <QDateTime>
@@ -1426,6 +1428,11 @@ public:
 
 	void resetAccountView() {
 		++_dialogsEpoch;
+		// Detach the old account's chat and cancel its loading requests first.
+		for (const auto &window : _session->windows()) {
+			window->clearSectionStack(Window::SectionShow(
+				Window::SectionShow::Way::ClearStack, anim::type::instant));
+		}
 		++_selfAvatarRevision;
 		_deletedMessages.clear();
 		_names.clear();
@@ -1448,6 +1455,9 @@ public:
 		for (const auto &user : users) {
 			_session->data().deleteConversationLocally(user);
 		}
+		// DeleteChat marks an empty history as fully loaded. Profile changes
+		// must leave these reused peers unloaded so opening them fetches Core.
+		_session->data().histories().unloadAll();
 		_session->data().chatsList()->clear();
 		_session->data().chatsList()->setLoaded(false);
 	}
@@ -1976,13 +1986,18 @@ private:
 			mtpRequestId requestId,
 			Fn<void(mtpBuffer&)> write) {
 		const auto weak = base::make_weak(_session);
+		const auto guard = _alive;
+		const auto epoch = _dialogsEpoch;
 		crl::on_main([=] {
 			const auto session = weak.get();
-			if (!session || &session->mtp() != instance.get()) {
+			if (guard.expired() || !session || &session->mtp() != instance.get()) {
 				return;
 			}
 			if (!instance->hasCallback(requestId)) {
 				return;
+			}
+			if (epoch != _dialogsEpoch) {
+				return fail(instance, requestId, u"DELTA_ACCOUNT_CHANGED"_q);
 			}
 			auto response = MTP::Response();
 			response.requestId = requestId;
@@ -2249,12 +2264,16 @@ private:
 		}
 		const auto chatId = chatForPeerUser(userId);
 		const auto guard = _alive;
+		const auto epoch = _dialogsEpoch;
 		_rpc->call(
 			u"get_message_ids"_q,
 			{ _accountId, chatId, false, false },
 			[=](QJsonObject reply) {
 				if (guard.expired()) {
 					return;
+				}
+				if (epoch != _dialogsEpoch) {
+					return fail(instance, requestId, u"DELTA_ACCOUNT_CHANGED"_q);
 				}
 				if (HasError(reply)) {
 					return fail(instance, requestId, u"DELTA_RPC"_q);
@@ -2315,6 +2334,9 @@ private:
 						[=](QJsonObject one) {
 							if (guard.expired()) {
 								return;
+							}
+							if (epoch != _dialogsEpoch) {
+								return fail(instance, requestId, u"DELTA_ACCOUNT_CHANGED"_q);
 							}
 							state->messages[i] = HasError(one)
 								? MakeMessage(ids[start + i], userId, false, QString(), 0)
@@ -2525,12 +2547,17 @@ private:
 		}
 		const auto chatId = chatForPeerUser(userId);
 		const auto guard = _alive;
+		const auto accountId = _accountId;
+		const auto epoch = _dialogsEpoch;
 		_rpc->call(
 			u"get_message_ids"_q,
-			{ _accountId, chatId, false, false },
+			{ accountId, chatId, false, false },
 			[=](QJsonObject reply) {
 				if (guard.expired()) {
 					return;
+				}
+				if (epoch != _dialogsEpoch) {
+					return fail(instance, requestId, u"DELTA_ACCOUNT_CHANGED"_q);
 				}
 				auto seen = QJsonArray();
 				if (!HasError(reply)) {
@@ -2540,10 +2567,13 @@ private:
 						}
 					}
 				}
-				_rpc->call(u"markseen_msgs"_q, { _accountId, seen }, [=](QJsonObject) {
+				_rpc->call(u"markseen_msgs"_q, { accountId, seen }, [=](QJsonObject) {
+					if (guard.expired() || epoch != _dialogsEpoch) {
+						return;
+					}
 					_rpc->call(
 						u"marknoticed_chat"_q,
-						{ _accountId, chatId },
+						{ accountId, chatId },
 						[=](QJsonObject) {});
 				});
 				const auto boxed = MTPmessages_AffectedMessages(

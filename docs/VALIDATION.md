@@ -361,3 +361,19 @@ A disposable account also opened the actual Apps window from the attachment
 menu and loaded the HTTPS app directory with unavailable GPU driver paths.
 The native WebKit helper, sandboxed web process and session-bus proxy stayed
 running without the reported GBM/EGL or GLib shutdown errors.
+
+## History after profile switches — 2026-10-07
+
+Profile changes close the previous chat view and cancel its pending loads,
+then unload the reused histories after clearing their messages. Clearing a
+conversation alone marked an empty history as fully loaded, which could
+prevent a later visit from fetching older messages. History replies now
+check the profile generation before fetching or applying message data;
+queued replies and read-status updates also stay within their profile.
+
+A disposable Core fixture used two profiles with the same Saved Messages
+chat ID and twelve distinct messages each. Repeated switches loaded both
+full histories. Delaying a history-ID reply for fifteen seconds while
+switching away and back preserved the correct messages without reading
+one profile's message IDs from the other. This covers local history loading
+and cancellation; live server synchronization was not exercised.
