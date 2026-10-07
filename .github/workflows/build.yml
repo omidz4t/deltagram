@@ -78,16 +78,26 @@ jobs:
         with:
           primary-key: nix-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
           save: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
-      - name: Restore compiler and Rust caches
+      - name: Restore Qt compiler cache
+        id: compiler-cache
         if: steps.build.outputs.required == 'true'
-        uses: actions/cache@3edfce9056124e459a23f683a21433670d47daca
+        uses: actions/cache/restore@3edfce9056124e459a23f683a21433670d47daca
+        with:
+          path: data/ccache
+          key: compile-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/build-release.sh') }}-${{ github.sha }}
+          restore-keys: |
+            compile-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/build-release.sh') }}-
+            compile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/context-sources.sh', 'nix/build-release.sh', 'nix/build-rpc.sh') }}-
+      - name: Restore pinned Core and Rust cache
+        id: rust-cache
+        if: steps.build.outputs.required == 'true'
+        uses: actions/cache/restore@3edfce9056124e459a23f683a21433670d47daca
         with:
           path: |
-            data/ccache
             data/cargo-home/registry
             data/cargo-home/git
             data/cargo-target
-          key: compile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/context-sources.sh', 'nix/build-release.sh', 'nix/build-rpc.sh') }}-${{ github.sha }}
+          key: rust-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/context-sources.sh', 'nix/build-rpc.sh') }}
           restore-keys: |
             compile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/context-sources.sh', 'nix/build-release.sh', 'nix/build-rpc.sh') }}-
       - name: Initialize Core and dependency shell
@@ -105,6 +115,21 @@ jobs:
             bash nix/test-rpc.sh
             ccache --show-stats
           '
+      - name: Save successful Qt compilation before packaging
+        if: steps.build.outputs.required == 'true' && steps.compiler-cache.outputs.cache-hit != 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@3edfce9056124e459a23f683a21433670d47daca
+        with:
+          path: data/ccache
+          key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
+      - name: Save pinned Core compilation before packaging
+        if: steps.build.outputs.required == 'true' && steps.rust-cache.outputs.cache-hit != 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@3edfce9056124e459a23f683a21433670d47daca
+        with:
+          path: |
+            data/cargo-home/registry
+            data/cargo-home/git
+            data/cargo-target
+          key: ${{ steps.rust-cache.outputs.cache-primary-key }}
       - name: Package release assets and matching source
         if: steps.plan.outputs.publish == 'true'
         run: |

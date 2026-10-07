@@ -248,10 +248,14 @@ Manual dispatch with `publish` disabled runs a build without publication. CI omi
 `DELTA_TEL_USE_SYSTEM_NIX=1`; local builds retain the project-local store.
 
 The Nix cache is keyed by toolchain definitions and populated from `main`.
-Compiler and Cargo cache keys include the toolchain, Core source revision and
-build scripts, with a commit-specific key and compatible prefix for reuse across
-commits. ccache is capped at 5 GB. Cache eviction and transfer costs can affect
-performance; use per-run hit/miss statistics and timings to assess the benefit.
+The Qt compiler cache uses a toolchain key and commit-specific snapshot, with a
+compatible prefix for reuse. Rust dependencies and the compiled Core use a
+separate immutable key tied to the toolchain, pinned Core revision and build
+script; ordinary application commits reuse it without uploading another copy.
+Both are saved after successful compilation and smoke tests, before packaging,
+so a packaging failure does not discard the compiled work. The first build has
+no compiler cache and remains expensive. ccache is capped at 5 GB. Cache eviction
+and transfer costs can affect performance; use per-run statistics and timings.
 Cache misses still perform normal builds, and no automatic store garbage
 collection runs.
 
