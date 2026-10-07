@@ -16,8 +16,14 @@ export LD_LIBRARY_PATH=/build/debian/usr/lib/x86_64-linux-gnu
 export PYTHONHOME=/build/debian/usr
 /build/debian/usr/bin/python3 /builder/package.py
 unset LD_LIBRARY_PATH PYTHONHOME
+echo '328e0d745c5c6817048c27bc3e8314871703f8f47ffa81a37cb06cd95a94b323  /runtime/runtime-x86_64' | sha256sum -c -
+/build/debian/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 \
+  --library-path /build/debian/usr/lib/x86_64-linux-gnu \
+  /build/debian/usr/bin/mksquashfs /build/AppDir /build/payload.squashfs \
+  -noappend -comp gzip -Xcompression-level 6 -b 1048576 -processors 4 -all-root -no-xattrs
 musl=/build/debian/usr/lib/x86_64-linux-musl
-"$CC" -Os -fno-pie -ffunction-sections -fdata-sections -nostdinc \
+PAYLOAD_HASH=$(sha256sum /build/payload.squashfs | cut -d" " -f1)
+"$CC" -DDELTA_TEL_RUNTIME_ID="\"$PAYLOAD_HASH\"" -Os -fno-pie -ffunction-sections -fdata-sections -nostdinc \
   -isystem /build/debian/usr/include/x86_64-linux-musl \
   -c /builder/launcher.c -o /build/launcher.o
 "$CC" -static -no-pie -nostdlib -Wl,--gc-sections -o /build/launcher \
@@ -30,9 +36,6 @@ export PATH=/usr/bin:/bin
 if /build/debian/usr/bin/readelf -l /build/launcher | grep -q INTERP; then
   echo 'Launcher unexpectedly requires a dynamic interpreter' >&2; exit 1
 fi
-echo '328e0d745c5c6817048c27bc3e8314871703f8f47ffa81a37cb06cd95a94b323  /runtime/runtime-x86_64' | sha256sum -c -
-/build/debian/usr/bin/mksquashfs /build/AppDir /build/payload.squashfs \
-  -noappend -comp xz -Xbcj x86 -b 1048576 -processors 4 -all-root -no-xattrs
 /build/debian/usr/bin/python3 - <<'PY'
 import hashlib, pathlib, shutil, struct
 version = pathlib.Path('/input/Telegram.version').read_text().strip()

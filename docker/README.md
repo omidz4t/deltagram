@@ -19,12 +19,19 @@ loaders/libraries, Qt plugins and PipeWire runtime into ignored
 keyboard data. It does not rebuild the GUI. The Nix-built GUI keeps its matching
 libc and loader; Debian's older libc must not replace them.
 
-The final lowercase `deltagram` is a static musl launcher with an embedded XZ
+The final lowercase `deltagram` is a static musl launcher with an embedded gzip
 SquashFS image and pinned AppImageKit extractor. It starts the bundled GUI/Core
 without a Nix installation, Qt installation or neighboring runtime files. FUSE
-is not required. Extraction uses a private temporary directory and needs
-executable temporary space, approximately the uncompressed payload plus its
-compressed image. Normal exit cleans up the extracted image. Diagnostic options:
+is not required. The runtime is extracted once per payload into
+`$XDG_CACHE_HOME/deltagram/runtime` (default `~/.cache/deltagram/runtime`).
+Subsequent launches run directly from that cache without copying or unpacking
+the embedded image. First extraction needs space for both the compressed image
+and extracted runtime; afterward only the extracted runtime remains. Concurrent
+launches share one extraction, incomplete extractions are retried, and inactive
+older versions are removed. Versions still running retain their cache until a
+later launch can safely remove it. Account data is stored separately.
+The gzip payload trades a larger download for faster first extraction.
+Diagnostic options:
 
 ```sh
 ./dist/deltagram --bundle-version
@@ -38,8 +45,8 @@ DELTA_TEST_IMAGE=ubuntu:22.04 bash docker/verify.sh # same checks on another ima
 This build targets **Linux x86-64** with X11 or XWayland, a compatible kernel,
 glibc 2.17 or newer, zlib for the extractor and a POSIX shell. Display services and graphics
 drivers remain host responsibilities; software rendering is the default.
-Extraction fails on a `noexec` temporary filesystem; choose an executable
-`TMPDIR`. Windows, macOS, ARM, and musl-only distributions are not supported by
+The runtime cache must allow execution; set `XDG_CACHE_HOME` to an executable
+filesystem if the default cache is mounted `noexec`. Windows, macOS, ARM, and musl-only distributions are not supported by
 this artifact. Each needs a separate native build. Identical behavior on every
 system is not guaranteed; record tested distributions in
 [VALIDATION.md](../docs/VALIDATION.md).

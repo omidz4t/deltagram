@@ -189,3 +189,26 @@ closing the dialog. Physical camera capture is unverified: the local test
 machine has no camera device. The portable bundle includes the Qt FFmpeg media
 plugin and its dependency closure; the alternate GStreamer media stack is
 excluded.
+
+
+## Portable startup — 2026-10-07
+
+The launcher caches each runtime by payload SHA-256 and uses file locks to
+coordinate extraction and protect running older versions during cleanup. Five
+launcher regression tests cover cache reuse and recovery, concurrent first
+launches, active-version preservation, failed extraction and cache symlinks.
+
+The same local `--bundle-version` runtime startup check took approximately
+19.2 seconds on both launches with the previous executable. With the cached
+gzip runtime, first extraction took 2.316 seconds and reuse took 0.003 seconds.
+These measurements isolate runtime preparation; they do not measure account
+loading, network synchronization or time to an interactive chat window.
+
+The spellchecker starts with a valid UTF-8 dictionary instead of empty paths.
+Portable startup installs a managed desktop entry matching the Deltagram Qt
+application ID, while preserving an existing user-provided entry. It no longer
+automatically registers the donor's Telegram and TON URL schemes. The isolated
+release checks exercise GUI startup, keyboard input, Core RPC and sandboxed
+WebKit JavaScript. The bundled Qt FFmpeg media plugin also passed image and
+video-frame QR decoding without a host Qt or Nix installation. Physical camera
+capture and registration with a real host desktop portal remain unverified.

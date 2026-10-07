@@ -18,6 +18,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QSaveFile>
+#include <QTemporaryFile>
 
 #include <xxhash.h>
 
@@ -321,8 +322,19 @@ QChar::Script HunspellEngine::script() {
 	return _script;
 }
 
-HunspellService::HunspellService()
-: _customDict(std::make_unique<Hunspell>("", "")) {
+HunspellService::HunspellService() {
+	// Hunspell rejects an absent or zero-word dictionary. Seed its custom
+	// suggestion engine with the application name and a valid UTF-8 affix file.
+	auto affix = QTemporaryFile();
+	auto dictionary = QTemporaryFile();
+	if (affix.open() && dictionary.open()
+			&& affix.write("SET UTF-8\n") == 10
+			&& dictionary.write("1\nDeltagram\n") == 12
+			&& affix.flush() && dictionary.flush()) {
+		_customDict = std::make_unique<Hunspell>(
+			QFile::encodeName(affix.fileName()).constData(),
+			QFile::encodeName(dictionary.fileName()).constData());
+	}
 	// Remove the helper files of the old UTF table workaround.
 	if (const auto dir = ::Spellchecker::WorkingDirPath(); !dir.isEmpty()) {
 		QFile::remove(dir + u"/utf_helper.aff"_q);
@@ -404,7 +416,9 @@ std::vector<QString> HunspellService::lookupSuggestions(
 		int generation) {
 	const auto wordScript = ::Spellchecker::WordScript(wrongWord);
 
-	const auto customGuesses = _customDict->suggest(wrongWord.toStdString());
+	const auto customGuesses = _customDict
+		? _customDict->suggest(wrongWord.toStdString())
+		: std::vector<std::string>();
 	auto sources = std::vector<std::vector<QString>>();
 	sources.push_back(ranges::views::all(
 		customGuesses
@@ -460,7 +474,7 @@ void HunspellService::ignoreWord(const QString &word) {
 	if (ranges::contains(_ignoredWords[wordScript], word)) {
 		return;
 	}
-	_customDict->add(word.toStdString());
+	if (_customDict) _customDict->add(word.toStdString());
 	_ignoredWords[wordScript].push_back(word);
 }
 
@@ -477,7 +491,7 @@ void HunspellService::addWord(const QString &word) {
 	if (count > kMaxSyncableDictionaryWords) {
 		return;
 	}
-	_customDict->add(word.toStdString());
+	if (_customDict) _customDict->add(word.toStdString());
 	vector.push_back(word);
 	writeToFile();
 	crl::on_main([word] {
@@ -486,7 +500,7 @@ void HunspellService::addWord(const QString &word) {
 }
 
 void HunspellService::removeWord(const QString &word) {
-	_customDict->remove(word.toStdString());
+	if (_customDict) _customDict->remove(word.toStdString());
 	auto &vector = addedWords(word);
 	vector.erase(ranges::remove(vector, word), end(vector));
 	writeToFile();
@@ -567,7 +581,7 @@ void HunspellService::readFile() {
 		if (++count > kMaxSyncableDictionaryWords) {
 			break;
 		}
-		_customDict->add(word.toStdString());
+		if (_customDict) _customDict->add(word.toStdString());
 		_addedWords[WordScript(word)].push_back(std::move(word));
 	}
 	if (dirty) {

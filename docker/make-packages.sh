@@ -10,7 +10,7 @@ mkdir -p "$PAYLOAD/usr/bin" "$PAYLOAD/usr/share/applications" \
   "$PAYLOAD/usr/share/doc/deltagram" /output
 install -m 755 /input/deltagram "$PAYLOAD/usr/bin/deltagram"
 install -m 644 /licenses/* "$PAYLOAD/usr/share/doc/deltagram/"
-cat > "$PAYLOAD/usr/share/applications/deltagram.desktop" <<'DESKTOP'
+cat > "$PAYLOAD/usr/share/applications/org.deltagram.desktop.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
 Name=Deltagram
@@ -68,7 +68,7 @@ mkdir -p %{buildroot}
 cp -a $PAYLOAD/usr %{buildroot}/
 %files
 %attr(0755,root,root) /usr/bin/deltagram
-/usr/share/applications/deltagram.desktop
+/usr/share/applications/org.deltagram.desktop.desktop
 %doc /usr/share/doc/deltagram
 SPEC
 rpmbuild --define '_topdir /tmp/packages/rpm' -bb /tmp/packages/rpm/SPECS/deltagram.spec

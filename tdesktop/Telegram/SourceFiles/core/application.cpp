@@ -322,7 +322,7 @@ void Application::run() {
 	refreshGlobalProxy(); // Depends on app settings being read.
 
 	if (const auto old = Local::oldSettingsVersion(); old < AppVersion) {
-		autoRegisterUrlScheme();
+		// Core invites must not replace Telegram or TON URL handlers.
 		Platform::NewVersionLaunched(old);
 	}
 

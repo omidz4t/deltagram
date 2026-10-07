@@ -54,7 +54,18 @@ if ! DISPLAY=:99 python /verify-window.py; then
   cat /tmp/gui.log
   exit 1
 fi
-if grep -q 'Fontconfig warning' /tmp/gui.log; then exit 1; fi
+if grep -Eq 'Fontconfig warning|error: empty dic file|Hash Manager Error|App info not found|Failed to execute child process.*update-desktop-database' /tmp/gui.log; then exit 1; fi
+test -f /tmp/home/.local/share/applications/org.deltagram.desktop.desktop
+HOME=/tmp/home python - <<'DESKTOP'
+import ctypes
+gio = ctypes.CDLL('libgio-2.0.so.0')
+gio.g_desktop_app_info_new.argtypes = [ctypes.c_char_p]
+gio.g_desktop_app_info_new.restype = ctypes.c_void_p
+info = gio.g_desktop_app_info_new(b'org.deltagram.desktop.desktop')
+assert info, 'Deltagram desktop entry cannot be resolved by GIO'
+gio.g_object_unref.argtypes = [ctypes.c_void_p]
+gio.g_object_unref(info)
+DESKTOP
 kill "$APP_PID"
 wait "$APP_PID" || test "$?" -eq 143
 printf 'WebKit JavaScript, GUI startup and keyboard input checks passed.\n'

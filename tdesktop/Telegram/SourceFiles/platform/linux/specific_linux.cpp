@@ -464,6 +464,36 @@ bool GenerateServiceFile(bool silent = false) {
 	return true;
 }
 
+void RegisterPortableDesktopEntry() {
+	const auto executable = qEnvironmentVariable("DELTA_TEL_EXECUTABLE");
+	if (executable.isEmpty() || KSandbox::isInside()
+			|| !qEnvironmentVariableIsEmpty("DESKTOPINTEGRATION")) {
+		return;
+	}
+	const auto directory = QStandardPaths::writableLocation(
+		QStandardPaths::ApplicationsLocation);
+	if (directory.isEmpty() || !QDir().mkpath(directory)) return;
+	const auto name = directory + u"/org.deltagram.desktop.desktop"_q;
+	auto existing = QFile(name);
+	if (existing.open(QIODevice::ReadOnly)
+			&& !existing.readAll().contains("X-Deltagram-Managed=true")) {
+		return;
+	}
+	auto entry = GLib::KeyFile::new_();
+	entry.set_string("Desktop Entry", "Type", "Application");
+	entry.set_string("Desktop Entry", "Name", "Deltagram");
+	entry.set_string("Desktop Entry", "Comment", "Experimental Delta Chat client");
+	entry.set_string("Desktop Entry", "Icon", "internet-chat");
+	entry.set_string("Desktop Entry", "Categories", "Network;InstantMessaging;");
+	entry.set_boolean("Desktop Entry", "Terminal", false);
+	entry.set_boolean("Desktop Entry", "StartupNotify", true);
+	entry.set_boolean("Desktop Entry", "X-Deltagram-Managed", true);
+	entry.set_string("Desktop Entry", "Exec", (
+		KShell::joinArgs({ executable }).replace('%', u"%%"_q).replace(
+			'\\', qstr("\\\\")) + u" %U"_q).toStdString());
+	entry.save_to_file(name.toStdString());
+}
+
 void InstallLauncher() {
 	static const auto DisabledByEnv = !qEnvironmentVariableIsEmpty(
 		"DESKTOPINTEGRATION");
@@ -742,9 +772,10 @@ void start() {
 				Core::Launcher::Instance().instanceHash().constData());
 		}
 
-		return u"org.telegram.desktop"_q;
+		return u"org.deltagram.desktop"_q;
 	}());
 
+	RegisterPortableDesktopEntry();
 	LOG(("App ID: %1").arg(QGuiApplication::desktopFileName()));
 
 	if (!qEnvironmentVariableIsSet("XDG_ACTIVATION_TOKEN")
