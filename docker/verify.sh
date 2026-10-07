@@ -9,8 +9,9 @@ SCREENS=$(mktemp -d "$DELTA_TEL_DATA/verification.XXXXXX")
 # The application itself must use the runtime embedded in its single file.
 # Allow WebKit to create its own sandbox namespaces and install its seccomp
 # policy. The root test user also needs SYS_ADMIN and NET_ADMIN for bubblewrap's mount/network
-# namespace; these permissions apply only to this offline test container.
-timeout 300 docker run --rm --security-opt seccomp=unconfined --cap-add SYS_ADMIN --cap-add NET_ADMIN --ulimit core=0 --network none --tmpfs /tmp:rw,exec,size=1900m \
+# namespaces. Ubuntu's Docker AppArmor profile also blocks their mounts.
+# These permissions apply only to this offline test container.
+timeout 300 docker run --rm --security-opt seccomp=unconfined --security-opt apparmor=unconfined --cap-add SYS_ADMIN --cap-add NET_ADMIN --ulimit core=0 --network none --tmpfs /tmp:rw,exec,size=1900m \
   --mount "type=bind,source=$OUTPUT,target=/output,readonly" \
   --mount "type=bind,source=$SCREENS,target=/screens" \
   --mount "type=bind,source=$DEPS,target=/test-deps,readonly" \
