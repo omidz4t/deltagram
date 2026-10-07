@@ -68,3 +68,9 @@ The dependency closure supplies tg_owt and tlottie from pinned nixpkgs.
 Telegram tde2e is excluded and conference attempts are refused; Chatmail Core
 handles messaging encryption. GitHub Actions builds and publishes experimental releases on `main`; see
 [the release guide](RELEASING.md). Local release commands only create artifacts.
+
+QR scanning uses the pinned ZXing decoder and Qt Multimedia packages from the
+Nix shell. Their include paths apply only to the scan implementation, avoiding
+changes to the whole GUI's precompiled header. Portable packaging includes the
+FFmpeg camera plugin and omits the alternate GStreamer media plugin. Local
+ccache uses the same precompiled-header settings as CI.

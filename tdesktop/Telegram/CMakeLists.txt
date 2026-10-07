@@ -62,10 +62,18 @@ if (DESKTOP_APP_TEST_APPS OR TDESKTOP_BUILD_UPDATE_TESTS)
     endif()
 endif()
 
+find_package(ZXing CONFIG REQUIRED HINTS "$ENV{ZXING_ROOT}/lib/cmake/ZXing")
+find_package(Qt6Multimedia CONFIG REQUIRED HINTS "$ENV{QT_MULTIMEDIA_ROOT}/lib/cmake/Qt6Multimedia")
+set_property(SOURCE ${src_loc}/delta/delta_boxes.cpp APPEND PROPERTY
+    INCLUDE_DIRECTORIES
+        $<TARGET_PROPERTY:ZXing::ZXing,INTERFACE_INCLUDE_DIRECTORIES>
+        $<TARGET_PROPERTY:Qt6::Multimedia,INTERFACE_INCLUDE_DIRECTORIES>)
 set_target_properties(Telegram PROPERTIES AUTOMOC ON)
 
 target_link_libraries(Telegram
 PRIVATE
+    $<LINK_ONLY:ZXing::ZXing>
+    $<LINK_ONLY:Qt6::Multimedia>
     tdesktop::lib_fido2
     tdesktop::lib_tgcalls
     tdesktop::td_export

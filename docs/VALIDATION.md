@@ -168,3 +168,24 @@ message and return from the profile to history. Repeated use of the menu also
 passed after correcting its ownership. The release GUI built with four jobs,
 and project tests and the source audit passed. Network delivery and a complete
 media gallery remain outside these checks.
+
+## Invite QR scanning
+
+The Scan QR Code tab offers Qt camera capture, image files and clipboard
+screenshots decoded with ZXing,
+then fills the invite field for an explicit Join through Core. Switching tabs
+collapses the invite canvas and changes the instructions; late invite-loading
+callbacks cannot replace the scan instructions or access a closed dialog.
+
+Decoder checks use a disposable Core account's generated invite: SVG rendering,
+PNG and JPEG decoding, a 90-degree rotation, rejection of a blank image,
+and conversion through QVideoSink/QVideoFrame before decoding. Qt reports zero
+camera devices on the local machine. GUI checks passed for the no-camera
+fallback, transparent image selection, clipboard image decoding, clearing an
+old invite after a failed scan, and explicit joining through real Core
+`check_qr` and `secure_join` calls with mail IO disabled.
+Camera capture stops when switching tabs, after successful decoding, and when
+closing the dialog. Physical camera capture is unverified: the local test
+machine has no camera device. The portable bundle includes the Qt FFmpeg media
+plugin and its dependency closure; the alternate GStreamer media stack is
+excluded.

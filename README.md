@@ -21,6 +21,8 @@ Before publishing a working development checkout, follow
 [docs/PUBLISHING.md](docs/PUBLISHING.md). That workflow exports edited donor
 sources without nested Git history, accounts, binaries or local diagnostics.
 
+For sharing and scanning invites, see [Invite QR codes](docs/QR-CODES.md).
+
 ## License
 
 Deltagram is free software licensed under the **GNU General Public License,
@@ -31,7 +33,8 @@ This project derives from Telegram Desktop. Its copyright notices and licensing
 terms remain in [tdesktop/LEGAL](tdesktop/LEGAL) and
 [tdesktop/LICENSE](tdesktop/LICENSE), including its OpenSSL linking exception.
 Third-party components retain their own licenses and notices, including
-[Chatmail Core](https://github.com/chatmail/core/blob/main/LICENSE).
+[Chatmail Core](https://github.com/chatmail/core/blob/main/LICENSE) and the
+[ZXing QR decoder](licenses/ZXing-LICENSE) (Apache-2.0).
 
 ## Building
 

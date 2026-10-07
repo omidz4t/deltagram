@@ -65,6 +65,17 @@ This file is part of Delta Tel, a Telegram Desktop based Delta Chat client.
 #include <QtCore/QFileInfo>
 #include <QtWidgets/QFileDialog>
 
+#include <ZXing/ReadBarcode.h>
+#include <ZXing/ReaderOptions.h>
+#include <ZXing/Barcode.h>
+#include <QtGui/QImageReader>
+#include <QtCore/QElapsedTimer>
+#include <QtMultimedia/QCamera>
+#include <QtMultimedia/QMediaDevices>
+#include <QtMultimedia/QMediaCaptureSession>
+#include <QtMultimedia/QVideoSink>
+#include <QtMultimedia/QVideoFrame>
+
 #include <algorithm>
 
 namespace Delta {
@@ -1008,11 +1019,14 @@ void ShowInviteQr() {
 			inviteTab->setGeometry(0, 0, half, tabs->height());
 			scanTab->setGeometry(half, 0, width - half, tabs->height());
 		}, tabs->lifetime());
-		const auto canvas = box->addRow(
-			object_ptr<Ui::RpWidget>(box),
+		const auto canvasWrap = box->addRow(
+			object_ptr<Ui::SlideWrap<Ui::FixedHeightWidget>>(box,
+				object_ptr<Ui::FixedHeightWidget>(box, 280)),
 			st::boxRowPadding);
-		canvas->resize(canvas->width(), 280);
+		const auto canvas = canvasWrap->entity();
 		const auto image = canvas->lifetime().make_state<QImage>();
+		const auto preview = canvas->lifetime().make_state<QImage>();
+		const auto scanning = canvas->lifetime().make_state<bool>(false);
 		const auto status = box->addRow(
 			object_ptr<Ui::FlatLabel>(
 				box,
@@ -1021,65 +1035,217 @@ void ShowInviteQr() {
 			st::boxRowPadding,
 			style::al_top);
 		status->setSelectable(true);
-		const auto field = box->addRow(object_ptr<Ui::InputField>(
-			box,
-			st::defaultInputField,
-			rpl::single(u"Paste an invite code"_q)));
-		field->hide();
+		const auto fieldWrap = box->addRow(
+			object_ptr<Ui::SlideWrap<Ui::InputField>>(box,
+				object_ptr<Ui::InputField>(box, st::defaultInputField,
+					rpl::single(u"Paste an invite code"_q))));
+		const auto field = fieldWrap->entity();
+
 		canvas->paintRequest() | rpl::on_next([=] {
 			auto p = QPainter(canvas);
 			p.fillRect(canvas->rect(), Qt::white);
-			if (!image->isNull()) {
-				const auto side = std::min(canvas->width(), canvas->height()) - 24;
-				p.drawImage(
-					QRect(
-						(canvas->width() - side) / 2,
-						(canvas->height() - side) / 2,
-						side,
-						side),
-					*image);
+			const auto &source = *scanning ? *preview : *image;
+			if (!source.isNull()) {
+				const auto size = source.size().scaled(
+					canvas->size() - QSize(24, 24), Qt::KeepAspectRatio);
+				p.drawImage(QRect(QPoint(
+					(canvas->width() - size.width()) / 2,
+					(canvas->height() - size.height()) / 2), size), source);
 			}
 		}, canvas->lifetime());
+		const auto weak = QPointer<Ui::GenericBox>(box.get());
 		const auto text = canvas->lifetime().make_state<QString>();
-		const auto showCode = [=](bool code) {
-			canvas->setVisible(code);
-			status->setVisible(true);
-			field->setVisible(!code);
-			box->setTitle(rpl::single(code
-				? u"QR Invite Code"_q
-				: u"Scan QR Code"_q));
+		const auto caption = canvas->lifetime().make_state<QString>(u"Loading…"_q);
+		const auto actionsWrap = box->addRow(
+			object_ptr<Ui::SlideWrap<Ui::FixedHeightWidget>>(box,
+				object_ptr<Ui::FixedHeightWidget>(box, 96)),
+			style::margins());
+		const auto actions = actionsWrap->entity();
+		const auto useCamera = Ui::CreateChild<Ui::SettingsButton>(actions,
+			rpl::single(u"Use camera"_q), st::settingsButtonNoIcon);
+		const auto openImage = Ui::CreateChild<Ui::SettingsButton>(actions,
+			rpl::single(u"Open QR image"_q), st::settingsButtonNoIcon);
+		const auto pasteImage = Ui::CreateChild<Ui::SettingsButton>(actions,
+			rpl::single(u"Paste QR"_q), st::settingsButtonNoIcon);
+		actions->widthValue() | rpl::on_next([=](int width) {
+			useCamera->setGeometry(0, 0, width, 48);
+			openImage->setGeometry(0, 48, width / 2, 48);
+			pasteImage->setGeometry(width / 2, 48, width - width / 2, 48);
+		}, actions->lifetime());
+		const auto capture = new QMediaCaptureSession(box);
+		const auto camera = new QCamera(capture);
+		const auto sink = new QVideoSink(capture);
+		capture->setCamera(camera);
+		capture->setVideoSink(sink);
+		const auto cameraTimeout = new QTimer(capture);
+		cameraTimeout->setSingleShot(true);
+		cameraTimeout->setInterval(7000);
+		QObject::connect(cameraTimeout, &QTimer::timeout, box, [=] {
+			cameraTimeout->stop();
+			camera->stop();
+			canvasWrap->toggle(false, anim::type::instant);
+			status->setText(u"The camera did not provide an image. Open or paste a QR image instead."_q);
+		});
+		const auto decode = [=](QImage source, bool silent = false) {
+			if (!silent) field->setText(QString());
+			if (source.isNull()) {
+				if (!silent) status->setText(u"Could not read this image."_q);
+				return;
+			}
+			if (source.width() > 4096 || source.height() > 4096) {
+				source = source.scaled(4096, 4096, Qt::KeepAspectRatio);
+			}
+			if (source.hasAlphaChannel()) {
+				auto opaque = QImage(source.size(), QImage::Format_RGB32);
+				opaque.fill(Qt::white);
+				{
+					auto p = QPainter(&opaque);
+					p.drawImage(0, 0, source);
+				}
+				source = std::move(opaque);
+			}
+			const auto gray = source.convertToFormat(QImage::Format_Grayscale8);
+			const auto result = ZXing::ReadBarcode(ZXing::ImageView(
+				gray.constBits(), gray.width(), gray.height(),
+				ZXing::ImageFormat::Lum, gray.bytesPerLine()),
+				ZXing::ReaderOptions().setFormats(ZXing::BarcodeFormat::QRCode));
+			if (!result.isValid()) {
+				if (!silent) status->setText(u"No QR code found. Try a clearer image."_q);
+				return;
+			}
+			cameraTimeout->stop();
+			camera->stop();
+			canvasWrap->toggle(false, anim::type::instant);
+			field->setText(QString::fromStdString(result.text()));
+			status->setText(u"QR code read. Click Join to use this invite."_q);
 		};
-		inviteTab->setClickedCallback([=] { showCode(true); });
-		scanTab->setClickedCallback([=] { showCode(false); });
-		box->addButton(rpl::single(u"Copy Link"_q), [=] {
+		const auto timer = canvas->lifetime().make_state<QElapsedTimer>();
+		timer->start();
+		QObject::connect(sink, &QVideoSink::videoFrameChanged, box,
+			[=](const QVideoFrame &frame) {
+				if (!*scanning || !camera->isActive()) return;
+				*preview = frame.toImage();
+				canvas->update();
+				if (!preview->isNull()) cameraTimeout->stop();
+				if (timer->elapsed() >= 500) {
+					timer->restart();
+					decode(*preview, true);
+				}
+			});
+		QObject::connect(camera, &QCamera::errorOccurred, box,
+			[=](QCamera::Error, const QString &message) {
+				if (!*scanning) return;
+				cameraTimeout->stop();
+				camera->stop();
+				canvasWrap->toggle(false, anim::type::instant);
+				status->setText(u"Camera unavailable: %1. Open or paste a QR image instead."_q.arg(message));
+			});
+		const auto startCamera = [=] {
+			const auto device = QMediaDevices::defaultVideoInput();
+			if (device.isNull()) {
+				status->setText(u"No camera found. Open or paste a QR image instead."_q);
+				return;
+			}
+			*preview = QImage();
+			field->setText(QString());
+			camera->setCameraDevice(device);
+			canvasWrap->toggle(true, anim::type::instant);
+			status->setText(u"Point the camera at an invite QR code."_q);
+			cameraTimeout->start();
+			camera->start();
+		};
+		useCamera->setClickedCallback(startCamera);
+		openImage->setClickedCallback([=] {
+			cameraTimeout->stop();
+			camera->stop();
+			canvasWrap->toggle(false, anim::type::instant);
+			const auto path = QFileDialog::getOpenFileName(box,
+				u"Open QR image"_q, QString(),
+				u"Images (*.png *.jpg *.jpeg *.webp *.bmp *.svg)"_q);
+			if (!weak || path.isEmpty()) return;
+			auto reader = QImageReader(path);
+			reader.setAutoTransform(true);
+			decode(reader.read());
+		});
+		pasteImage->setClickedCallback([=] {
+			cameraTimeout->stop();
+			camera->stop();
+			canvasWrap->toggle(false, anim::type::instant);
+			const auto clipboard = QGuiApplication::clipboard();
+			const auto source = clipboard->image();
+			if (!source.isNull()) {
+				decode(source);
+			} else {
+				field->setText(clipboard->text().trimmed());
+				status->setText(field->getLastText().isEmpty()
+					? u"The clipboard has no image or invite link."_q
+					: u"Click Join to use the pasted invite."_q);
+			}
+		});
+		const auto copyLink = [=] {
 			if (!text->isEmpty()) {
 				QGuiApplication::clipboard()->setText(*text);
 				status->setText(u"Link copied."_q);
 			}
-		});
-		box->addButton(rpl::single(u"Join"_q), [=] {
+		};
+		const auto joining = box->lifetime().make_state<bool>(false);
+		const auto join = [=] {
+			if (*joining) return;
 			const auto qr = field->getLastText().trimmed();
 			if (qr.isEmpty()) {
 				field->showError();
 				return;
 			}
+			*joining = true;
+			cameraTimeout->stop();
+			camera->stop();
+			canvasWrap->toggle(false, anim::type::instant);
 			status->setText(u"Joining…"_q);
 			JoinInviteQr(qr, [=](QString error) {
+				if (!weak) return;
+				*joining = false;
 				if (!error.isEmpty()) {
 					status->setText(error);
 					return;
 				}
 				box->closeBox();
 			});
+		};
+		const auto showCode = [=](bool code) {
+			cameraTimeout->stop();
+			camera->stop();
+			*scanning = !code;
+			canvasWrap->toggle(code, anim::type::instant);
+			actionsWrap->toggle(!code, anim::type::instant);
+			fieldWrap->toggle(!code, anim::type::instant);
+			status->setText(code ? *caption
+				: u"Open a QR image, paste a screenshot, or paste an invite link."_q);
+			box->setTitle(rpl::single(code
+				? u"QR Invite Code"_q : u"Scan QR Code"_q));
+			box->clearButtons();
+			if (code) {
+				box->addButton(rpl::single(u"Copy Link"_q), copyLink);
+			} else {
+				box->addButton(rpl::single(u"Join"_q), join);
+				field->setFocus();
+			}
+			box->addButton(tr::lng_close(), [=] { box->closeBox(); });
+		};
+		showCode(true);
+		inviteTab->setClickedCallback([=] { showCode(true); });
+		scanTab->setClickedCallback([=] {
+			showCode(false);
+			startCamera();
 		});
-		box->addButton(tr::lng_close(), [=] { box->closeBox(); });
 		LoadInviteQr([=](
 				QString name,
 				QString code,
 				QString svg,
 				QString error) {
+			if (!weak) return;
 			if (!error.isEmpty()) {
-				status->setText(error);
+				*caption = error;
+				if (!*scanning) status->setText(error);
 				return;
 			}
 			*text = code;
@@ -1090,8 +1256,9 @@ void ShowInviteQr() {
 				auto p = QPainter(image);
 				renderer.render(&p);
 			}
-			status->setText(u"Scan to chat with %1"_q.arg(
-				name.isEmpty() ? u"me"_q : name));
+			*caption = u"Scan to chat with %1"_q.arg(
+				name.isEmpty() ? u"me"_q : name);
+			if (!*scanning) status->setText(*caption);
 			canvas->update();
 		});
 	}));

@@ -4,6 +4,8 @@ DELTA_TEL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export DELTA_TEL_DATA="${DELTA_TEL_DATA:-$DELTA_TEL_ROOT/data}"
 export DELTA_TEL_NIX_ROOT="${DELTA_TEL_NIX_ROOT:-$DELTA_TEL_DATA/nix}"
 export CCACHE_DIR="${CCACHE_DIR:-$DELTA_TEL_DATA/ccache}"
+# Match CI so the GUI precompiled header does not disable compiler caching.
+export CCACHE_SLOPPINESS="${CCACHE_SLOPPINESS:-pch_defines,time_macros}"
 export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-5G}"
 export CMAKE_BUILD_DIR="${CMAKE_BUILD_DIR:-$DELTA_TEL_DATA/tdesktop-out}"
 export RELEASE_DIR="${RELEASE_DIR:-$DELTA_TEL_DATA/tdesktop-release}"

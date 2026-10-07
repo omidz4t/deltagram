@@ -72,10 +72,15 @@ def stage():
         "DELTA_TEL_EXTRA_QT_PLUGIN_ROOTS", "").split(":") if p]
     for plugin_root in plugin_roots:
         for category in ("platforms", "platforminputcontexts", "xcbglintegrations",
-                         "imageformats", "iconengines", "styles"):
+                         "imageformats", "iconengines", "styles", "multimedia"):
             for plugin in sorted((plugin_root / category).glob("*.so")):
+                # Use one camera backend rather than bundling a second media stack.
+                if category == "multimedia" and plugin.name != "libffmpegmediaplugin.so":
+                    continue
                 copy(plugin, DEST / "telegram-plugins" / category / plugin.name)
                 dependencies(plugin, lib)
+    if not (DEST / "telegram-plugins/multimedia/libffmpegmediaplugin.so").is_file():
+        raise SystemExit("Required Qt camera backend missing")
     for name in ("jpeg", "webp", "svg"):
         if not (DEST / f"telegram-plugins/imageformats/libq{name}.so").is_file():
             raise SystemExit(f"Required Qt image codec missing: {name}")
@@ -93,6 +98,7 @@ def stage():
     copy(ROOT / "tdesktop/LICENSE", DEST / "licenses/Telegram-LICENSE")
     copy(ROOT / "tdesktop/LEGAL", DEST / "licenses/Telegram-LEGAL")
     copy(ROOT / "context/core/LICENSE", DEST / "licenses/Core-LICENSE")
+    copy(ROOT / "licenses/ZXing-LICENSE", DEST / "licenses/ZXing-LICENSE")
     for binary in DEST.rglob("*"):
         if not binary.is_file():
             continue
