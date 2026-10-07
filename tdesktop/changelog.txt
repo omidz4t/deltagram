@@ -1,3 +1,14 @@
+0.2.0 beta (07.10.26)
+
+- fix: enable invite QR scanning
+- fix: speed up portable startup
+- fix: keep general wallpapers local and persistent
+- fix: name release artifacts after Deltagram
+- fix: adapt channel profiles to window size
+- fix: preserve forward labels and refresh read indicators
+- feat: add an experimental profile sidebar
+- fix: hide unfinished profiles from account menus
+
 0.1.0 beta (07.10.26)
 
 - Initial experimental Deltagram release.
