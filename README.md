@@ -21,9 +21,19 @@ Before publishing a working development checkout, follow
 [docs/PUBLISHING.md](docs/PUBLISHING.md). That workflow exports edited donor
 sources without nested Git history, accounts, binaries or local diagnostics.
 
-Upstream licenses and notices remain with their components, including
-[Telegram Desktop](tdesktop/LICENSE) and
+## License
+
+Deltagram is free software licensed under the **GNU General Public License,
+version 3 or later (GPL-3.0-or-later)**. See the root [LICENSE](LICENSE) for the
+full license text.
+
+This project derives from Telegram Desktop. Its copyright notices and licensing
+terms remain in [tdesktop/LEGAL](tdesktop/LEGAL) and
+[tdesktop/LICENSE](tdesktop/LICENSE), including its OpenSSL linking exception.
+Third-party components retain their own licenses and notices, including
 [Chatmail Core](https://github.com/chatmail/core/blob/main/LICENSE).
+
+## Building
 
 On x86_64 Linux with unprivileged user namespaces enabled (release packaging
 also requires a running Docker daemon):
