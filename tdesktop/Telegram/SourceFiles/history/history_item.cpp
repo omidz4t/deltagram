@@ -3246,13 +3246,17 @@ bool HistoryItem::allowsForward() const {
 }
 
 bool HistoryItem::isTooOldForEdit(TimeId now) const {
-	return !_history->peer->canEditMessagesIndefinitely()
+	return !Delta::Active()
+		&& !_history->peer->canEditMessagesIndefinitely()
 		&& !isScheduled()
 		&& !isWelcomeTemplate()
 		&& (now - date() >= _history->session().serverConfig().editTimeLimit);
 }
 
 bool HistoryItem::allowsEdit(TimeId now) const {
+	if (Delta::Active() && !Delta::CanEditMessage(id.bare)) {
+		return false;
+	}
 	const auto richPageSource = Get<HistoryMessageRichPageSource>();
 	const auto richPage = BestRichPage(richPageSource);
 	return !isService()
@@ -3332,7 +3336,10 @@ bool HistoryItem::allowsMediaDownloadControls() const {
 }
 
 bool HistoryItem::canDelete() const {
-	if (isSponsored()) {
+	if (Delta::Active() && isSending()) {
+		// Core may already have accepted the send, but its ID is not known yet.
+		return false;
+	} else if (isSponsored()) {
 		return false;
 	} else if (isEphemeral()) {
 		return false;
@@ -3823,6 +3830,11 @@ bool HistoryItem::canViewReactions() const {
 		&& !_reactions->list().empty();
 }
 
+bool HistoryItem::canInferReactionPeers() const {
+	return _history->peer->isUser()
+		&& (!Delta::Active() || Delta::IsDirectChat(_history->peer->id.value));
+}
+
 std::vector<Data::ReactionId> HistoryItem::chosenReactions() const {
 	return _reactions
 		? _reactions->chosen()
@@ -3940,7 +3952,8 @@ const HiddenSenderInfo *HistoryItem::displayHiddenSenderInfo() const {
 bool HistoryItem::showForwardsFromSender(
 		not_null<const HistoryMessageForwarded*> forwarded) const {
 	const auto peer = history()->peer;
-	return !forwarded->story
+	return !forwarded->anonymous
+		&& !forwarded->story
 		&& (peer->isSelf()
 			|| peer->isRepliesChat()
 			|| peer->isVerifyCodes()
@@ -4393,11 +4406,22 @@ bool HistoryItem::hasUnpaidContent() const {
 	return false;
 }
 
+void HistoryItem::retrySend() {
+	Expects(hasFailed() && IsClientMsgId(id));
+	_flags = (_flags | MessageFlag::BeingSent) & ~MessageFlag::SendingFailed;
+	invalidateChatListEntry();
+	_history->owner().notifyItemDataChange(this);
+	_history->session().changes().historyUpdated(
+		_history,
+		Data::HistoryUpdate::Flag::ClientSideMessages);
+}
+
 void HistoryItem::sendFailed() {
 	Expects(_flags & MessageFlag::BeingSent);
 	Expects(!(_flags & MessageFlag::SendingFailed));
 
 	_flags = (_flags | MessageFlag::SendingFailed) & ~MessageFlag::BeingSent;
+	invalidateChatListEntry();
 	_history->owner().notifyItemDataChange(this);
 	_history->session().changes().historyUpdated(
 		_history,
@@ -4413,7 +4437,29 @@ bool HistoryItem::isService() const {
 	return Has<HistoryServiceData>();
 }
 
-void HistoryItem::setLocalVideo(
+void HistoryItem::setAnonymousForwarded(bool forwarded) {
+	const auto existing = Get<HistoryMessageForwarded>();
+	if (!forwarded) {
+		if (existing && existing->anonymous) {
+			RemoveComponents(HistoryMessageForwarded::Bit());
+			_flags &= ~MessageFlag::DisplayFromChecked;
+		}
+		return;
+	} else if (existing && existing->anonymous) {
+		return;
+	}
+	if (existing) RemoveComponents(HistoryMessageForwarded::Bit());
+	AddComponents(HistoryMessageForwarded::Bit());
+	const auto info = Get<HistoryMessageForwarded>();
+	info->anonymous = true;
+	// The donor component requires a nonempty fallback name even when its
+	// anonymous presentation does not expose an original sender.
+	info->originalHiddenSenderInfo = std::make_unique<HiddenSenderInfo>(
+		tr::lng_forwarded_anonymous(tr::now), false);
+	_flags &= ~MessageFlag::DisplayFromChecked;
+}
+
+void HistoryItem::setLocalDocument(
 		not_null<DocumentData*> document,
 		const QString &caption) {
 	if (!_media || _media->document() != document) {
@@ -4421,6 +4467,7 @@ void HistoryItem::setLocalVideo(
 			this, document, Data::MediaFile::Args{});
 	}
 	setText(TextWithEntities{ caption });
+	invalidateChatListEntry();
 	_history->owner().requestItemViewRefresh(this);
 }
 
@@ -4884,6 +4931,7 @@ ItemPreview HistoryItem::toPreview(ToPreviewOptions options) const {
 		? ItemPreview::Icon::ReplyToStory
 		: ItemPreview::Icon::None;
 	const auto fromForwarded = [&]() -> std::optional<QString> {
+		if (forwarded && forwarded->anonymous) return {};
 		if (forwarded) {
 			const auto sender = forwarded->forwardOfForward()
 				? forwarded->savedFromSender
@@ -4950,6 +4998,7 @@ void HistoryItem::createComponents(CreateConfig &&config) {
 	if (config.reply.messageId
 		|| config.reply.externalSenderId
 		|| !config.reply.externalSenderName.isEmpty()
+		|| !config.reply.quote.empty()
 		|| config.reply.storyId) {
 		mask |= HistoryMessageReply::Bit();
 	}

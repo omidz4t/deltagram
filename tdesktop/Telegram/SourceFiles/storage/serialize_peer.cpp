@@ -211,11 +211,19 @@ PeerData *readPeer(
 	qint32 version = 0, photoHasVideo = 0;
 	stream >> peerIdSerialized >> versionTag;
 	const auto peerId = DeserializePeerId(peerIdSerialized);
-	if (!peerId) {
+	if (stream.status() != QDataStream::Ok
+		|| !(peerId.value & PeerId::kChatTypeMask) || (peerId.value >> 56)
+		|| (!peerIsUser(peerId) && !peerIsChat(peerId) && !peerIsChannel(peerId))) {
+		stream.setStatus(QDataStream::ReadCorruptData);
 		return nullptr;
 	}
-	if (versionTag == kVersionTag) {
+	const auto modern = (versionTag == kVersionTag);
+	if (modern) {
 		stream >> version >> photoId;
+		if (stream.status() != QDataStream::Ok || version < 1 || version > kVersion) {
+			stream.setStatus(QDataStream::ReadCorruptData);
+			return nullptr;
+		}
 	} else {
 		photoId = versionTag;
 	}
@@ -235,29 +243,30 @@ PeerData *readPeer(
 		: session->data().peerLoaded(peerId);
 	const auto apply = !loaded || !loaded->isLoaded();
 	const auto result = loaded ? loaded : session->data().peer(peerId).get();
-	if (apply) {
-		result->setLoadedStatus(PeerData::LoadedStatus::Normal);
-	}
 	if (const auto user = result->asUser()) {
 		QString first, last, phone, username, inlinePlaceholder;
 		quint64 access;
 		qint32 flags = 0, contact, botInfoVersion, supportsGuestChat = 0;
 		quint32 lastseen;
 		stream >> first >> last >> phone >> username >> access;
-		if (streamAppVersion >= 9012) {
+		// WHY: The record tag defines the current layout. Deltagram's product
+		// version is lower than Telegram's historical migration thresholds.
+		if (modern || streamAppVersion >= 9012) {
 			stream >> flags;
 		}
-		if (streamAppVersion >= 9016) {
+		if (modern || streamAppVersion >= 9016) {
 			stream >> inlinePlaceholder;
 		}
 		stream >> lastseen >> contact >> botInfoVersion;
 		if (version > 2) {
 			stream >> supportsGuestChat;
 		}
+		if (stream.status() != QDataStream::Ok) return nullptr;
 
 		userpicAccessHash = access;
 
 		if (apply) {
+			result->setLoadedStatus(PeerData::LoadedStatus::Normal);
 			const auto showPhone = !user->isServiceUser()
 				&& (user->id != selfId)
 				&& (contact <= 0);
@@ -267,7 +276,7 @@ PeerData *readPeer(
 
 			user->setPhone(phone);
 			user->setName(first, last, pname, username);
-			if (streamAppVersion >= 2008007) {
+			if (modern || streamAppVersion >= 2008007) {
 				user->setFlags(UserDataFlags::from_raw(flags));
 			} else {
 				using Saved = MTPDuser::Flag;
@@ -322,7 +331,9 @@ PeerData *readPeer(
 			>> field2
 			>> flags
 			>> inviteLink;
+		if (stream.status() != QDataStream::Ok) return nullptr;
 		if (apply) {
+			result->setLoadedStatus(PeerData::LoadedStatus::Normal);
 			const auto creator = UserId(
 				BareId(uint32(field1)) | (BareId(uint32(field2) >> 8) << 32));
 			chat->setName(name);
@@ -333,7 +344,7 @@ PeerData *readPeer(
 			// So we don't restore the version field, info is still unknown.
 			chat->setVersion(0);
 
-			if (streamAppVersion >= 2008007) {
+			if (modern || streamAppVersion >= 2008007) {
 				chat->setFlags(ChatDataFlags::from_raw(flags));
 			} else {
 				const auto oldForbidden = ((uint32(field2) & 0xFF) == 1);
@@ -389,15 +400,17 @@ PeerData *readPeer(
 			>> oldForbidden
 			>> flags
 			>> inviteLink;
+		if (stream.status() != QDataStream::Ok) return nullptr;
 
 		userpicAccessHash = access;
 
 		if (apply) {
+			result->setLoadedStatus(PeerData::LoadedStatus::Normal);
 			channel->setName(name, QString());
 			channel->setAccessHash(access);
 			channel->date = date;
 
-			if (streamAppVersion >= 2008007) {
+			if (modern || streamAppVersion >= 2008007) {
 				channel->setFlags(ChannelDataFlags::from_raw(flags));
 			} else {
 				using Saved = MTPDchannel::Flag;
@@ -458,11 +471,16 @@ QString peekUserPhone(int streamAppVersion, QDataStream &stream) {
 	stream >> peerIdSerialized >> versionTag;
 	const auto peerId = DeserializePeerId(peerIdSerialized);
 	DEBUG_LOG(("peekUserPhone.id: %1").arg(peerId.value));
-	if (!peerId || !peerIsUser(peerId)) {
+	if (stream.status() != QDataStream::Ok || !peerId || !peerIsUser(peerId)
+		|| (peerId.value >> 56)) {
 		return nullptr;
 	}
 	if (versionTag == kVersionTag) {
 		stream >> version >> photoId;
+		if (stream.status() != QDataStream::Ok || version < 1 || version > kVersion) {
+			stream.setStatus(QDataStream::ReadCorruptData);
+			return nullptr;
+		}
 	} else {
 		photoId = versionTag;
 	}
@@ -476,9 +494,7 @@ QString peekUserPhone(int streamAppVersion, QDataStream &stream) {
 
 	QString first, last, phone;
 	stream >> first >> last >> phone;
-	DEBUG_LOG(("peekUserPhone.data: %1 %2 %3"
-		).arg(first, last, phone));
-	return phone;
+	return (stream.status() == QDataStream::Ok) ? phone : QString();
 }
 
 } // namespace Serialize

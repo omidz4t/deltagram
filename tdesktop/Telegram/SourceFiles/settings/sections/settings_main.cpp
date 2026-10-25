@@ -387,11 +387,11 @@ void ConnectivityBox(not_null<Ui::GenericBox*> box) {
 		object_ptr<ConnectivityHtml>(box),
 		st::boxRowPadding);
 	const auto reload = [=] {
-		Delta::FetchConnectivityHtml([=](QString html) {
+		Delta::FetchConnectivityHtml(crl::guard(view, [=](QString html) {
 			view->setHtml(html.isEmpty()
 				? u"Connectivity is not available."_q
 				: html);
-		});
+		}));
 	};
 	reload();
 	Delta::Connectivity(
@@ -522,7 +522,7 @@ void BuildSectionButtons(SectionBuilder &builder) {
 		.title = tr::lng_settings_section_devices(),
 		.targetSection = CallsId(),
 		.icon = { &st::menuIconUnmute },
-		.keywords = { u"sessions"_q, u"calls"_q },
+		.keywords = { u"microphone"_q, u"speakers"_q, u"camera"_q },
 	});
 
 	builder.addButton({

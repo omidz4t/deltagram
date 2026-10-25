@@ -1557,7 +1557,10 @@ void ComposeControls::setHistory(SetHistoryArgs &&args) {
 			_wrap.get(),
 			peer->asChannel());
 	}
-	session().local().readDraftsWithCursors(_history);
+	const auto draftHistory = _history;
+	session().local().readDraftsWithCursors(_history, crl::guard(_wrap.get(), [=] {
+		if (_history == draftHistory && _field->empty() && !isEditingMessage()) applyDraft();
+	}));
 	applyDraft();
 	orderControls();
 	_field->setMode(args.videoStream

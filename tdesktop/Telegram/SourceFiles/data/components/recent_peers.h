@@ -29,6 +29,7 @@ public:
 	void remove(not_null<PeerData*> peer);
 	void bump(not_null<PeerData*> peer);
 	void clear();
+	void resetForAccountChange();
 
 	[[nodiscard]] QByteArray serialize() const;
 	void applyLocal(QByteArray serialized);

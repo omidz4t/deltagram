@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_peer_menu.h"
 
 #include "delta/delta_bridge.h"
+#include "delta/delta_boxes.h"
 
 #include "base/call_delayed.h"
 #include "menu/menu_check_item.h"
@@ -248,8 +249,10 @@ void PeerMenuAddMuteSubmenuAction(
 	const auto notifySettings = &thread->owner().notifySettings();
 	notifySettings->request(thread);
 	const auto weak = base::make_weak(thread);
+	const auto current = Delta::CaptureAccountGuard();
 	const auto with = [=](Fn<void(not_null<Data::Thread*>)> callback) {
 		return [=] {
+			if (current && !current()) return;
 			if (const auto strong = weak.get()) {
 				callback(strong);
 			}
@@ -931,6 +934,16 @@ void Filler::addBlockUser() {
 		|| user->isVerifyCodes()) {
 		return;
 	}
+	if (Delta::Active()) {
+		const auto id = peerToUser(user->id).bare;
+		if (!Delta::ContactForPeer(id)
+			&& (!Delta::IsDirectChat(id) || Delta::IsSystemUser(int(id)))) return;
+		const auto controller = _controller;
+		_addAction(u"Contact blocking"_q, [=] {
+			Delta::ManageContactBlocking(controller, id);
+		}, &st::menuIconBlock);
+		return;
+	}
 	const auto window = _controller;
 	const auto blockText = [](not_null<UserData*> user) {
 		return user->isBlocked()
@@ -1574,6 +1587,9 @@ void ShowDisableSharingBox(
 }
 
 void Filler::addToggleNoForwards() {
+	if (Delta::Active()) {
+		return;
+	}
 	const auto user = _peer->asUser();
 	if (!user
 		|| user->isInaccessible()

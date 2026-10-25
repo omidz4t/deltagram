@@ -1406,10 +1406,34 @@ void AddMessageActions(
 		const ContextMenuRequest &request,
 		not_null<ListWidget*> list) {
 	AddPostLinkAction(menu, request);
+	if (request.item && request.selectedItems.empty()
+		&& Delta::CanRetryPreparedAttachment(request.item)) {
+		const auto controller = list->controller();
+		const auto id = request.item->fullId();
+		const auto current = Delta::CaptureAccountGuard();
+		menu->addAction(tr::lng_bot_download_retry(tr::now),
+			crl::guard(controller, [=] {
+				if (!current || !current()) return;
+				if (const auto item = controller->session().data().message(id)) {
+					const auto history = item->history();
+					Delta::RetryPreparedAttachment(item, crl::guard(controller, [=](bool sent) {
+						if (!sent || !current() || controller->activeChatCurrent().history() != history) return;
+						controller->showPeerHistory(history->peer,
+							Window::SectionShow::Way::ClearStack, ShowAtTheEndMsgId);
+					}));
+				}
+			}), &st::menuIconSend);
+	}
 	if (Delta::Active() && request.item && request.selectedItems.empty()
 		&& request.item->id.bare > 0) {
 		const auto controller = list->controller();
 		const auto id = request.item->id.bare;
+		if (Delta::CanDownloadMessage(id)) {
+			const auto generation = Delta::AccountGeneration();
+			menu->addAction(tr::lng_media_download(tr::now), crl::guard(controller, [=] {
+				if (generation == Delta::AccountGeneration()) Delta::DownloadMessage(id);
+			}), &st::menuIconDownload);
+		}
 		menu->addAction(u"Info"_q, crl::guard(controller, [=] {
 			Delta::ShowMessageInfo(controller, id);
 		}), &st::menuIconInfo);
@@ -2451,7 +2475,7 @@ void AddWhenEditedForwardedAuthorActionHelper(
 		not_null<Window::SessionController*> controller,
 		bool insertSeparator) {
 	if (const auto forwarded = item->Get<HistoryMessageForwarded>()) {
-		if (!forwarded->story && forwarded->psaType.isEmpty()) {
+		if (!forwarded->anonymous && !forwarded->story && forwarded->psaType.isEmpty()) {
 			if (insertSeparator && !menu->empty()) {
 				menu->addSeparator(&st::expandedMenuSeparator);
 			}

@@ -1430,6 +1430,30 @@ PRIVATE
     intro/intro_widget.h
     delta/delta_rpc.cpp
     delta/delta_rpc.h
+    delta/backup_transfer.cpp
+    delta/backup_transfer.h
+    delta/compose_batch.cpp
+    delta/compose_batch.h
+    delta/compose_queue.cpp
+    delta/profile_activity.cpp
+    delta/profile_activity.h
+    delta/chat_mute.h
+    delta/compose_queue.h
+    delta/compose_queue_sender.cpp
+    delta/compose_queue_sender.h
+    delta/draft_store.cpp
+    delta/draft_store.h
+    delta/reply_store.cpp
+    delta/reply_store.h
+    delta/history_mutations.cpp
+    delta/history_mutations.h
+    delta/account_scope.h
+    delta/account_inventory.h
+    delta/message_order.h
+    delta/message_visibility.h
+    delta/message_download.h
+    delta/media_identity.h
+    delta/prepared_attachment.h
     delta/delta_boxes.cpp
     delta/delta_boxes.h
     delta/delta_bridge.cpp

@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "api/api_sending.h"
+#include "delta/compose_batch.h"
 
 #include "api/api_text_entities.h"
 #include "base/random.h"
@@ -1176,6 +1177,7 @@ struct ConfirmedLocalFile {
 	action.replyTo = file->to.replyTo;
 	action.generateLocal = true;
 	action.replaceMediaOf = file->to.replaceMediaOf;
+	action.preparedSend = file->to.preparedSend;
 
 	auto caption = PrepareConfirmedFileCaption(history, session, file);
 	const auto flags = PrepareConfirmedFileFlags(
@@ -1295,6 +1297,14 @@ void AddConfirmedLocalPlaceholder(const ConfirmedLocalFile &local) {
 void SendConfirmedFile(
 		not_null<Main::Session*> session,
 		const std::shared_ptr<FilePrepareResult> &file) {
+	if (file->accountGuard && !file->accountGuard()) return;
+	if (file->to.composeBatch) {
+		if (file->to.composeBatch->state() != Delta::ComposeBatch::State::Discarded) {
+			session->uploader().upload(FullMsgId(file->to.peer,
+				session->data().nextLocalMessageId()), file);
+		}
+		return;
+	}
 	const auto welcomeTemplate = file->to.options.welcomeTemplate;
 	if (welcomeTemplate && file->to.replaceMediaOf) {
 		return;

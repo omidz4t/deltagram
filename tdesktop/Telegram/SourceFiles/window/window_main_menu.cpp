@@ -56,6 +56,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/effects/snowflakes.h"
 #include "ui/effects/toggle_arrow.h"
 #include "ui/abstract_button.h"
+#include "ui/unread_badge.h"
 #include "ui/painter.h"
 #include "ui/text/text_options.h"
 #include "ui/text/text_utilities.h"
@@ -136,16 +137,32 @@ public:
 		const QString &subtitle,
 		QImage photo,
 		QColor color,
-		QString initial)
+		QString initial,
+		int accountId)
 	: AbstractButton(parent)
 	, _title(title)
 	, _subtitle(subtitle)
 	, _photo(std::move(photo))
 	, _color(color)
 	, _initial(initial)
-	, _height(_subtitle.isEmpty() ? 48 : 62) {
+	, _height(_subtitle.isEmpty() ? 48 : 62)
+	, _unreadBadge(this) {
 		setPointerCursor(true);
 		setContextMenuPolicy(Qt::DefaultContextMenu);
+		_unreadBadge.setAttribute(Qt::WA_TransparentForMouseEvents);
+		Delta::ProfileUnreadCountValue(accountId) | rpl::on_next([=](int count) {
+			_unreadCount = count;
+			_unreadBadge.setText(count ? Lang::FormatCountToShort(count).string : QString(), true);
+			_unreadBadge.setVisible(count > 0);
+			setAccessibleName(accessibilityName());
+			update();
+		}, lifetime());
+		rpl::combine(sizeValue(), _unreadBadge.sizeValue()) | rpl::on_next([=] {
+			_unreadBadge.moveToRight(st::deltaProfileBadgeSkip, (height() - _unreadBadge.height()) / 2);
+		}, lifetime());
+	}
+	QString accessibilityName() override {
+		return _unreadCount ? u"%1, %2 unread messages"_q.arg(_title).arg(_unreadCount) : _title;
 	}
 
 	void setMenuActions(Fn<void()> moveToTop, Fn<void()> remove) {
@@ -181,19 +198,20 @@ protected:
 				_initial);
 		}
 		const auto textLeft = x + kProfilePhoto + 12;
-		const auto textWidth = width() - textLeft - 12;
+		const auto textWidth = width() - textLeft - st::deltaProfileBadgeSkip
+			- (_unreadCount ? _unreadBadge.width() + st::deltaProfileBadgeSkip : 0);
 		p.setPen(st::windowFg);
 		p.setFont(st::semiboldFont);
 		if (_subtitle.isEmpty()) {
 			p.drawText(
 				QRect(textLeft, 0, textWidth, height()),
 				Qt::AlignVCenter | Qt::AlignLeft,
-				_title);
+				p.fontMetrics().elidedText(_title, Qt::ElideRight, std::max(0, textWidth)));
 		} else {
 			p.drawText(
 				QRect(textLeft, 10, textWidth, 22),
 				Qt::AlignLeft | Qt::AlignVCenter,
-				_title);
+				p.fontMetrics().elidedText(_title, Qt::ElideRight, std::max(0, textWidth)));
 			p.setPen(st::windowSubTextFg);
 			p.setFont(st::normalFont);
 			p.drawText(
@@ -214,6 +232,8 @@ private:
 	QColor _color;
 	QString _initial;
 	int _height = 0;
+	int _unreadCount = 0;
+	Ui::UnreadBadge _unreadBadge;
 	Fn<void()> _moveToTop;
 	Fn<void()> _remove;
 	base::unique_qptr<Ui::PopupMenu> _popup;
@@ -332,7 +352,7 @@ void MainMenu::ToggleAccountsButton::paintEvent(QPaintEvent *e) {
 
 	const auto path = Ui::ToggleUpDownArrowPath(
 		0. + width() - st::mainMenuTogglePosition.x(),
-		0. + height() - st::mainMenuTogglePosition.y(),
+		0. + std::max(st::semiboldFont->height, st::mainMenuBadgeSize) / 2,
 		st::mainMenuToggleSize,
 		st::mainMenuToggleFourStrokes,
 		_toggledAnimation.value(_toggled ? 1. : 0.));
@@ -357,9 +377,7 @@ void MainMenu::ToggleAccountsButton::paintUnreadBadge(Painter &p) {
 	const auto right = width()
 		- st::mainMenuTogglePosition.x()
 		- st::mainMenuToggleSize * 3;
-	const auto top = height()
-		- st::mainMenuTogglePosition.y()
-		- st::mainMenuBadgeSize / 2;
+	const auto top = std::max(0, (st::semiboldFont->height - st.size) / 2);
 	p.setOpacity(progress);
 	Ui::PaintUnreadBadge(p, _unreadBadge, right, top, st);
 }
@@ -385,6 +403,10 @@ void MainMenu::ToggleAccountsButton::validateUnreadBadge() {
 }
 
 QString MainMenu::ToggleAccountsButton::computeUnreadBadge() const {
+	if (Delta::Active()) {
+		const auto count = Delta::InactiveProfileUnreadCount();
+		return count ? Lang::FormatCountToShort(count).string : QString();
+	}
 	const auto state = OtherAccountsUnreadStateCurrent(_current);
 	return state.allMuted
 		? QString()
@@ -775,11 +797,14 @@ void MainMenu::fillProfiles() {
 					? RoundPhoto(account.value(u"profileImage"_q).toString())
 					: QImage(),
 				color,
-				initial));
+				initial,
+				id));
 			row->setClickedCallback([=] {
 				const auto controller = _controller;
 				closeLayer();
-				Delta::SwitchProfile(id, [](QString) {});
+				Delta::SwitchProfile(id, crl::guard(controller, [=](QString error) {
+					if (!error.isEmpty()) controller->showToast(error);
+				}));
 			});
 			row->setMenuActions(
 				[=] {
@@ -947,6 +972,13 @@ void MainMenu::setupMenu() {
 			_controller->session().supportTemplates().reload();
 		});
 	}
+	addAction(
+		rpl::single(u"Saved replies"_q),
+		{ &st::menuIconRestore }
+	)->setClickedCallback([=] {
+		controller->hideLayer();
+		Delta::ShowSavedReplies(controller);
+	});
 	addAction(
 		tr::lng_menu_settings(),
 		{ &st::menuIconSettings }

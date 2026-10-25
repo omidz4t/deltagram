@@ -46,6 +46,9 @@ BuildHelper::BuildHelper(
 		not_null<Window::SessionController*> controller,
 		Fn<void(Type)> showOther,
 		rpl::producer<> showFinished) {
+	if (_meta.available && !_meta.available()) {
+		return;
+	}
 	auto &lifetime = container->lifetime();
 	const auto highlights = lifetime.make_state<HighlightRegistry>();
 	const auto isPaused = Window::PausedIn(
@@ -99,6 +102,9 @@ std::vector<SearchEntry> SearchRegistry::collectAll(
 		not_null<Main::Session*> session) const {
 	auto result = std::vector<SearchEntry>();
 	for (const auto &[sectionId, meta] : _sections) {
+		if (!sectionAvailable(sectionId)) {
+			continue;
+		}
 		if (meta->parentId) {
 			result.push_back({
 				.title = (*meta->title)(tr::now),
@@ -108,6 +114,7 @@ std::vector<SearchEntry> SearchRegistry::collectAll(
 		}
 	}
 	for (const auto &entry : _indexers) {
+		if (!sectionAvailable(entry.sectionId)) continue;
 		auto entries = entry.indexer(session);
 		result.insert(result.end(), entries.begin(), entries.end());
 	}
@@ -117,6 +124,17 @@ std::vector<SearchEntry> SearchRegistry::collectAll(
 QString SearchRegistry::sectionTitle(Type sectionId) const {
 	const auto it = _sections.find(sectionId);
 	return (it != _sections.end()) ? (*it->second->title)(tr::now) : QString();
+}
+
+bool SearchRegistry::sectionAvailable(Type sectionId) const {
+	while (sectionId) {
+		const auto i = _sections.find(sectionId);
+		if (i == _sections.end()) return true;
+		const auto meta = i->second;
+		if (meta->available && !meta->available()) return false;
+		sectionId = meta->parentId;
+	}
+	return true;
 }
 
 QString SearchRegistry::sectionPath(Type sectionId, bool parentsOnly) const {
@@ -137,6 +155,9 @@ QString SearchRegistry::sectionPath(Type sectionId, bool parentsOnly) const {
 
 std::vector<SearchEntry> BuildHelper::index(
 		not_null<Main::Session*> session) const {
+	if (_meta.available && !_meta.available()) {
+		return {};
+	}
 	auto entries = std::vector<SearchEntry>();
 	auto builder = SectionBuilder(SearchContext{
 		.sectionId = _meta.id,

@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_folders.h"
+#include "delta/delta_bridge.h"
 
 #include "api/api_chat_filters.h"
 #include "apiwrap.h"
@@ -1234,6 +1235,7 @@ rpl::producer<QString> Folders::title() {
 }
 
 void Folders::setupContent() {
+	if (Delta::Active()) return;
 	controller()->session().data().chatsFilters().requestSuggested();
 
 	const auto content = Ui::CreateChild<Ui::VerticalLayout>(this);
@@ -1290,6 +1292,7 @@ const auto kMeta = BuildHelper({
 	.parentId = MainId(),
 	.title = &tr::lng_filters_title,
 	.icon = &st::menuIconShowInFolder,
+	.available = [] { return !Delta::Active(); },
 }, [](SectionBuilder &builder) {
 	builder.add(nullptr, [] {
 		return SearchEntry{

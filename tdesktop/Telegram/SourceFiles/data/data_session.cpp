@@ -913,7 +913,9 @@ not_null<UserData*> Session::processUser(const MTPUser &data) {
 			result->setLoadedStatus(PeerData::LoadedStatus::Minimal);
 		}
 	} else if (!result->isLoaded()
-		&& (!result->isSelf() || !result->phone().isEmpty())) {
+		&& (!result->isSelf() || !result->phone().isEmpty() || Delta::Active())) {
+		// Core profiles have no Telegram phone number. Their complete self
+		// identity must still be usable by Saved Messages and search results.
 		result->setLoadedStatus(PeerData::LoadedStatus::Normal);
 	}
 

@@ -324,10 +324,6 @@ void FillEntryDate(const QDateTime &modified, zip_fileinfo *result) {
 			finish = Status::Cancelled;
 			break;
 		}
-		if (!entry.directory && !QFile::exists(entry.absolute)) {
-			state.processed += entry.size;
-			continue;
-		}
 		auto zipfi = zip_fileinfo();
 		FillEntryDate(entry.modified, &zipfi);
 		zipfi.external_fa = entry.directory ? kDirectoryAttribute : 0;

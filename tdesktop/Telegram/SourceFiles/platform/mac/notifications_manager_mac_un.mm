@@ -370,7 +370,7 @@ void UNManager::Private::showNotification(
 		[content setTitle:Q2NSString(info.title)];
 		[content setSubtitle:Q2NSString(info.subtitle)];
 		[content setBody:Q2NSString(info.message)];
-		const auto sessionId = peer->session().uniqueId();
+		const auto sessionId = Window::Notifications::SessionId(&peer->session());
 		const auto monoforumPeerId = info.monoforumPeerId.value;
 		[content setUserInfo:
 			[NSDictionary dictionaryWithObjectsAndKeys:
@@ -539,7 +539,7 @@ void UNManager::Private::clearAll() {
 
 void UNManager::Private::clearFromItem(not_null<HistoryItem*> item) {
 	const auto target = NotificationId{ ContextId{
-		.sessionId = item->history()->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&item->history()->session()),
 		.peerId = item->history()->peer->id,
 		.topicRootId = item->topicRootId(),
 		.monoforumPeerId = item->sublistPeerId(),
@@ -555,7 +555,7 @@ void UNManager::Private::clearFromItem(not_null<HistoryItem*> item) {
 void UNManager::Private::clearFromTopic(
 		not_null<Data::ForumTopic*> topic) {
 	const auto target = ContextId{
-		.sessionId = topic->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&topic->session()),
 		.peerId = topic->history()->peer->id,
 		.topicRootId = topic->rootId(),
 	};
@@ -567,7 +567,7 @@ void UNManager::Private::clearFromTopic(
 void UNManager::Private::clearFromSublist(
 		not_null<Data::SavedSublist*> sublist) {
 	const auto target = ContextId{
-		.sessionId = sublist->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&sublist->session()),
 		.peerId = sublist->owningHistory()->peer->id,
 		.monoforumPeerId = sublist->sublistPeer()->id,
 	};
@@ -578,7 +578,7 @@ void UNManager::Private::clearFromSublist(
 
 void UNManager::Private::clearFromHistory(not_null<History*> history) {
 	const auto target = ContextId{
-		.sessionId = history->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&history->session()),
 		.peerId = history->peer->id,
 	};
 	removeDelivered([=](const NotificationParsed &parsed) {
@@ -591,7 +591,7 @@ void UNManager::Private::clearFromHistory(not_null<History*> history) {
 
 void UNManager::Private::clearFromSession(
 		not_null<Main::Session*> session) {
-	const auto sessionId = session->uniqueId();
+	const auto sessionId = Window::Notifications::SessionId(session);
 	removeDelivered([=](const NotificationParsed &parsed) {
 		return parsed.sessionId == sessionId;
 	});

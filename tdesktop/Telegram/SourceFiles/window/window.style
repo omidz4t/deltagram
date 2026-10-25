@@ -120,6 +120,9 @@ mainMenuAddAccountButton: SettingsButton(mainMenuButton) {
 }
 
 mainMenuAccountSize: 26px;
+deltaProfileBadgeSkip: 12px;
+deltaProfileSidebarBadgeRight: 4px;
+deltaProfileSidebarBadgeTop: 4px;
 mainMenuAccountLine: 2px;
 mainMenuBadgeFont: font(11px bold);
 mainMenuBadgeSize: 18px;

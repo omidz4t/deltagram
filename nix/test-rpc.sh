@@ -7,6 +7,8 @@ export CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)"
 cmake -S "$ROOT/tdesktop/Telegram/SourceFiles/delta" \
   -B "$DELTA_TEL_DATA/delta-shell" -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build "$DELTA_TEL_DATA/delta-shell" -j "$(nproc)"
+DELTA_TEST_CORE_RPC="$CARGO_TARGET_DIR/debug/deltachat-rpc-server" \
+  ctest --test-dir "$DELTA_TEL_DATA/delta-shell" --output-on-failure
 TEST_DIR=$(mktemp -d "$TMPDIR/rpc-smoke.XXXXXX")
 trap 'rm -rf -- "$TEST_DIR"' EXIT
 mkdir -m 700 "$TEST_DIR/runtime"

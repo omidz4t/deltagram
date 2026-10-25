@@ -22,6 +22,11 @@ struct SectionShow;
 namespace Delta {
 
 void ShowMessageInfo(not_null<Window::SessionController*> controller, int messageId);
+void ShowSavedReplies(not_null<Window::SessionController*> controller);
+void ConfirmContactBlocking(not_null<Window::SessionController*> controller,
+	int contactId, QString name, bool blocked, Fn<void()> changed = nullptr);
+void ChooseContactToBlock(not_null<Window::SessionController*> controller, Fn<void()> changed);
+void ManageContactBlocking(not_null<Window::SessionController*> controller, uint64 userId);
 void ShowSharedContact(not_null<Window::SessionController*> controller, int messageId);
 void ShowJoinInvite(not_null<Window::SessionController*> controller, const QString &url);
 void ChooseContactToSend(not_null<Main::Session*> session, int userId);

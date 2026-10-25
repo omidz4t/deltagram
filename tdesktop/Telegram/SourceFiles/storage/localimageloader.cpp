@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "storage/localimageloader.h"
 
+#include "delta/delta_bridge.h"
+#include "delta/compose_batch.h"
+
 #include "api/api_text_entities.h"
 #include "api/api_sending.h"
 #include "data/data_document.h"
@@ -509,6 +512,7 @@ std::shared_ptr<FilePrepareResult> MakePreparedFile(
 FileLoadTask::FileLoadTask(Args &&args)
 : _id(args.idOverride ? args.idOverride : base::RandomValue<uint64>())
 , _session(args.session)
+, _accountGuard(Delta::CaptureAccountGuard())
 , _dcId(args.session->mainDcId())
 , _to(std::move(args.to))
 , _album(std::move(args.album))
@@ -534,6 +538,7 @@ FileLoadTask::FileLoadTask(Args &&args)
 FileLoadTask::FileLoadTask(VoiceArgs &&args)
 : _id(base::RandomValue<uint64>())
 , _session(args.session)
+, _accountGuard(Delta::CaptureAccountGuard())
 , _dcId(args.session->mainDcId())
 , _to(std::move(args.to))
 , _content(std::move(args.voice))
@@ -725,6 +730,7 @@ void FileLoadTask::process(ProcessArgs &&args) {
 		.spoiler = _spoiler,
 		.album = _album,
 	});
+	_result->accountGuard = _accountGuard;
 	if (const auto cover = _videoCover.get()) {
 		cover->process();
 		if (const auto &result = cover->peekResult()) {
@@ -1236,17 +1242,8 @@ void FileLoadTask::process(ProcessArgs &&args) {
 	_result->filename = filename;
 	_result->filemime = filemime;
 	_result->setFileData(filedata);
-	if (_filepath.isEmpty() && !filedata.isEmpty()) {
-		const auto leaf = QFileInfo(filename).fileName();
-		const auto name = leaf.isEmpty() ? u"image.jpg"_q : leaf;
-		_filepath = QDir::temp().filePath(
-			u"delta-tel-clip-%1-%2"_q.arg(_id).arg(name));
-		QFile out(_filepath);
-		if (!out.open(QIODevice::WriteOnly)
-			|| out.write(filedata) != filedata.size()) {
-			_filepath = QString();
-		}
-	}
+	// Byte-backed media is materialized by the uploader into an owned, private
+	// staging file. Writing it here too leaves an unowned copy after disposal.
 	_result->filepath = _filepath;
 
 	_result->thumbId = thumbnail.id;
@@ -1264,12 +1261,16 @@ void FileLoadTask::process(ProcessArgs &&args) {
 }
 
 void FileLoadTask::finish() {
+	if (_accountGuard && !_accountGuard()) return;
+	if (_to.composeBatch && _to.composeBatch->state() == Delta::ComposeBatch::State::Discarded) return;
 	const auto session = _session.get();
 	if (!session) {
 		return;
 	}
 	const auto premium = session->user()->isPremium();
 	if (!_result || !_result->filesize || _result->filesize < 0) {
+		if (_to.composeBatch) _to.composeBatch->failed(_to.composeBatchIndex,
+			u"An attachment could not be prepared. Review the batch using the attachment button."_q);
 		Ui::show(
 			Ui::MakeInformBox((_result && _result->archive)
 				? tr::lng_folder_archive_failed(tr::now)
@@ -1278,6 +1279,8 @@ void FileLoadTask::finish() {
 		removeFromAlbum();
 	} else if (_result->filesize > kFileSizePremiumLimit
 		|| (_result->filesize > kFileSizeLimit && !premium)) {
+		if (_to.composeBatch) _to.composeBatch->failed(_to.composeBatchIndex,
+			u"An attachment exceeds the file size limit. No files were sent."_q);
 		Ui::show(
 			Box(FileSizeLimitBox, session, _result->filesize, nullptr),
 			Ui::LayerOption::KeepOther);

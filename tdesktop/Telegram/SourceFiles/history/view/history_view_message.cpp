@@ -5761,6 +5761,9 @@ bool Message::allowTextSelectionByHandler(
 }
 
 bool Message::hasFromName() const {
+	if (Delta::Active() && Delta::IsGroup(data()->history()->peer->id.value)) {
+		return !data()->out() && !data()->isService();
+	}
 	switch (context()) {
 	case Context::AdminLog:
 	case Context::WelcomeMessages:

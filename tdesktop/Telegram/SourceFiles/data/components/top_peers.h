@@ -32,6 +32,7 @@ public:
 	void increment(not_null<PeerData*> peer, TimeId date);
 	void reload();
 	void toggleDisabled(bool disabled);
+	void resetForAccountChange();
 
 	[[nodiscard]] QByteArray serialize() const;
 	void applyLocal(QByteArray serialized);

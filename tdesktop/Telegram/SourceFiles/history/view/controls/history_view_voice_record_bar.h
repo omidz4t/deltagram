@@ -84,6 +84,7 @@ public:
 	void hideAnimated();
 	void hideFast();
 	void clearListenState();
+	[[nodiscard]] bool hasRecording(const QByteArray &bytes) const;
 
 	void orderControls();
 

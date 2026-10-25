@@ -32,6 +32,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_unread_value.h"
 #include "lang/lang_keys.h"
 #include "ui/filter_icons.h"
+#include "ui/unread_badge.h"
 #include "ui/wrap/vertical_layout.h"
 #include "ui/wrap/vertical_layout_reorder.h"
 #include "ui/wrap/slide_wrap.h"
@@ -66,18 +67,32 @@ base::options::toggle ProfilesSidebar({
 
 class ProfileShortcut final : public Ui::RippleButton {
 public:
-	ProfileShortcut(QWidget *parent, QString name, QImage image, QColor color, bool active)
+	ProfileShortcut(QWidget *parent, QString name, QImage image, QColor color, bool active, int accountId)
 	: Ui::RippleButton(parent, st::windowFiltersButton.ripple)
 	, _name(std::move(name))
 	, _image(std::move(image))
 	, _color(color.isValid() ? color : QColor(90, 143, 199))
-	, _active(active) {
+	, _active(active)
+	, _unreadBadge(this) {
 		setAccessibleName(_name);
 		setToolTip(_name);
 		setFocusPolicy(Qt::StrongFocus);
+		_unreadBadge.setAttribute(Qt::WA_TransparentForMouseEvents);
+		Delta::ProfileUnreadCountValue(accountId) | rpl::on_next([=](int count) {
+			_unreadCount = count;
+			_unreadBadge.setText(count ? Lang::FormatCountToShort(count).string : QString(), true);
+			_unreadBadge.setVisible(count > 0);
+			setAccessibleName(accessibilityName());
+			setToolTip(accessibilityName());
+		}, lifetime());
+		rpl::combine(sizeValue(), _unreadBadge.sizeValue()) | rpl::on_next([=] {
+			_unreadBadge.moveToRight(st::deltaProfileSidebarBadgeRight, st::deltaProfileSidebarBadgeTop);
+		}, lifetime());
 	}
 	int resizeGetHeight(int) override { return 76; }
-	QString accessibilityName() override { return _name; }
+	QString accessibilityName() override {
+		return _unreadCount ? u"%1, %2 unread messages"_q.arg(_name).arg(_unreadCount) : _name;
+	}
 private:
 	void paintEvent(QPaintEvent*) override {
 		auto p = QPainter(this);
@@ -113,6 +128,8 @@ private:
 	QImage _image;
 	QColor _color;
 	bool _active = false;
+	int _unreadCount = 0;
+	Ui::UnreadBadge _unreadBadge;
 };
 
 // The folder tabs container, exposed as a list to screen readers.
@@ -446,7 +463,7 @@ void FiltersMenu::refreshProfiles() {
 			reader.setAutoTransform(true);
 			const auto button = _profileList->add(object_ptr<ProfileShortcut>(
 				_profileList, name, path.isEmpty() ? QImage() : reader.read(),
-				QColor(account.value(u"color"_q).toString()), selected));
+				QColor(account.value(u"color"_q).toString()), selected, id));
 			button->setClickedCallback([=] {
 				if (!selected) {
 					Delta::SwitchProfile(id, crl::guard(&_outer, [=](QString error) {

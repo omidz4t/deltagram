@@ -10,6 +10,7 @@ This file is part of Delta Tel, a Telegram Desktop based Delta Chat client.
 
 #include <QImage>
 #include <QJsonArray>
+#include <QList>
 
 #include <memory>
 
@@ -76,6 +77,7 @@ private:
 	void askProxy();
 	void chooseDataFolder();
 	void createProfile();
+	void setCreatingProfile(bool creating);
 	void finishSetup(const QString &text);
 	void openShell(int accountId);
 	void chooseBackup();
@@ -99,6 +101,9 @@ private:
 	int _accountId = 0;
 	bool _anyConfigured = false;
 	bool _accountReady = false;
+	bool _preparingAccount = false;
+	bool _creatingProfile = false;
+	QList<DeltaRpc::Callback> _accountReadyCallbacks;
 	bool _teamProfile = false;
 	bool _pumping = false;
 	Page _page = Page::Welcome;

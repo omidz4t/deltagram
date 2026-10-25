@@ -711,7 +711,7 @@ QString DateTooltipText(not_null<Element*> view) {
 			locale.toString(base::unixtime::parse(editedDate), format));
 	}
 	if (const auto forwarded = item->Get<HistoryMessageForwarded>()) {
-		if (!forwarded->story && forwarded->psaType.isEmpty()) {
+		if (!forwarded->anonymous && !forwarded->story && forwarded->psaType.isEmpty()) {
 			dateText += '\n' + tr::lng_forwarded_date(
 				tr::now,
 				lt_date,

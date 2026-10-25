@@ -24,7 +24,8 @@ public:
 
 	[[nodiscard]] bool running() const;
 
-	void call(const QString &method, const QJsonArray &params, Callback done);
+	void call(const QString &method, const QJsonArray &params, Callback done,
+		int timeoutMs = -1);
 
 	void setEventHandler(Callback handler);
 
@@ -33,13 +34,19 @@ private:
 	void onFinished(int exitCode, QProcess::ExitStatus status);
 	void failPending(const QString &reason);
 	void handleLine(const QByteArray &line);
+	void failTransport(const QString &reason);
 
 	QProcess _process;
 	QByteArray _buffer;
 	QByteArray _stderrTail;
 	quint64 _nextId = 1;
-	QHash<quint64, Callback> _pending;
+	struct Pending {
+		Callback done;
+		QTimer *timer = nullptr;
+	};
+	QHash<quint64, Pending> _pending;
 	Callback _onEvent;
 	QTimer *_startup = nullptr;
 	bool _stopping = false;
+	bool _failed = false;
 };

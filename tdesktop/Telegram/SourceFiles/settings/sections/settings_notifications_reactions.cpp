@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "api/api_reactions_notify_settings.h"
 #include "apiwrap.h"
+#include "delta/delta_bridge.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "settings/sections/settings_notifications.h"
@@ -226,6 +227,7 @@ const auto kMeta = BuildHelper({
 	.parentId = NotificationsId(),
 	.title = &tr::lng_notification_reactions,
 	.icon = &st::menuIconGroupReactions,
+	.available = [] { return !Delta::Active(); },
 }, [](SectionBuilder &builder) {
 	BuildNotificationsReactionsContent(builder);
 });
@@ -245,6 +247,9 @@ rpl::producer<QString> NotificationsReactions::title() {
 
 void NotificationsReactions::setupContent(
 		not_null<Window::SessionController*> controller) {
+	if (Delta::Active()) {
+		return;
+	}
 	const auto container = Ui::CreateChild<Ui::VerticalLayout>(this);
 
 	const SectionBuildMethod buildMethod = [](

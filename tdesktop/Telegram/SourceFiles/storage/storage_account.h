@@ -95,7 +95,7 @@ public:
 		not_null<History*> history,
 		Data::DraftKey key);
 	void writeDrafts(not_null<History*> history);
-	void readDraftsWithCursors(not_null<History*> history);
+	void readDraftsWithCursors(not_null<History*> history, Fn<void()> loaded = nullptr);
 	void writeDraftCursors(not_null<History*> history);
 	[[nodiscard]] bool hasDraftCursors(PeerId peerId);
 	[[nodiscard]] bool hasDraft(PeerId peerId);
@@ -158,6 +158,7 @@ public:
 	void writeSearchSuggestionsIfNeeded();
 	void writeSearchSuggestions();
 	void readSearchSuggestions();
+	void useTransientSearchPeers();
 
 	void writeSelf();
 
@@ -371,6 +372,7 @@ private:
 	bool _readingUserSettings = false;
 	bool _recentHashtagsAndBotsWereRead = false;
 	bool _searchSuggestionsRead = false;
+	bool _transientSearchPeers = false;
 	bool _inlineBotsDownloadsRead = false;
 	bool _mediaLastPlaybackPositionsRead = false;
 

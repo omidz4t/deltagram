@@ -25,6 +25,11 @@ enum class SendMediaType;
 class MessageLinksParser;
 struct InlineBotQuery;
 
+namespace Delta {
+struct ComposeDraft;
+struct ForwardSource;
+} // namespace Delta
+
 namespace MTP {
 class Error;
 } // namespace MTP
@@ -511,6 +516,9 @@ private:
 	void updateOverStates(QPoint pos);
 	void clearOverStates();
 	void chooseAttach(std::optional<bool> overrideSendImagesAsPhotos = {});
+	void chooseNewAttachment(std::optional<bool> overrideSendImagesAsPhotos);
+	void chooseDeltaDraftAttachment(std::optional<bool> overrideSendImagesAsPhotos);
+	void sendDeltaAttachment(Delta::ComposeDraft draft);
 	void sendButtonClicked();
 	void stopStreamedDraft();
 	void newItemAdded(not_null<HistoryItem*> item);
@@ -549,7 +557,8 @@ private:
 
 	void sendingFilesConfirmed(
 		std::shared_ptr<Ui::PreparedBundle> bundle,
-		Api::SendOptions options);
+		Api::SendOptions options,
+		bool batchChecked = false);
 
 	void sendBotCommand(
 		const Bot::SendCommandRequest &request,
@@ -588,6 +597,10 @@ private:
 	[[nodiscard]] MsgId resolveReplyToTopicRootId();
 	[[nodiscard]] Data::ForumTopic *resolveReplyToTopic();
 	[[nodiscard]] bool canWriteMessage() const;
+	[[nodiscard]] bool deltaComposerLocked() const;
+	[[nodiscard]] std::optional<std::vector<Delta::ForwardSource>> deltaForwardSources() const;
+	void refreshDeltaComposeQueue();
+	[[nodiscard]] int deltaQueuedAttachmentCount() const;
 	[[nodiscard]] bool hasEnoughLinesForAi() const;
 	[[nodiscard]] bool hasEnoughLinesForExpand() const;
 	[[nodiscard]] bool textExceedsMaxSize() const;
@@ -875,6 +888,13 @@ private:
 	QPointer<HistoryInner> _list;
 	History *_migrated = nullptr;
 	History *_history = nullptr;
+	PeerId _deltaQueuePeer;
+	int _deltaQueueGeneration = -1;
+	int _deltaQueueCount = 0;
+	uint64 _deltaQueueRevision = 0;
+	uint64 _deltaQueueRequestId = 0;
+	bool _deltaQueueLoading = false;
+	QString _deltaNotifiedQueue;
 	mutable Data::ForumTopic *_creatingBotTopic = nullptr;
 	rpl::lifetime _historySponsoredPreloading;
 

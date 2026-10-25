@@ -86,6 +86,8 @@ extern const char kOptionHideReplyButton[];
 
 class Manager;
 
+[[nodiscard]] uint64 SessionId(not_null<Main::Session*> session);
+
 struct ActivateOptions {
 	TextWithTags draft;
 	bool allowNewWindow = false;
@@ -97,6 +99,8 @@ public:
 	~System();
 
 	[[nodiscard]] Main::Session *findSession(uint64 sessionId) const;
+	[[nodiscard]] uint64 sessionId(not_null<Main::Session*> session) const;
+	void resetSession(not_null<Main::Session*> session);
 
 	void createManager();
 	void setManager(Fn<std::unique_ptr<Manager>()> create);
@@ -220,6 +224,7 @@ private:
 		crl::time> _sentPollVoteNotifications;
 
 	std::unique_ptr<Manager> _manager;
+	base::flat_map<uint64, uint64> _scopedSessionIds;
 	rpl::event_stream<> _managerChanged;
 
 	rpl::event_stream<ChangeType> _settingsChanged;

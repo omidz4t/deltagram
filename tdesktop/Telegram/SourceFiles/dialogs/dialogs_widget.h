@@ -179,6 +179,8 @@ private:
 	void completeHashtag(QString tag);
 	void requestPublicPosts(bool fromStart);
 	void requestMessages(bool fromStart);
+	void requestDeltaMessages(bool fromStart);
+	void loadDeltaSearchPage(bool fromStart);
 	[[nodiscard]] not_null<SearchProcessState*> currentSearchProcess();
 
 	[[nodiscard]] bool computeSearchWithPostsPreview() const;
@@ -196,7 +198,9 @@ private:
 		SearchRequestType type,
 		const MTPmessages_Messages &result,
 		not_null<SearchProcessState*> process,
-		bool cacheResults = false);
+		bool cacheResults = false,
+		int fullCountOverride = -1,
+		bool hasMore = false);
 	void peerSearchReceived(Api::PeerSearchResult result);
 	void escape();
 	void submit();
@@ -441,6 +445,11 @@ private:
 	bool _swipeBackIconMirrored = false;
 
 	SearchProcessState _searchProcess;
+	uint64 _deltaSearchGeneration = 0;
+	int _deltaSearchAccountGeneration = 0;
+	QVector<int> _deltaSearchIds;
+	int _deltaSearchOffset = 0;
+	bool _deltaSearchLoading = false;
 	SearchProcessState _migratedProcess;
 	SearchProcessState _postsProcess;
 	int _historiesRequest = 0; // Not real mtpRequestId.

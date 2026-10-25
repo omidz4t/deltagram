@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/variant.h"
 #include "api/api_common.h"
 
+#include <functional>
 #include <memory>
 
 namespace Ui {
@@ -162,16 +163,21 @@ struct FileLoadTo {
 		PeerId peer,
 		Api::SendOptions options,
 		FullReplyTo replyTo,
-		MsgId replaceMediaOf)
+		MsgId replaceMediaOf,
+		std::shared_ptr<Delta::PreparedSend> preparedSend = {})
 	: peer(peer)
 	, options(options)
 	, replyTo(replyTo)
-	, replaceMediaOf(replaceMediaOf) {
+	, replaceMediaOf(replaceMediaOf)
+	, preparedSend(std::move(preparedSend)) {
 	}
 	PeerId peer;
 	Api::SendOptions options;
 	FullReplyTo replyTo;
 	MsgId replaceMediaOf;
+	std::shared_ptr<Delta::PreparedSend> preparedSend;
+	std::shared_ptr<Delta::ComposeBatch> composeBatch;
+	size_t composeBatchIndex = 0;
 };
 
 using UploadFileParts = std::vector<QByteArray>;
@@ -189,6 +195,7 @@ struct FilePrepareResult {
 	~FilePrepareResult();
 
 	TaskId taskId = kEmptyTaskId;
+	std::function<bool()> accountGuard;
 	uint64 id = 0;
 	FileLoadTo to;
 	std::weak_ptr<SendingAlbum> album;
@@ -328,6 +335,7 @@ private:
 
 	uint64 _id = 0;
 	base::weak_ptr<Main::Session> _session;
+	const std::function<bool()> _accountGuard;
 	MTP::DcId _dcId = 0;
 	FileLoadTo _to;
 	const std::shared_ptr<SendingAlbum> _album;

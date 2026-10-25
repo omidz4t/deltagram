@@ -372,6 +372,7 @@ public:
 		crl::time duration,
 		bool video,
 		const SendAction &action);
+	void resetMediaForAccountChange();
 	void sendFiles(
 		Ui::PreparedList &&list,
 		SendMediaType type,

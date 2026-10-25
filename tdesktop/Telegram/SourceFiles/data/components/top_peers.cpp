@@ -13,6 +13,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_peer.h"
 #include "data/data_session.h"
 #include "data/data_user.h"
+#include "delta/delta_bridge.h"
 #include "main/main_session.h"
 #include "mtproto/mtproto_config.h"
 #include "storage/serialize_common.h"
@@ -143,6 +144,9 @@ void TopPeers::remove(not_null<PeerData*> peer) {
 		updated();
 	}
 
+	if (Delta::Active()) {
+		return;
+	}
 	_requestId = _session->api().request(MTPcontacts_ResetTopPeerRating(
 		TypeToCategory(_type),
 		peer->input()
@@ -206,6 +210,9 @@ void TopPeers::toggleDisabled(bool disabled) {
 		updated();
 	}
 
+	if (Delta::Active()) {
+		return;
+	}
 	_session->api().request(MTPcontacts_ToggleTopPeers(
 		MTP_bool(!disabled)
 	)).done([=] {
@@ -215,8 +222,19 @@ void TopPeers::toggleDisabled(bool disabled) {
 	}).send();
 }
 
-void TopPeers::request() {
+void TopPeers::resetForAccountChange() {
 	if (_requestId) {
+		_session->api().request(base::take(_requestId)).cancel();
+	}
+	_list.clear();
+	_lastReceived = 0;
+	_lastReceivedDate = 0;
+	_disabled = false;
+	_updates.fire({});
+}
+
+void TopPeers::request() {
+	if (Delta::Active() || _requestId) {
 		return;
 	}
 
@@ -323,7 +341,7 @@ void TopPeers::applyLocal(QByteArray serialized) {
 	auto disabled = quint32();
 	auto count = quint32();
 	stream >> streamAppVersion >> disabled >> count;
-	if (!stream.ok()) {
+	if (!stream.ok() || count > kLimit) {
 		DEBUG_LOG(("Suggestions: Bad TopPeers local, not ok."));
 		return;
 	}

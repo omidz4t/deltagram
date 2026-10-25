@@ -100,10 +100,14 @@ void DocumentSaveClickHandler::Save(
 		}
 		const auto filepath = data->filepath(true);
 		const auto fileinfo = QFileInfo(filepath);
-		const auto filedir = filepath.isEmpty()
+		// Backend blob names and directories are storage details, not save defaults.
+		const auto backendFile = data->hasBackendFileLocation();
+		const auto filedir = (backendFile || filepath.isEmpty())
 			? QDir()
 			: fileinfo.dir();
-		const auto filename = filepath.isEmpty()
+		const auto filename = backendFile
+			? data->filename()
+			: filepath.isEmpty()
 			? QString()
 			: fileinfo.fileName();
 		const auto savename = DocumentFileNameForSave(

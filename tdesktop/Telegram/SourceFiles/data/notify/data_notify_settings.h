@@ -33,6 +33,7 @@ public:
 
 	void request(not_null<PeerData*> peer);
 	void request(not_null<Thread*> thread);
+	void applyBackendMute(not_null<PeerData*> peer, bool muted);
 
 	void apply(
 		const MTPNotifyPeer &notifyPeer,

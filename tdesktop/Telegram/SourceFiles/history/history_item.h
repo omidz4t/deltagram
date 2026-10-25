@@ -240,6 +240,12 @@ public:
 	[[nodiscard]] not_null<PeerData*> from() const {
 		return _from;
 	}
+	void setBackendSender(not_null<PeerData*> sender) {
+		if (_from == sender) return;
+		_from = sender;
+		_displayFrom = nullptr;
+		_flags &= ~MessageFlag::DisplayFromChecked;
+	}
 	[[nodiscard]] HistoryView::Element *mainView() const {
 		return _mainView;
 	}
@@ -247,7 +253,8 @@ public:
 		_mainView = view;
 	}
 	void refreshMainView();
-	void setLocalVideo(not_null<DocumentData*> document, const QString &caption);
+	void setLocalDocument(not_null<DocumentData*> document, const QString &caption);
+	void setAnonymousForwarded(bool forwarded);
 	void clearMainView();
 	void removeMainView(
 		Data::ViewRemovalReason reason = Data::ViewRemovalReason::Removed);
@@ -378,6 +385,7 @@ public:
 	[[nodiscard]] bool isRegular() const;
 	[[nodiscard]] bool isUploading() const;
 	void sendFailed();
+	void retrySend();
 	[[nodiscard]] int viewsCount() const;
 	[[nodiscard]] int repliesCount() const;
 	[[nodiscard]] bool repliesAreComments() const;
@@ -538,6 +546,7 @@ public:
 	[[nodiscard]] int reactionsPaidScheduled() const;
 	[[nodiscard]] PeerId reactionsLocalShownPeer() const;
 	[[nodiscard]] bool canViewReactions() const;
+	[[nodiscard]] bool canInferReactionPeers() const;
 	[[nodiscard]] std::vector<Data::ReactionId> chosenReactions() const;
 	[[nodiscard]] Data::ReactionId lookupUnreadReaction(
 		not_null<UserData*> from) const;
@@ -810,7 +819,7 @@ private:
 	[[nodiscard]] PeerData *computeDisplayFrom() const;
 
 	const not_null<History*> _history;
-	const not_null<PeerData*> _from;
+	not_null<PeerData*> _from;
 	mutable PeerData *_displayFrom = nullptr;
 	mutable MessageFlags _flags = 0;
 

@@ -37,7 +37,7 @@ class ReleaseModeTest(unittest.TestCase):
                 tools = root / 'tools'
                 tools.mkdir()
                 commands = {
-                    'cmake': '#!/bin/bash\nprintf "%s\\n" "$*" > "$RELEASE_DIR/arguments"\n',
+                    'cmake': '#!/bin/bash\nprintf "%s\\n" "$*" >> "$RELEASE_DIR/arguments"\n',
                     'strip': '#!/bin/bash\ncp "$4" "$3"\n',
                 }
                 for name, contents in commands.items():
@@ -54,7 +54,11 @@ class ReleaseModeTest(unittest.TestCase):
                 subprocess.run(['bash', str(root / 'nix/build-release.sh')],
                                env=env, check=True, capture_output=True)
                 self.assertEqual((release / 'bin/deltagram.version').read_text(), expected + '\n')
-                self.assertIn('--target Telegram -j 4', (release / 'arguments').read_text())
+                builds = (release / 'arguments').read_text().splitlines()
+                self.assertEqual(len(builds), 2)
+                self.assertIn('--target Telegram/CMakeFiles/Telegram.dir/SourceFiles/'
+                              'delta/delta_bridge.cpp.o -j 4', builds[0])
+                self.assertIn('--target Telegram -j 4', builds[1])
                 for name in records:
                     self.assertEqual((release / name).read_text(), 'preserved incremental record')
                 self.assertEqual((version.read_bytes(), header.read_bytes()), original)

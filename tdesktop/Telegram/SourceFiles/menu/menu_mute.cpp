@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "menu/menu_mute.h"
+#include "delta/delta_bridge.h"
 
 #include "boxes/ringtones_box.h"
 #include "data/data_session.h"
@@ -218,6 +219,7 @@ void PickMuteBox(
 
 Descriptor ThreadDescriptor(not_null<Data::Thread*> thread) {
 	const auto weak = base::make_weak(thread);
+	const auto current = Delta::CaptureAccountGuard();
 	const auto isMutedValue = [=]() -> rpl::producer<bool> {
 		if (const auto strong = weak.get()) {
 			return Info::Profile::NotificationsEnabledValue(
@@ -233,9 +235,11 @@ Descriptor ThreadDescriptor(not_null<Data::Thread*> thread) {
 			: std::optional<Data::NotifySound>();
 	};
 	const auto updateSound = crl::guard(weak, [=](Data::NotifySound sound) {
+		if (current && !current()) return;
 		thread->owner().notifySettings().update(thread, {}, {}, sound);
 	});
 	const auto updateMutePeriod = crl::guard(weak, [=](TimeId mute) {
+		if (current && !current()) return;
 		const auto settings = &thread->owner().notifySettings();
 		if (!mute) {
 			settings->update(thread, { .unmute = true });
@@ -307,36 +311,38 @@ void FillMuteMenu(
 		Descriptor descriptor,
 		std::shared_ptr<Ui::Show> show) {
 	const auto session = descriptor.session;
-	const auto soundSelect = [=] {
-		if (const auto currentSound = descriptor.currentSound()) {
-			show->showBox(Box(
-				RingtonesBox,
-				session,
-				*currentSound,
-				descriptor.updateSound,
-				descriptor.volumeController));
-		}
-	};
-	menu->addAction(
-		tr::lng_mute_menu_sound_select(tr::now),
-		soundSelect,
-		&st::menuIconSoundSelect);
+	if (!Delta::Active()) {
+		const auto soundSelect = [=] {
+			if (const auto currentSound = descriptor.currentSound()) {
+				show->showBox(Box(
+					RingtonesBox,
+					session,
+					*currentSound,
+					descriptor.updateSound,
+					descriptor.volumeController));
+			}
+		};
+		menu->addAction(
+			tr::lng_mute_menu_sound_select(tr::now),
+			soundSelect,
+			&st::menuIconSoundSelect);
 
-	const auto soundIsNone = descriptor.currentSound().value_or(
-		Data::NotifySound()
-	).none;
-	const auto toggleSound = [=] {
-		if (auto sound = descriptor.currentSound()) {
-			sound->none = !soundIsNone;
-			descriptor.updateSound(*sound);
-		}
-	};
-	menu->addAction(
-		(soundIsNone
-			? tr::lng_mute_menu_sound_on(tr::now)
-			: tr::lng_mute_menu_sound_off(tr::now)),
-		toggleSound,
-		soundIsNone ? &st::menuIconSoundOn : &st::menuIconSoundOff);
+		const auto soundIsNone = descriptor.currentSound().value_or(
+			Data::NotifySound()
+		).none;
+		const auto toggleSound = [=] {
+			if (auto sound = descriptor.currentSound()) {
+				sound->none = !soundIsNone;
+				descriptor.updateSound(*sound);
+			}
+		};
+		menu->addAction(
+			(soundIsNone
+				? tr::lng_mute_menu_sound_on(tr::now)
+				: tr::lng_mute_menu_sound_off(tr::now)),
+			toggleSound,
+			soundIsNone ? &st::menuIconSoundOn : &st::menuIconSoundOff);
+	}
 
 	const auto &st = menu->st().menu;
 	const auto iconTextPosition = st.itemIconPosition

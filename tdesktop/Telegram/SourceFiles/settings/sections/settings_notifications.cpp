@@ -9,7 +9,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "settings/settings_common_session.h"
 
-#include "api/api_authorizations.h"
 #include "api/api_reactions_notify_settings.h"
 #include "api/api_ringtones.h"
 #include "apiwrap.h"
@@ -21,6 +20,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_session.h"
 #include "data/notify/data_notify_settings.h"
 #include "data/notify/data_peer_notify_volume.h"
+#include "delta/delta_bridge.h"
 #include "lang/lang_keys.h"
 #include "main/main_account.h"
 #include "main/main_domain.h"
@@ -1290,38 +1290,6 @@ void BuildEventNotificationsSection(SectionBuilder &builder) {
 	}
 }
 
-void BuildCallNotificationsSection(SectionBuilder &builder) {
-	builder.addSkip(st::settingsCheckboxesSkip);
-	builder.addDivider();
-	builder.addSkip(st::settingsCheckboxesSkip);
-	builder.addSubsectionTitle({
-		.id = u"notifications/calls"_q,
-		.title = tr::lng_settings_notifications_calls_title(),
-		.keywords = { u"calls"_q, u"incoming"_q, u"receive"_q },
-	});
-
-	const auto session = builder.session();
-	const auto authorizations = &session->api().authorizations();
-	authorizations->reload();
-
-	const auto acceptCalls = builder.addButton({
-		.id = u"notifications/calls/accept"_q,
-		.title = tr::lng_settings_call_accept_calls(),
-		.icon = { &st::menuIconCallsReceive },
-		.toggled = authorizations->callsDisabledHereValue()
-			| rpl::map([](bool disabled) { return !disabled; }),
-		.keywords = { u"calls"_q, u"receive"_q, u"incoming"_q },
-	});
-	if (acceptCalls) {
-		acceptCalls->toggledChanges(
-		) | rpl::filter([=](bool toggled) {
-			return (toggled == authorizations->callsDisabledHere());
-		}) | rpl::on_next([=](bool toggled) {
-			authorizations->toggleCallsDisabledHere(!toggled);
-		}, acceptCalls->lifetime());
-	}
-}
-
 void BuildBadgeCounterSection(SectionBuilder &builder) {
 	builder.addSkip(st::settingsCheckboxesSkip);
 	builder.addDivider();
@@ -1596,13 +1564,16 @@ void BuildSystemIntegrationAndAdvancedSection(SectionBuilder &builder) {
 void BuildNotificationsSectionContent(SectionBuilder &builder) {
 	builder.addSkip(st::settingsPrivacySkip);
 
-	BuildMultiAccountSection(builder);
+	if (!Delta::Active()) {
+		BuildMultiAccountSection(builder);
+	}
 	BuildGlobalNotificationsSection(builder);
 	BuildNotifyViewSection(builder);
-	BuildNotifyTypeSection(builder);
-	BuildEventNotificationsSection(builder);
-	BuildCallNotificationsSection(builder);
-	BuildBadgeCounterSection(builder);
+	if (!Delta::Active()) {
+		BuildNotifyTypeSection(builder);
+		BuildEventNotificationsSection(builder);
+		BuildBadgeCounterSection(builder);
+	}
 	BuildSystemIntegrationAndAdvancedSection(builder);
 }
 

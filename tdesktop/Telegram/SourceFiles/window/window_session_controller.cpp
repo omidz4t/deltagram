@@ -17,6 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/add_contact_box.h"
 #include "delta/delta_boxes.h"
 #include "delta/delta_bridge.h"
+#include "settings/settings_builder.h"
 #include "boxes/delete_messages_box.h"
 #include "boxes/star_gift_auction_box.h"
 #include "window/window_chat_preview.h"
@@ -1490,6 +1491,9 @@ void SessionNavigation::showByInitialId(
 void SessionNavigation::showSettings(
 		Settings::Type type,
 		const SectionShow &params) {
+	if (Delta::Active() && !Settings::Builder::SearchRegistry::Instance().sectionAvailable(type)) {
+		type = Settings::MainId();
+	}
 	showSection(
 		std::make_shared<Info::Memento>(
 			Info::Settings::Tag{ _session->user() },

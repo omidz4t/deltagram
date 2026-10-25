@@ -32,6 +32,11 @@ fi
 # Release preparation owns version changes; compilation is repeatable.
 VERSION=$(awk '$1 == "AppVersionStr" { print $2 }' "$ROOT/tdesktop/Telegram/build/version")
 echo "Building Delta Tel $VERSION"
+# Compile the backend boundary first so integration errors surface before the
+# donor's large source set. The full build reuses this object and its prerequisites.
+cmake --build "$RELEASE_DIR" \
+  --target Telegram/CMakeFiles/Telegram.dir/SourceFiles/delta/delta_bridge.cpp.o \
+  -j "$JOBS"
 cmake --build "$RELEASE_DIR" --target Telegram -j "$JOBS"
 strip --strip-all -o "$RELEASE_DIR/bin/deltagram.stripped" "$RELEASE_DIR/bin/Telegram"
 printf '%s\n' "$VERSION" > "$RELEASE_DIR/bin/deltagram.version"

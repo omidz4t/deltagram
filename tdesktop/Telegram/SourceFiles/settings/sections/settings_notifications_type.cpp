@@ -19,6 +19,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_changes.h"
 #include "data/data_peer.h"
 #include "data/data_session.h"
+#include "delta/delta_bridge.h"
 #include "history/history.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
@@ -730,6 +731,7 @@ const auto kMeta = BuildHelper({
 	.parentId = NotificationsId(),
 	.title = &tr::lng_notification_private_chats,
 	.icon = &st::menuIconProfile,
+	.available = [] { return !Delta::Active(); },
 }, [](SectionBuilder &builder) {
 	BuildNotificationsTypeContent(builder, Notify::User);
 });
@@ -764,6 +766,9 @@ Type NotificationsType::Id(Notify type) {
 
 void NotificationsType::setupContent(
 		not_null<Window::SessionController*> controller) {
+	if (Delta::Active()) {
+		return;
+	}
 	const auto container = Ui::CreateChild<Ui::VerticalLayout>(this);
 
 	const auto type = _type;

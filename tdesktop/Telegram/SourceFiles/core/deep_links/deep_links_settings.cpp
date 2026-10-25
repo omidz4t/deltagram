@@ -62,6 +62,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "settings/cloud_password/settings_cloud_password_login_email.h"
 #include "api/api_cloud_password.h"
 #include "core/core_cloud_password.h"
+#include "delta/delta_bridge.h"
 #include "settings/sections/settings_notifications.h"
 #include "settings/sections/settings_notifications_type.h"
 #include "settings/settings_power_saving.h"
@@ -238,6 +239,10 @@ Result ShowPasskeys(const Context &ctx, bool highlightCreate) {
 	if (!ctx.controller) {
 		return Result::NeedsAuth;
 	}
+	if (Delta::Active()) {
+		ctx.controller->showSettings(::Settings::PrivacySecurityId());
+		return Result::Handled;
+	}
 	const auto controller = ctx.controller;
 	const auto session = &controller->session();
 	const auto showBox = [=] {
@@ -325,6 +330,10 @@ Result ShowNotificationType(
 		const QString &highlightId = QString()) {
 	if (!ctx.controller) {
 		return Result::NeedsAuth;
+	}
+	if (Delta::Active()) {
+		ctx.controller->showSettings(::Settings::NotificationsId());
+		return Result::Handled;
 	}
 	if (!highlightId.isEmpty()) {
 		ctx.controller->setHighlightControlId(highlightId);

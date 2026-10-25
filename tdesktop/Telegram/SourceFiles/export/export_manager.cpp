@@ -8,6 +8,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "export/export_manager.h"
 
 #include "export/export_controller.h"
+#include "delta/delta_bridge.h"
+#include "boxes/abstract_box.h"
+#include "ui/boxes/confirm_box.h"
 #include "export/view/export_view_panel_controller.h"
 #include "data/data_peer.h"
 #include "main/main_session.h"
@@ -29,6 +32,10 @@ void Manager::startTopic(
 		not_null<PeerData*> peer,
 		MsgId topicRootId,
 		const QString &topicTitle) {
+	if (Delta::Active()) {
+		Ui::show(Ui::MakeInformBox(u"Chat export is not available in Deltagram."_q));
+		return;
+	}
 	if (_panel) {
 		_panel->activatePanel();
 		return;
@@ -45,6 +52,10 @@ void Manager::startTopic(
 void Manager::start(
 		not_null<Main::Session*> session,
 		const MTPInputPeer &singlePeer) {
+	if (Delta::Active()) {
+		Ui::show(Ui::MakeInformBox(u"Chat export is not available in Deltagram."_q));
+		return;
+	}
 	if (_panel) {
 		_panel->activatePanel();
 		return;

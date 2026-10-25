@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_inner_widget_accessibility.h"
 
 #include "base/unixtime.h"
+#include "delta/delta_bridge.h"
 #include "data/data_document.h"
 #include "data/data_game.h"
 #include "data/data_media_types.h"
@@ -31,6 +32,8 @@ QString MessageAccessibilityName(
 		not_null<const Element*> view,
 		not_null<History*> history) {
 	const auto item = view->data();
+	const auto delivery = Delta::Active()
+		? Delta::MessageDelivery(item->id.bare) : std::nullopt;
 
 	if (item->isService()) {
 		const auto text = item->notificationText().text;
@@ -40,7 +43,7 @@ QString MessageAccessibilityName(
 	QStringList lines;
 
 	if (item->out()) {
-		lines.push_back(item->unread(history)
+		lines.push_back((delivery ? *delivery != Delta::DeliveryState::Read : item->unread(history))
 			? tr::lng_sr_message_not_seen(tr::now)
 			: tr::lng_sr_message_seen(tr::now));
 	}
@@ -79,7 +82,9 @@ QString MessageAccessibilityName(
 	}
 
 	if (const auto forwarded = item->Get<HistoryMessageForwarded>()) {
-		if (forwarded->originalSender) {
+		if (forwarded->anonymous) {
+			lines.push_back(tr::lng_forwarded_anonymous(tr::now));
+		} else if (forwarded->originalSender) {
 			lines.push_back(tr::lng_forwarded(
 				tr::now,
 				lt_user,
@@ -296,9 +301,9 @@ QString MessageAccessibilityName(
 
 	QStringList statusParts;
 	if (item->out()) {
-		if (item->isSending()) {
+		if (delivery ? *delivery == Delta::DeliveryState::Pending : item->isSending()) {
 			statusParts.push_back(tr::lng_sr_chat_sending(tr::now));
-		} else if (item->hasFailed()) {
+		} else if (delivery ? *delivery == Delta::DeliveryState::Failed : item->hasFailed()) {
 			statusParts.push_back(tr::lng_sr_chat_failed(tr::now));
 		} else {
 			statusParts.push_back(tr::lng_sr_chat_sent(tr::now));
@@ -530,7 +535,9 @@ QString MessageSubItemValue(
 		return {};
 	case MessageSubItem::Forward:
 		if (const auto fwd = data->Get<HistoryMessageForwarded>()) {
-			if (fwd->originalSender) {
+			if (fwd->anonymous) {
+				return tr::lng_forwarded_anonymous(tr::now);
+			} else if (fwd->originalSender) {
 				return tr::lng_forwarded(
 					tr::now,
 					lt_user,
@@ -701,16 +708,19 @@ QString MessageSubItemValue(
 		}
 		return data->originalText().text;
 	}
-	case MessageSubItem::Delivery:
+	case MessageSubItem::Delivery: {
+		const auto delivery = Delta::Active()
+			? Delta::MessageDelivery(data->id.bare) : std::nullopt;
 		if (data->out()) {
-			if (data->isSending()) {
+			if (delivery ? *delivery == Delta::DeliveryState::Pending : data->isSending()) {
 				return tr::lng_sr_chat_sending(tr::now);
-			} else if (data->hasFailed()) {
+			} else if (delivery ? *delivery == Delta::DeliveryState::Failed : data->hasFailed()) {
 				return tr::lng_sr_chat_failed(tr::now);
 			}
 			return tr::lng_sr_chat_sent(tr::now);
 		}
 		return tr::lng_sr_chat_received(tr::now);
+	}
 	case MessageSubItem::Edited:
 		if (data->Has<HistoryMessageEdited>()) {
 			return tr::lng_edited(tr::now);

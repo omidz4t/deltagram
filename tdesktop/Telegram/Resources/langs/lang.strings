@@ -3117,6 +3117,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_public_post_private_hint_cmd" = "Use Cmd+Click to copy a non-public link.";
 
 "lng_forwarded" = "Forwarded from {user}";
+"lng_forwarded_anonymous" = "Forwarded message";
 "lng_forwarded_story" = "Story from {user}";
 "lng_forwarded_story_expired" = "This story has expired.";
 "lng_forwarded_date" = "Original: {date}";
@@ -5682,8 +5683,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_send_compressed" = "Compress images";
 "lng_send_high_quality" = "High Quality";
 "lng_send_video_preparing" = "Preparing… {progress}%";
-"lng_send_as_documents_one" = "Send as a document";
-"lng_send_as_documents" = "Send as documents";
+"lng_send_as_documents_one" = "Send without compression";
+"lng_send_as_documents" = "Send without compression";
 "lng_send_media_invalid_files" = "Sorry, no valid files found.";
 "lng_send_image" = "Send an image";
 "lng_send_file" = "Send as a file";

@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QBuffer>
 
 #include "delta/avatar_image.h"
+#include "delta/delta_bridge.h"
 #include "api/api_sensitive_content.h"
 #include "data/data_user.h"
 #include "data/data_chat.h"
@@ -412,6 +413,17 @@ void PeerData::checkTrustedPayForMessage() {
 }
 
 ClickHandlerPtr PeerData::createOpenLink() {
+	if (const auto contact = Delta::ContactForPeer(id.value)) {
+		const auto generation = Delta::AccountGeneration();
+		return std::make_shared<LambdaClickHandler>([=](ClickContext context) {
+			const auto controller = HistoryView::ExtractController(context);
+			if (!controller || generation != Delta::AccountGeneration()) return;
+			Delta::OpenContact(*contact, crl::guard(controller, [=](int chatId, QString error) {
+				if (!error.isEmpty()) controller->showToast(error);
+				else controller->showPeerHistory(peerFromUser(UserId(chatId)));
+			}));
+		});
+	}
 	return std::make_shared<PeerClickHandler>(this);
 }
 
@@ -820,7 +832,7 @@ bool PeerData::canEditMessagesIndefinitely() const {
 }
 
 bool PeerData::canExportChatHistory() const {
-	if (isRepliesChat() || isVerifyCodes() || !allowsForwarding()) {
+	if (Delta::Active() || isRepliesChat() || isVerifyCodes() || !allowsForwarding()) {
 		return false;
 	} else if (const auto channel = asChannel()) {
 		if (!channel->amIn() && channel->invitePeekExpires()) {

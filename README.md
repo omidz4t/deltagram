@@ -73,13 +73,24 @@ Working in local checks:
 - Core account creation and chat-list loading through Qt JSON-RPC.
 - Contacts, contact cards, group creation and invitation previews/navigation.
 - Broadcast channel presentation, subscriber write restrictions and owner read counts.
-- Message information and reaction UI.
+- Message information and reaction UI, with distinct pending/failed/read indicators.
+- Disposable live QR-image SecureJoin and second-device transfer to official
+  Delta Chat Desktop 2.62.0, including restored history and image bytes.
+- Prepared-image, uncompressed-image and ZIP recovery across normal restart,
+  including older quoted attachments and uncertain send acknowledgements.
+- Explicit local Retry after a rejected prepared-image save, with duplicate
+  actions blocked and matching bytes delivered to the reference client.
+- Multi-file selection/retry/restart, quoted voice recording with virtual audio,
+  and ordered text-plus-forward delivery to official Delta Chat Desktop 2.62.0.
+- Recovery after uncertain forwarding and Core image recoding without duplicate
+  sends; delayed queue discovery does not block foreground recovery.
 
 Incomplete or not yet verified:
 
-- Voice playback UI, service events and complete profile-switch refresh.
+- Physical recording/playback devices, service events and complete profile-switch refresh.
 - Delta Chat calls; Telegram conferences are disabled.
-- Live SecureJoin completion, second-device transfer and broad end-to-end compatibility.
+- Round-video capture and broader forwarding/attachment interruption cases.
+- Camera/mobile QR flows and broad end-to-end compatibility.
 - Accessibility, RTL, advanced media/search and full webxdc behavior need validation.
 
 The [compatibility tracker](docs/COMPATIBILITY.md) distinguishes implemented

@@ -666,6 +666,7 @@ Notification::Notification(
 , _peer(peer)
 , _started(crl::now())
 , _history(history)
+, _sessionId(Notifications::SessionId(&history->session()))
 , _topic(history->peer->forumTopicFor(topicRootId))
 , _topicRootId(topicRootId)
 , _sublist(history->peer->monoforumSublistFor(monoforumPeerId))
@@ -1192,7 +1193,7 @@ Notifications::Manager::NotificationId Notification::myId() const {
 		return {};
 	}
 	return { .contextId = {
-		.sessionId = _history->session().uniqueId(),
+		.sessionId = _sessionId,
 		.peerId = _history->peer->id,
 		.topicRootId = _topicRootId,
 	}, .msgId = _item ? _item->id : ShowAtUnreadMsgId };

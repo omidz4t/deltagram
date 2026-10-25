@@ -816,6 +816,19 @@ Widget::Widget(
 
 	setupFrozenAccountBar();
 	setupTopBarSuggestions();
+	Delta::AccountViewResets() | rpl::on_next([=] {
+		_searchTimer.cancel();
+		cancelSearch({ .forceFullCancel = true });
+		_searchProcess.cache.clear();
+		_migratedProcess.cache.clear();
+		_postsProcess.cache.clear();
+		_searchProcess.queries.clear();
+		_migratedProcess.queries.clear();
+		_postsProcess.queries.clear();
+		_singleMessageSearch.clear();
+		_peerSearch.clear();
+		_searchQuery.clear();
+	}, lifetime());
 #ifdef _DEBUG
 	setupTopBarSuggestionTestHotkeys();
 #endif // _DEBUG
@@ -3202,7 +3215,9 @@ bool Widget::search(bool inCache, SearchRequestDelay delay) {
 		process->full = false;
 		_migratedProcess.full = false;
 		cancelSearchRequest();
-		if (inPeer) {
+		if (Delta::Active()) {
+			requestDeltaMessages(true);
+		} else if (inPeer) {
 			const auto topic = searchInTopic();
 			auto &histories = session().data().histories();
 			const auto type = Data::Histories::RequestType::History;
@@ -3411,10 +3426,13 @@ void Widget::searchMore() {
 	const auto process = currentSearchProcess();
 	if (process->requestId
 		|| _historiesRequest
+		|| _deltaSearchLoading
 		|| _searchTimer.isActive()) {
 		return;
 	} else if (!process->full) {
-		if (const auto peer = searchInPeer()) {
+		if (Delta::Active()) {
+			requestDeltaMessages(false);
+		} else if (const auto peer = searchInPeer()) {
 			auto &histories = session().data().histories();
 			const auto topic = searchInTopic();
 			const auto type = Data::Histories::RequestType::History;
@@ -3561,27 +3579,16 @@ void Widget::requestPublicPosts(bool fromStart) {
 }
 
 void Widget::requestMessages(bool fromStart) {
+	if (Delta::Active()) {
+		requestDeltaMessages(fromStart);
+		return;
+	}
 	if (!_searchProcess.lastId || !_searchProcess.lastPeer) {
 		fromStart = true;
 	}
 	const auto type = SearchRequestType{
 		.start = fromStart,
 	};
-	if (Delta::Active()) {
-		Delta::SearchMessages(0, _searchQuery, [=](
-				QVector<MTPMessage> messages,
-				QVector<MTPUser> users) {
-			searchReceived(
-				type,
-				MTP_messages_messages(
-					MTP_vector<MTPMessage>(messages),
-					MTP_vector<MTPForumTopic>(),
-					MTP_vector<MTPChat>(),
-					MTP_vector<MTPUser>(users)),
-				&_searchProcess);
-		});
-		return;
-	}
 	using Flag = MTPmessages_SearchGlobal::Flag;
 	const auto community = (_searchQueryTab == ChatSearchTab::ThisCommunity)
 		? _searchQueryCommunity
@@ -3633,7 +3640,74 @@ void Widget::requestMessages(bool fromStart) {
 	}
 }
 
+void Widget::requestDeltaMessages(bool fromStart) {
+	fromStart = fromStart
+		|| _deltaSearchAccountGeneration != Delta::AccountGeneration();
+	if (!fromStart) {
+		loadDeltaSearchPage(false);
+		return;
+	}
+	const auto generation = ++_deltaSearchGeneration;
+	const auto accountGeneration = Delta::AccountGeneration();
+	_deltaSearchAccountGeneration = accountGeneration;
+	const auto query = _searchQuery;
+	const auto peer = searchInPeer();
+	const auto userId = peer ? int(peerToUser(peer->id).bare) : 0;
+	_deltaSearchIds.clear();
+	_deltaSearchOffset = 0;
+	_deltaSearchLoading = true;
+	Delta::FindMessageIds(userId, query, crl::guard(this, [=](
+			QVector<int> ids, QString error) {
+		if (generation != _deltaSearchGeneration
+			|| accountGeneration != Delta::AccountGeneration()
+			|| query != _searchState.query.trimmed()) {
+			return;
+		}
+		_deltaSearchLoading = false;
+		if (!error.isEmpty()) controller()->showToast(error);
+		_deltaSearchIds = std::move(ids);
+		loadDeltaSearchPage(true);
+	}));
+}
+
+void Widget::loadDeltaSearchPage(bool fromStart) {
+	if (_deltaSearchLoading) return;
+	const auto accountGeneration = _deltaSearchAccountGeneration;
+	if (accountGeneration != Delta::AccountGeneration()) return;
+	const auto generation = _deltaSearchGeneration;
+	const auto query = _searchQuery;
+	const auto ids = _deltaSearchIds.mid(_deltaSearchOffset, 50);
+	const auto type = SearchRequestType{
+		.start = fromStart,
+		.peer = (searchInPeer() != nullptr),
+	};
+	_deltaSearchLoading = true;
+	Delta::LoadSearchResults(ids, crl::guard(this, [=](
+			QVector<MTPMessage> messages,
+			QVector<MTPUser> users) {
+		if (generation != _deltaSearchGeneration
+			|| accountGeneration != Delta::AccountGeneration()
+			|| query != _searchState.query.trimmed()) {
+			return;
+		}
+		_deltaSearchOffset += ids.size();
+		_deltaSearchLoading = false;
+		searchReceived(
+			type,
+			MTP_messages_messages(
+				MTP_vector<MTPMessage>(messages),
+				MTP_vector<MTPForumTopic>(),
+				MTP_vector<MTPChat>(),
+				MTP_vector<MTPUser>(users)),
+			&_searchProcess,
+			false,
+			_deltaSearchIds.size(),
+			_deltaSearchOffset < _deltaSearchIds.size());
+	}));
+}
+
 auto Widget::currentSearchProcess() -> not_null<SearchProcessState*> {
+	if (Delta::Active()) return &_searchProcess;
 	return (_searchState.tab == ChatSearchTab::PublicPosts)
 		? &_postsProcess
 		: &_searchProcess;
@@ -3649,7 +3723,9 @@ void Widget::searchReceived(
 		SearchRequestType type,
 		const MTPmessages_Messages &result,
 		not_null<SearchProcessState*> process,
-		bool cacheResults) {
+		bool cacheResults,
+		int fullCountOverride,
+		bool hasMore) {
 	const auto state = _inner->state();
 	if (!cacheResults
 		&& (state == WidgetState::Filtered)
@@ -3763,6 +3839,10 @@ void Widget::searchReceived(
 		process->full = true;
 		return std::vector<not_null<HistoryItem*>>();
 	});
+	if (fullCountOverride >= 0) {
+		fullCount = fullCountOverride;
+		process->full = !hasMore;
+	}
 	_inner->searchReceived(messages, inject, type, fullCount);
 
 	process->requestId = 0;
@@ -4975,6 +5055,10 @@ void Widget::scrollToEntry(const RowDescriptor &entry) {
 }
 
 void Widget::cancelSearchRequest() {
+	++_deltaSearchGeneration;
+	_deltaSearchLoading = false;
+	_deltaSearchIds.clear();
+	_deltaSearchOffset = 0;
 	session().api().request(base::take(_searchProcess.requestId)).cancel();
 	session().api().request(base::take(_migratedProcess.requestId)).cancel();
 	session().api().request(base::take(_postsProcess.requestId)).cancel();

@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_histories.h"
+#include "delta/delta_bridge.h"
 
 #include "api/api_text_entities.h"
 #include "data/business/data_shortcut_messages.h"
@@ -27,6 +28,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/random.h"
 #include "main/main_session.h"
 #include "window/notifications_manager.h"
+#include "window/window_session_controller.h"
 #include "history/history.h"
 #include "history/history_item.h"
 #include "history/history_item_helpers.h"
@@ -172,6 +174,29 @@ void Histories::clearAll() {
 	_map.clear();
 }
 
+void Histories::resetBackendRequests() {
+	_readRequestsTimer.cancel();
+	// Do not use cancelRequest(): it resumes postponed generators, whose
+	// peer and message IDs belong to the account that is being detached.
+	for (const auto &[history, state] : _states) {
+		for (const auto &[id, sent] : state.sent) {
+			session().api().request(sent.id).cancel();
+		}
+	}
+	_states.clear();
+	_historyByRequest.clear();
+	_dialogFolderRequests.clear();
+	_dialogRequests.clear();
+	_dialogRequestsPending.clear();
+	_fakeChatListRequests.clear();
+	_chatListGroupRequests.clear();
+	_creatingTopics.clear();
+	_createdTopicIds.clear();
+	_creatingTopicRequests.clear();
+	_pendingDeliveryReport.clear();
+	_deliveryReportSent.clear();
+}
+
 void Histories::readInbox(not_null<History*> history) {
 	DEBUG_LOG(("Reading: readInbox called."));
 	if (history->lastServerMessageKnown()) {
@@ -256,6 +281,7 @@ void Histories::readInboxTill(
 		).arg(Logs::b(force)));
 
 	const auto syncGuard = gsl::finally([&] {
+		if (Delta::Active()) return;
 		DEBUG_LOG(("Reading: in guard, unread %1."
 			).arg(history->unreadCount()));
 		if (history->unreadCount() > 0) {
@@ -283,11 +309,15 @@ void Histories::readInboxTill(
 		return;
 	}
 	const auto maybeState = lookup(history);
-	if (maybeState && maybeState->sentReadTill >= tillId) {
+	if (maybeState && (Delta::Active()
+		? maybeState->sentReadTill == tillId
+		: maybeState->sentReadTill >= tillId)) {
 		DEBUG_LOG(("Reading: readInboxTill finish 3 with %1."
 			).arg(maybeState->sentReadTill.bare));
 		return;
-	} else if (maybeState && maybeState->willReadTill >= tillId) {
+	} else if (maybeState && (Delta::Active()
+		? maybeState->willReadTill == tillId
+		: maybeState->willReadTill >= tillId)) {
 		DEBUG_LOG(("Reading: readInboxTill finish 4 with %1 and force %2."
 			).arg(maybeState->sentReadTill.bare
 			).arg(Logs::b(force)));
@@ -443,7 +473,9 @@ void Histories::sendDialogRequests() {
 		_dialogRequests.emplace(history, std::move(callbacks));
 	}
 
+	const auto generation = Delta::AccountGeneration();
 	const auto finalize = [=] {
+		if (generation != Delta::AccountGeneration()) return;
 		for (const auto &history : histories) {
 			const auto state = lookup(history);
 			if (!state || !state->postponedRequestEntry) {
@@ -479,7 +511,8 @@ void Histories::dialogEntryApplied(not_null<History*> history) {
 		}
 	}
 	if (state && state->sentReadTill && state->sentReadDone) {
-		history->setInboxReadTill(base::take(state->sentReadTill));
+		const auto till = base::take(state->sentReadTill);
+		if (!Delta::Active()) history->setInboxReadTill(till);
 		checkEmptyState(history);
 	}
 }
@@ -713,7 +746,7 @@ void Histories::sendReadRequests() {
 }
 
 void Histories::sendReadRequest(not_null<History*> history, State &state) {
-	Expects(state.willReadTill > state.sentReadTill);
+	Expects(Delta::Active() || state.willReadTill > state.sentReadTill);
 
 	const auto tillId = state.sentReadTill = base::take(state.willReadTill);
 	state.willReadWhen = 0;
@@ -735,7 +768,7 @@ void Histories::sendReadRequest(not_null<History*> history, State &state) {
 					state->sentReadTill = 0;
 				}
 			} else {
-				Assert(!state->sentReadTill || state->sentReadTill > tillId);
+				Assert(Delta::Active() || !state->sentReadTill || state->sentReadTill > tillId);
 			}
 			history->validateMonoAndForumUnread(tillId);
 			sendReadRequests();
@@ -913,6 +946,25 @@ void Histories::deleteMessagesByDates(
 	TimeId minDate,
 	TimeId maxDate,
 	bool revoke) {
+	if (Delta::Active()) {
+		if (history->latestSendingMessage()) {
+			for (const auto &window : session().windows()) {
+				window->showToast(
+					u"Wait for sending to finish before deleting this chat's history."_q);
+			}
+			return;
+		}
+		Delta::DeleteHistory(history->peer->isSelf(), int(history->peer->id.value),
+			true, revoke, [=](Delta::HistoryDeletionResult result) {
+				for (const auto id : result.deletedIds) {
+					if (const auto item = _owner->message(history->peer, MsgId(id))) {
+						_owner->destroyMessageWithCacheCleanup(item);
+					}
+				}
+				_owner->sendHistoryChangeNotifications();
+			}, Delta::HistoryDateRange{ minDate, maxDate });
+		return;
+	}
 	sendRequest(history, RequestType::Delete, [=](Fn<void()> finish) {
 		const auto peer = history->peer;
 		using Flag = MTPmessages_DeleteHistory::Flag;
@@ -940,6 +992,34 @@ void Histories::deleteMessagesByDates(
 }
 
 void Histories::deleteMessages(const MessageIdsList &ids, bool revoke) {
+	if (Delta::Active()) {
+		for (const auto &id : ids) {
+			const auto item = _owner->message(id);
+			if (item && item->isSending()) {
+				for (const auto &window : session().windows()) {
+					window->showToast(
+						u"Wait for sending to finish before deleting this message."_q);
+				}
+				return;
+			}
+		}
+		auto coreIds = QVector<int>();
+		for (const auto &id : ids) {
+			if (IsClientMsgId(id.msg)) {
+				if (const auto item = _owner->message(id)) item->destroy();
+			} else {
+				coreIds.push_back(int(id.msg.bare));
+			}
+		}
+		if (!coreIds.empty()) {
+			Delta::DeleteMessages(coreIds, revoke, [=] {
+				for (const auto &id : ids) {
+					if (const auto item = _owner->message(id)) item->destroy();
+				}
+			});
+		}
+		return;
+	}
 	auto remove = std::vector<not_null<HistoryItem*>>();
 	remove.reserve(ids.size());
 	base::flat_map<not_null<History*>, QVector<MTPint>> idsByPeer;

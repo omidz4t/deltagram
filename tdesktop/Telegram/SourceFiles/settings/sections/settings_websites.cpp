@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_websites.h"
+#include "delta/delta_bridge.h"
 
 #include "api/api_websites.h"
 #include "settings/settings_common_session.h"
@@ -790,6 +791,7 @@ void Websites::showFinished() {
 }
 
 void Websites::setupContent() {
+	if (Delta::Active()) return;
 	const auto container = Ui::CreateChild<Ui::VerticalLayout>(this);
 
 	const SectionBuildMethod buildMethod = [](
@@ -849,6 +851,7 @@ const auto kMeta = BuildHelper({
 	.parentId = PrivacySecurityId(),
 	.title = &tr::lng_settings_connected_title,
 	.icon = &st::menuIconIpAddress,
+	.available = [] { return !Delta::Active(); },
 }, [](SectionBuilder &builder) {
 	BuildWebsitesSection(builder);
 });

@@ -173,7 +173,8 @@ void ShowChannelsLimitBox(not_null<PeerData*> peer) {
 		peer->id,
 		action.options,
 		action.replyTo,
-		action.replaceMediaOf);
+		action.replaceMediaOf,
+		action.preparedSend);
 }
 
 [[nodiscard]] QString FormatVideoTimestamp(TimeId seconds) {
@@ -666,6 +667,11 @@ void ApiWrap::requestMessageData(
 		PeerData *peer,
 		MsgId msgId,
 		Fn<void()> done) {
+	if (Delta::Active()) {
+		Delta::RequestMessageData(peer ? int(peerToUser(peer->id).bare) : 0,
+			int(msgId.bare), std::move(done));
+		return;
+	}
 	auto &requests = (peer && peer->isChannel())
 		? _channelMessageDataRequests[peer->asChannel()][msgId]
 		: _messageDataRequests[msgId];
@@ -2149,6 +2155,10 @@ void ApiWrap::sendNotifySettingsUpdates() {
 }
 
 void ApiWrap::saveDraftToCloudDelayed(not_null<Data::Thread*> thread) {
+	if (Delta::Active()) {
+		_session->local().writeDrafts(thread->owningHistory());
+		return;
+	}
 	if (ShouldSkipPlainDraftCloudSave(_session, thread)) {
 		return;
 	}
@@ -2213,6 +2223,10 @@ void ApiWrap::clearHistory(not_null<PeerData*> peer, bool revoke) {
 }
 
 void ApiWrap::deleteConversation(not_null<PeerData*> peer, bool revoke) {
+	if (Delta::Active()) {
+		deleteHistory(peer, false, revoke);
+		return;
+	}
 	if (const auto chat = peer->asChat()) {
 		request(MTPmessages_DeleteChatUser(
 			MTP_flags(0),
@@ -2243,6 +2257,28 @@ void ApiWrap::deleteHistory(
 		int retries) {
 	auto deleteTillId = MsgId(0);
 	const auto history = _session->data().history(peer);
+	if (Delta::Active()) {
+		if (history->latestSendingMessage()) {
+			for (const auto &window : _session->windows()) {
+				window->showToast(
+					u"Wait for sending to finish before deleting this chat's history."_q);
+			}
+			return;
+		}
+		Delta::DeleteHistory(peer->isSelf(), int(peer->id.value), justClear, revoke,
+			[=](Delta::HistoryDeletionResult result) {
+				for (const auto id : result.deletedIds) {
+					if (const auto item = _session->data().message(peer, MsgId(id))) {
+						_session->data().destroyMessageWithCacheCleanup(item);
+					}
+				}
+				if (result.chatDeleted) {
+					_session->data().deleteConversationLocally(peer);
+				}
+				_session->data().sendHistoryChangeNotifications();
+			});
+		return;
+	}
 	if (justClear) {
 		// In case of clear history we need to know the last server message.
 		while (history->lastMessageKnown()) {
@@ -3868,9 +3904,14 @@ void ApiWrap::finishForwarding(const SendAction &action) {
 	const auto history = action.history;
 	const auto topicRootId = action.replyTo.topicRootId;
 	const auto monoforumPeerId = action.replyTo.monoforumPeerId;
-	auto toForward = history->resolveForwardDraft(
-		topicRootId,
-		monoforumPeerId);
+	const auto requested = history->forwardDraft(topicRootId, monoforumPeerId);
+	auto toForward = Delta::Active()
+		? history->resolveForwardDraft(requested)
+		: history->resolveForwardDraft(topicRootId, monoforumPeerId);
+	if (Delta::Active() && requested.ids.size() != toForward.items.size()) {
+		if (const auto show = ShowForPeer(history->peer)) show->showToast(u"Some forwarded messages are no longer available. Review the selection before sending."_q);
+		return;
+	}
 	if (!toForward.items.empty()) {
 		const auto error = GetErrorForSending(
 			history->peer,
@@ -3882,6 +3923,10 @@ void ApiWrap::finishForwarding(const SendAction &action) {
 			return;
 		}
 
+		if (Delta::Active()) {
+			forwardMessages(std::move(toForward), action);
+			return;
+		}
 		history->setForwardDraft(topicRootId, monoforumPeerId, {});
 		forwardMessages(std::move(toForward), action);
 	}
@@ -3901,6 +3946,42 @@ void ApiWrap::forwardMessages(
 		SendAction action,
 		FnMut<void()> &&successCallback) {
 	Expects(!draft.items.empty());
+	if (Delta::Active()) {
+		const auto history = action.history;
+		const auto userId = int(peerToUser(history->peer->id).bare);
+		const auto report = [=](QString error) {
+			if (const auto show = ShowForPeer(history->peer)) show->showToast(error);
+		};
+		if (action.options.scheduled || draft.options == Data::ForwardOptions::NoNamesAndCaptions) {
+			report(u"Scheduled forwarding and removing forwarded captions are not supported. The selection was kept."_q);
+			return;
+		}
+		const auto sources = Delta::CollectForwardSources(draft.items);
+		if (!sources || sources->empty()) { report(u"The forwarded messages are no longer available."_q); return; }
+		const auto topic = action.replyTo.topicRootId;
+		const auto monoforum = action.replyTo.monoforumPeerId;
+		const auto selected = history->forwardDraft(topic, monoforum);
+		auto ids = MessageIdsList();
+		for (const auto item : draft.items) ids.push_back(item->fullId());
+		const auto fromComposer = selected.ids == ids;
+		const auto current = Delta::CaptureAccountGuard();
+		const auto weak = base::make_weak(_session);
+		struct Completion { FnMut<void()> callback; };
+		const auto completion = std::make_shared<Completion>(Completion{ std::move(successCallback) });
+		Delta::CheckNewAttachmentBatch(userId, [=](QString error) {
+			if (!weak || !current || !current()) return;
+			if (!error.isEmpty()) { report(error); return; }
+			if (fromComposer && history->forwardDraft(topic, monoforum) != selected) {
+				report(u"The forward selection changed. Review it before sending."_q);
+				return;
+			}
+			const auto batch = Delta::BeginPreparedBatch(userId, {}, [=](bool sent) {
+				if (weak && current() && sent && completion->callback) completion->callback();
+			}, *sources);
+			if (batch && fromComposer) history->setForwardDraft(topic, monoforum, {});
+		});
+		return;
+	}
 
 	auto &histories = _session->data().histories();
 
@@ -4335,6 +4416,11 @@ void ApiWrap::editMedia(
 	}));
 }
 
+void ApiWrap::resetMediaForAccountChange() {
+	_sendingAlbums.clear();
+	_session->uploader().resetForAccountChange();
+}
+
 void ApiWrap::sendFiles(
 		Ui::PreparedList &&list,
 		SendMediaType type,
@@ -4364,6 +4450,7 @@ void ApiWrap::sendFiles(
 	}
 	auto tasks = std::vector<std::unique_ptr<Task>>();
 	tasks.reserve(list.files.size());
+	auto batchIndex = action.composeBatchOffset;
 	for (auto &file : list.files) {
 		const auto uploadWithType = !album
 			? type
@@ -4372,8 +4459,11 @@ void ApiWrap::sendFiles(
 			? SendMediaType::Photo
 			: SendMediaType::File;
 		const auto forceFile = (type == SendMediaType::File)
-			&& (file.type == Ui::PreparedFile::Type::Video);
+			&& (file.type == Ui::PreparedFile::Type::Video
+				|| file.type == Ui::PreparedFile::Type::Photo);
 		auto fileTo = to;
+		fileTo.composeBatch = action.composeBatch;
+		fileTo.composeBatchIndex = batchIndex++;
 		if (file.ttlSeconds && !fileTo.options.scheduled) {
 			fileTo.options.ttlSeconds = file.ttlSeconds;
 		}
@@ -4965,6 +5055,90 @@ void ApiWrap::sendMessage(
 			.effectId = action.options.effectId,
 			.suggest = HistoryMessageSuggestInfo(action.options),
 		}, sending, media);
+		const auto restoreFailedDraft = [=] {
+			if (!action.options.scheduled
+				&& !action.options.shortcutId) {
+				const auto failed = _session->data().message(newId);
+				const auto local = history->localDraft(
+					draftTopicRootId,
+					draftMonoforumPeerId);
+				const auto cloud = history->cloudDraft(
+					draftTopicRootId,
+					draftMonoforumPeerId);
+				if (failed
+					&& (Delta::Active()
+						|| (Data::DraftIsNull(local) && Data::DraftIsNull(cloud)))) {
+					const auto text = failed->originalText();
+					auto draft = Data::Draft();
+					draft.textWithTags = {
+						text.text,
+						TextUtilities::ConvertEntitiesToTextTags(
+							text.entities),
+					};
+					draft.reply = action.replyTo;
+					draft.suggest = action.options.suggest;
+					draft.cursor = MessageCursor(
+						int(text.text.size()),
+						int(text.text.size()),
+						Ui::kQFixedMax);
+					draft.webpage = webPageDraft;
+					const auto current = !Data::DraftIsNull(local) ? local : cloud;
+					if (Delta::Active() && !Data::DraftIsNull(current)) {
+						// A rejected send must survive switching profiles even when
+						// the user has started another message. Keep both texts in
+						// the editable draft; never resend the rejected text here.
+						auto recovered = draft.textWithTags;
+						recovered.text += u"\n\n"_q;
+						const auto offset = int(recovered.text.size());
+						recovered.text += current->textWithTags.text;
+						for (auto tag : current->textWithTags.tags) {
+							tag.offset += offset;
+							recovered.tags.push_back(std::move(tag));
+						}
+						draft = *current;
+						draft.textWithTags = std::move(recovered);
+						draft.cursor = MessageCursor(
+							int(draft.textWithTags.text.size()),
+							int(draft.textWithTags.text.size()),
+							Ui::kQFixedMax);
+					}
+					if (!Data::DraftIsNull(&draft)) {
+						history->createCloudDraft(
+							draftTopicRootId,
+							draftMonoforumPeerId,
+							&draft);
+						history->applyCloudDraft(
+							draftTopicRootId,
+							draftMonoforumPeerId);
+						failed->destroy();
+					}
+				}
+			}
+			history->owner().sendHistoryChangeNotifications();
+		};
+		if (Delta::Active() && !sending.text.isEmpty()) {
+			// Core events can precede the send reply. Use the same reconciliation
+			// as files instead of replacing Core's item with the donor placeholder.
+			_session->data().unregisterMessageRandomId(randomId);
+			_session->data().unregisterMessageSentData(randomId);
+			const auto weak = base::make_weak(&history->session());
+			Delta::SendItemText(lastMessage, sending.text, [=](bool success) {
+				if (!weak.get()) {
+					return;
+				}
+				if (!success) {
+					restoreFailedDraft();
+				}
+				if (clearCloudDraft) {
+					history->finishSavingCloudDraft(
+						draftTopicRootId,
+						draftMonoforumPeerId,
+						base::unixtime::now());
+				}
+			});
+			isFirst = false;
+			continue;
+		}
 		const auto done = [=](
 				const MTPUpdates &result,
 				const MTP::Response &response) {
@@ -4982,44 +5156,7 @@ void ApiWrap::sendMessage(
 				lastMessage->destroy();
 			} else {
 				sendMessageFail(error, peer, randomId, newId);
-				if (!action.options.scheduled
-					&& !action.options.shortcutId) {
-					const auto failed = _session->data().message(newId);
-					const auto local = history->localDraft(
-						draftTopicRootId,
-						draftMonoforumPeerId);
-					const auto cloud = history->cloudDraft(
-						draftTopicRootId,
-						draftMonoforumPeerId);
-					if (failed
-						&& Data::DraftIsNull(local)
-						&& Data::DraftIsNull(cloud)) {
-						const auto text = failed->originalText();
-						auto draft = Data::Draft();
-						draft.textWithTags = {
-							text.text,
-							TextUtilities::ConvertEntitiesToTextTags(
-								text.entities),
-						};
-						draft.reply = action.replyTo;
-						draft.suggest = action.options.suggest;
-						draft.cursor = MessageCursor(
-							int(text.text.size()),
-							int(text.text.size()),
-							Ui::kQFixedMax);
-						draft.webpage = webPageDraft;
-						if (!Data::DraftIsNull(&draft)) {
-							history->createCloudDraft(
-								draftTopicRootId,
-								draftMonoforumPeerId,
-								&draft);
-							history->applyCloudDraft(
-								draftTopicRootId,
-								draftMonoforumPeerId);
-							failed->destroy();
-						}
-					}
-				}
+				restoreFailedDraft();
 			}
 			if (clearCloudDraft) {
 				history->finishSavingCloudDraft(

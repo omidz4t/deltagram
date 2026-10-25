@@ -3,6 +3,8 @@ This file is part of Delta Tel, a Telegram Desktop based Delta Chat client.
 */
 #include "delta/welcome.h"
 
+#include "delta/account_inventory.h"
+
 #include "delta/delta_boxes.h"
 #include "delta/delta_bridge.h"
 #include "boxes/abstract_box.h"
@@ -454,6 +456,11 @@ void DeltaOnboarding::openShell(int accountId) {
 			return;
 		}
 		call(u"get_config"_q, {accountId, u"displayname"_q}, [=](QJsonObject config) {
+			if (HasError(config)) {
+				_handedOver = false;
+				setStatus(RpcError(config));
+				return;
+			}
 			const auto name = config.value(u"result"_q).toString();
 			const auto rpc = std::shared_ptr<DeltaRpc>(_rpc);
 			_rpc = nullptr;
@@ -468,6 +475,10 @@ void DeltaOnboarding::openShell(int accountId) {
 }
 
 void DeltaOnboarding::keyPressEvent(QKeyEvent *e) {
+	if (_creatingProfile) {
+		e->accept();
+		return;
+	}
 	if (e->key() == Qt::Key_Escape || e->key() == Qt::Key_Back) {
 		if (_live && _page == Page::Welcome) {
 			closeLive();
@@ -494,10 +505,14 @@ void DeltaOnboarding::call(
 		const QJsonArray &params,
 		DeltaRpc::Callback done) {
 	if (!_rpc) {
-		setStatus(u"Chatmail core is not running."_q);
+		const auto error = u"Chatmail core is not running."_q;
+		setStatus(error);
+		if (done) done(QJsonObject{{ u"error"_q, error }});
 		return;
 	}
-	_rpc->call(method, params, std::move(done));
+	_rpc->call(method, params, crl::guard(this, [done = std::move(done)](QJsonObject reply) {
+		if (done) done(std::move(reply));
+	}));
 }
 
 void DeltaOnboarding::showWelcome() {
@@ -607,135 +622,104 @@ void DeltaOnboarding::pumpEvents() {
 }
 
 void DeltaOnboarding::bootstrap() {
-	call(u"get_all_account_ids"_q, {}, [=](QJsonObject reply) {
-		if (HasError(reply)) {
-			const auto message = RpcError(reply);
-			if (message.contains(u"not running"_q)) {
-				QTimer::singleShot(400, this, [=] { bootstrap(); });
-				return;
-			}
-			setStatus(message);
+	Delta::ReadAccountInventory([=](QString method, QJsonArray params, DeltaRpc::Callback done) {
+		call(method, params, std::move(done));
+	}, [=](Delta::AccountInventory inventory) {
+		if (!inventory.error.isEmpty()) {
+			setStatus(inventory.error);
 			return;
 		}
-		const auto ids = reply.value(u"result"_q).toArray();
-		if (ids.isEmpty()) {
-			_accountId = 0;
-			_accountReady = false;
-			_anyConfigured = false;
+		_anyConfigured = !inventory.configured.empty();
+		if (!_anyConfigured) {
+			_accountId = inventory.unconfigured;
+			_accountReady = (_accountId != 0);
 			updateTexts();
 			updateControlsGeometry();
+			if (qEnvironmentVariableIsSet("DELTA_TEL_FORCE_OPEN") && _accountId != 0) {
+				openShell(_accountId);
+			}
 			return;
 		}
 		call(u"get_selected_account_id"_q, {}, [=](QJsonObject selected) {
-			const auto selectedId = (!HasError(selected)
-				&& !selected.value(u"result"_q).isNull())
-				? selected.value(u"result"_q).toInt()
-				: 0;
-			auto remaining = std::make_shared<int>(ids.size());
-			auto configured = std::make_shared<QList<int>>();
-			auto unconfigured = std::make_shared<int>(0);
-			for (const auto &idValue : ids) {
-				const auto id = idValue.toInt();
-				call(u"is_configured"_q, {id}, [=](QJsonObject configuredReply) {
-					if (configuredReply.value(u"result"_q).toBool()) {
-						configured->push_back(id);
-						_anyConfigured = true;
-					} else if (*unconfigured == 0) {
-						*unconfigured = id;
-					}
-					if (--(*remaining) != 0) {
-						return;
-					}
-					if (!configured->isEmpty()) {
-						auto openId = configured->contains(selectedId)
-							? selectedId
-							: configured->front();
-						updateTexts();
-						updateControlsGeometry();
-						call(u"select_account"_q, {openId}, [=](QJsonObject) {
-							openShell(openId);
-						});
-						return;
-					}
-					if (*unconfigured != 0) {
-						_accountId = *unconfigured;
-						_accountReady = true;
-					}
-					updateTexts();
-					updateControlsGeometry();
-					if (qEnvironmentVariableIsSet("DELTA_TEL_FORCE_OPEN")
-						&& _accountId != 0) {
-						openShell(_accountId);
-					}
-				});
+			if (HasError(selected)) {
+				setStatus(RpcError(selected));
+				return;
 			}
+			const auto selectedValue = selected.value(u"result"_q);
+			if (!selectedValue.isNull() && (!selectedValue.isDouble()
+				|| selectedValue.toInt() <= 0 || selectedValue.toDouble() != selectedValue.toInt())) {
+				setStatus(u"Core returned an invalid selected profile."_q);
+				return;
+			}
+			const auto selectedId = selectedValue.toInt();
+			const auto openId = inventory.configured.contains(selectedId)
+				? selectedId : inventory.configured.front();
+			updateTexts();
+			updateControlsGeometry();
+			call(u"select_account"_q, { openId }, [=](QJsonObject reply) {
+				if (HasError(reply)) setStatus(RpcError(reply));
+				else openShell(openId);
+			});
 		});
 	});
 }
 
-void DeltaOnboarding::ensureFreshAccount(DeltaRpc::Callback done) {
+void DeltaOnboarding::ensureFreshAccount(DeltaRpc::Callback callback) {
+	if (callback) _accountReadyCallbacks.push_back(crl::guard(this, std::move(callback)));
+	if (_preparingAccount) return;
+	_preparingAccount = true;
+	const auto done = DeltaRpc::Callback([=](QJsonObject reply) {
+		_preparingAccount = false;
+		auto callbacks = std::move(_accountReadyCallbacks);
+		_accountReadyCallbacks.clear();
+		for (const auto &callback : callbacks) callback(reply);
+	});
 	if (_accountReady && _accountId != 0) {
-		if (done) {
-			done(QJsonObject());
-		}
+		// Setup may have completed despite a lost acknowledgement. Never apply
+		// creation settings again without confirming the account is still fresh.
+		call(u"is_configured"_q, { _accountId }, [=](QJsonObject reply) {
+			const auto value = reply.value(u"result"_q);
+			if (done) done(!HasError(reply) && value.isBool() && !value.toBool()
+				? QJsonObject()
+				: QJsonObject{{ u"error"_q, u"Could not confirm an unconfigured profile. Reopen profiles before continuing."_q }});
+		});
 		return;
 	}
-	call(u"get_all_account_ids"_q, {}, [=](QJsonObject reply) {
-		if (HasError(reply)) {
-			if (done) {
-				done(reply);
+	Delta::ReadAccountInventory([=](QString method, QJsonArray params, DeltaRpc::Callback callback) {
+		call(method, params, std::move(callback));
+	}, [=](Delta::AccountInventory inventory) {
+		if (!inventory.error.isEmpty()) {
+			if (done) done(QJsonObject{{ u"error"_q, inventory.error }});
+			return;
+		}
+		if (inventory.unconfigured != 0) {
+			_accountId = inventory.unconfigured;
+			_accountReady = true;
+			if (done) done(QJsonObject());
+			return;
+		}
+		call(u"add_account"_q, {}, [=](QJsonObject created) {
+			const auto value = created.value(u"result"_q);
+			const auto id = value.toInt();
+			if (!HasError(created)) {
+				if (!value.isDouble() || id <= 0 || value.toDouble() != id) {
+					if (done) done(QJsonObject{{ u"error"_q, u"Core returned an invalid profile identifier."_q }});
+					return;
+				}
+				_accountId = id;
+				_accountReady = true;
 			}
-			return;
-		}
-		const auto ids = reply.value(u"result"_q).toArray();
-		if (ids.isEmpty()) {
-			call(u"add_account"_q, {}, [=](QJsonObject created) {
-				if (!HasError(created)) {
-					_accountId = created.value(u"result"_q).toInt();
-					_accountReady = true;
-				}
-				if (done) {
-					done(created);
-				}
-			});
-			return;
-		}
-		auto remaining = std::make_shared<int>(ids.size());
-		auto unconfigured = std::make_shared<int>(0);
-		for (const auto &idValue : ids) {
-			const auto id = idValue.toInt();
-			call(u"is_configured"_q, {id}, [=](QJsonObject configured) {
-				if (!configured.value(u"result"_q).toBool() && *unconfigured == 0) {
-					*unconfigured = id;
-				}
-				if (--(*remaining) != 0) {
-					return;
-				}
-				if (*unconfigured != 0) {
-					_accountId = *unconfigured;
-					_accountReady = true;
-					if (done) {
-						done(QJsonObject());
-					}
-					return;
-				}
-				call(u"add_account"_q, {}, [=](QJsonObject created) {
-					if (!HasError(created)) {
-						_accountId = created.value(u"result"_q).toInt();
-						_accountReady = true;
-					}
-					if (done) {
-						done(created);
-					}
-				});
-			});
-		}
+			if (done) done(std::move(created));
+		});
 	});
 }
 
 void DeltaOnboarding::finishSetup(const QString &text) {
+	setCreatingProfile(false);
 	_anyConfigured = true;
-	_accountReady = false;
+	// Retain the setup account if opening it fails, so retry cannot silently
+	// allocate a second account after successful provisioning.
+	_accountReady = true;
 	setStatus(text);
 	openShell(_accountId);
 }
@@ -954,16 +938,32 @@ QString DeltaOnboarding::saveAvatar() const {
 	return _avatar.save(path, "PNG") ? path : QString();
 }
 
+void DeltaOnboarding::setCreatingProfile(bool creating) {
+	_creatingProfile = creating;
+	_next->setDisabled(creating);
+	_alternative->setDisabled(creating);
+	_back->setDisabled(creating);
+	_menuButton->setDisabled(creating);
+	_name->setDisabled(creating);
+	_photo->setDisabled(creating);
+}
+
 void DeltaOnboarding::createProfile() {
+	if (_creatingProfile || _handedOver) return;
 	const auto name = _name->getLastText().trimmed();
 	if (name.isEmpty()) {
 		_name->showError();
 		return;
 	}
+	setCreatingProfile(true);
+	const auto failed = [=](QString error) {
+		setCreatingProfile(false);
+		setStatus(error);
+	};
 	setStatus(u"Creating profile…"_q);
 	ensureFreshAccount([=](QJsonObject ready) {
 		if (HasError(ready) || _accountId == 0) {
-			setStatus(HasError(ready)
+			failed(HasError(ready)
 				? RpcError(ready)
 				: u"No profile yet."_q);
 			return;
@@ -971,7 +971,7 @@ void DeltaOnboarding::createProfile() {
 		const auto initTransports = [=] {
 			call(u"init_transports"_q, {_accountId, QJsonValue()}, [=](QJsonObject reply) {
 				if (HasError(reply)) {
-					setStatus(RpcError(reply));
+					failed(RpcError(reply));
 					return;
 				}
 				finishSetup(u"Profile created."_q);
@@ -984,7 +984,7 @@ void DeltaOnboarding::createProfile() {
 			}
 			call(u"set_config"_q, {_accountId, u"team_profile"_q, u"1"_q}, [=](QJsonObject reply) {
 				if (HasError(reply)) {
-					setStatus(RpcError(reply));
+					failed(RpcError(reply));
 					return;
 				}
 				initTransports();
@@ -998,7 +998,7 @@ void DeltaOnboarding::createProfile() {
 			}
 			call(u"set_config"_q, {_accountId, u"selfavatar"_q, path}, [=](QJsonObject reply) {
 				if (HasError(reply)) {
-					setStatus(RpcError(reply));
+					failed(RpcError(reply));
 					return;
 				}
 				markTeam();
@@ -1006,7 +1006,7 @@ void DeltaOnboarding::createProfile() {
 		};
 		call(u"set_config"_q, {_accountId, u"displayname"_q, name}, [=](QJsonObject reply) {
 			if (HasError(reply)) {
-				setStatus(RpcError(reply));
+				failed(RpcError(reply));
 				return;
 			}
 			setAvatar();

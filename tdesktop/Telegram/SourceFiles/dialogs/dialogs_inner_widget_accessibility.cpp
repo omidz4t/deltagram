@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "dialogs/dialogs_inner_widget_accessibility.h"
 
 #include "data/notify/data_notify_settings.h"
+#include "delta/delta_bridge.h"
 #include "data/data_channel.h"
 #include "data/data_chat_filters.h"
 #include "data/data_drafts.h"
@@ -60,17 +61,19 @@ namespace {
 		return parts;
 	}
 	const auto dateTime = ItemDateTime(item);
+	const auto delivery = Delta::Active()
+		? Delta::MessageDelivery(item->id.bare) : std::nullopt;
 
 	QString status;
 	auto statusBeforeMessage = false;
 	if (item->out()) {
-		if (item->isSending()) {
+		if (delivery ? *delivery == Delta::DeliveryState::Pending : item->isSending()) {
 			status = tr::lng_sr_chat_sending(tr::now);
 			statusBeforeMessage = true;
-		} else if (item->hasFailed()) {
+		} else if (delivery ? *delivery == Delta::DeliveryState::Failed : item->hasFailed()) {
 			status = tr::lng_sr_chat_failed(tr::now);
 			statusBeforeMessage = true;
-		} else if (item->unread(history)) {
+		} else if (delivery ? *delivery != Delta::DeliveryState::Read : item->unread(history)) {
 			status = tr::lng_sr_message_not_seen(tr::now);
 			statusBeforeMessage = true;
 		} else {
@@ -448,12 +451,14 @@ QString SubItemValue(
 		if (!chatItem || chatItem->isService()) {
 			return {};
 		}
+		const auto delivery = Delta::Active()
+			? Delta::MessageDelivery(chatItem->id.bare) : std::nullopt;
 		if (chatItem->out()) {
-			if (chatItem->isSending()) {
+			if (delivery ? *delivery == Delta::DeliveryState::Pending : chatItem->isSending()) {
 				return tr::lng_sr_chat_sending(tr::now);
-			} else if (chatItem->hasFailed()) {
+			} else if (delivery ? *delivery == Delta::DeliveryState::Failed : chatItem->hasFailed()) {
 				return tr::lng_sr_chat_failed(tr::now);
-			} else if (chatItem->unread(history)) {
+			} else if (delivery ? *delivery != Delta::DeliveryState::Read : chatItem->unread(history)) {
 				return tr::lng_sr_message_not_seen(tr::now);
 			} else {
 				return tr::lng_sr_message_seen(tr::now);

@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "calls/calls_instance.h"
 
+#include "delta/delta_bridge.h"
+
 #include "calls/calls_call.h"
 #include "calls/group/calls_group_common.h"
 #include "calls/group/calls_choose_join_as.h"
@@ -203,6 +205,10 @@ Instance::~Instance() {
 void Instance::startOutgoingCall(
 		not_null<UserData*> user,
 		StartOutgoingCallArgs args) {
+	if (Delta::Active()) {
+		Ui::show(Ui::MakeInformBox(u"Calls are not available in Deltagram."_q));
+		return;
+	}
 	if (activateCurrentCall()
 		|| (!args.isConfirmed && activateUnconfirmedCall(user))) {
 		return;
@@ -229,6 +235,10 @@ void Instance::startOrJoinGroupCall(
 		std::shared_ptr<Ui::Show> show,
 		not_null<PeerData*> peer,
 		StartGroupCallArgs args) {
+	if (Delta::Active()) {
+		Ui::show(Ui::MakeInformBox(u"Calls are not available in Deltagram."_q));
+		return;
+	}
 	confirmLeaveCurrent(show, peer, args, [=](StartGroupCallArgs args) {
 		using JoinConfirm = Calls::StartGroupCallArgs::JoinConfirm;
 		const auto context = (args.confirm == JoinConfirm::Always)

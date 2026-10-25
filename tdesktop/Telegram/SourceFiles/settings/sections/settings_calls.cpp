@@ -7,8 +7,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_calls.h"
 
-#include "api/api_authorizations.h"
-#include "apiwrap.h"
 #include "base/timer.h"
 #include "calls/calls_call.h"
 #include "calls/calls_instance.h"
@@ -222,124 +220,6 @@ void BuildInputSection(
 	});
 }
 
-void BuildCallDevicesSection(SectionBuilder &builder) {
-	const auto controller = builder.controller();
-	if (!controller) {
-		return;
-	}
-	const auto settings = &Core::App().settings();
-
-	builder.addSkip();
-	builder.addDivider();
-	builder.addSkip();
-	builder.addSubsectionTitle({
-		.id = u"calls/devices"_q,
-		.title = tr::lng_settings_devices_calls(),
-		.keywords = { u"calls"_q, u"devices"_q, u"same"_q },
-	});
-
-	const auto orDefault = [](const QString &value) {
-		return value.isEmpty() ? kDefaultDeviceId : value;
-	};
-
-	const auto same = builder.addButton({
-		.id = u"calls/same-devices"_q,
-		.title = tr::lng_settings_devices_calls_same(),
-		.st = &st::settingsButtonNoIcon,
-		.toggled = rpl::combine(
-			settings->callPlaybackDeviceIdValue(),
-			settings->callCaptureDeviceIdValue()
-		) | rpl::map([](const QString &playback, const QString &capture) {
-			return playback.isEmpty() && capture.isEmpty();
-		}),
-		.keywords = { u"same"_q, u"separate"_q, u"devices"_q },
-	});
-
-	if (same) {
-		same->toggledValue() | rpl::filter([=](bool toggled) {
-			const auto empty = settings->callPlaybackDeviceId().isEmpty()
-				&& settings->callCaptureDeviceId().isEmpty();
-			return (empty != toggled);
-		}) | rpl::on_next([=](bool toggled) {
-			if (toggled) {
-				settings->setCallPlaybackDeviceId(QString());
-				settings->setCallCaptureDeviceId(QString());
-			} else {
-				settings->setCallPlaybackDeviceId(
-					orDefault(settings->playbackDeviceId()));
-				settings->setCallCaptureDeviceId(
-					orDefault(settings->captureDeviceId()));
-			}
-			Core::App().saveSettingsDelayed();
-		}, same->lifetime());
-	}
-
-	builder.add([controller, settings, same](const WidgetContext &ctx) {
-		const auto container = ctx.container.get();
-		const auto different = container->add(
-			object_ptr<Ui::SlideWrap<Ui::VerticalLayout>>(
-				container,
-				object_ptr<Ui::VerticalLayout>(container)));
-		const auto calls = different->entity();
-
-		InitPlaybackButton(
-			controller,
-			calls,
-			tr::lng_group_call_speakers(),
-			rpl::deferred([=] {
-				return DeviceIdValueWithFallback(
-					settings->callPlaybackDeviceIdValue(),
-					settings->playbackDeviceIdValue());
-			}),
-			[=](const QString &id) { settings->setCallPlaybackDeviceId(id); });
-
-		struct LevelStateStub {
-			std::unique_ptr<Webrtc::DeviceResolver> deviceId;
-			std::unique_ptr<Webrtc::AudioInputTester> tester;
-			base::Timer timer;
-			Ui::Animations::Simple animation;
-			float level = 0.;
-		};
-		const auto captureId = rpl::deferred([=] {
-			return DeviceIdValueWithFallback(
-				settings->callCaptureDeviceIdValue(),
-				settings->captureDeviceIdValue());
-		});
-		AddButtonWithLabel(
-			calls,
-			tr::lng_group_call_microphone(),
-			CaptureDeviceNameValue(rpl::duplicate(captureId)),
-			st::settingsButtonNoIcon
-		)->addClickHandler([=] {
-			controller->show(ChooseCaptureDeviceBox(
-				rpl::duplicate(captureId),
-				[=](const QString &id) {
-					settings->setCallCaptureDeviceId(id);
-					Core::App().saveSettingsDelayed();
-				}));
-		});
-
-		if (same) {
-			different->toggleOn(
-				same->toggledValue() | rpl::map(!rpl::mappers::_1));
-		}
-		return SectionBuilder::WidgetToAdd{};
-	}, [] {
-		return SearchEntry{
-			.id = u"calls/call-speakers"_q,
-			.title = tr::lng_group_call_speakers(tr::now),
-			.keywords = { u"speakers"_q, u"calls"_q },
-		};
-	});
-	builder.add(nullptr, [] {
-		return SearchEntry{
-			.id = u"calls/call-microphone"_q,
-			.title = tr::lng_group_call_microphone(tr::now),
-			.keywords = { u"microphone"_q, u"calls"_q },
-		};
-	});
-}
-
 void BuildCameraSection(SectionBuilder &builder) {
 	const auto controller = builder.controller();
 	if (!controller) {
@@ -374,7 +254,6 @@ void BuildCameraSection(SectionBuilder &builder) {
 
 void BuildOtherSection(SectionBuilder &builder) {
 	const auto controller = builder.controller();
-	const auto session = builder.session();
 
 	builder.addSkip();
 	builder.addDivider();
@@ -382,31 +261,8 @@ void BuildOtherSection(SectionBuilder &builder) {
 	builder.addSubsectionTitle({
 		.id = u"calls/other"_q,
 		.title = tr::lng_settings_call_section_other(),
-		.keywords = { u"calls"_q, u"accept"_q, u"system"_q },
+		.keywords = { u"audio"_q, u"system"_q },
 	});
-
-	const auto api = &session->api();
-	const auto authorizations = &api->authorizations();
-	authorizations->reload();
-
-	const auto acceptCalls = builder.addButton({
-		.id = u"calls/accept"_q,
-		.title = tr::lng_settings_call_accept_calls(),
-		.st = &st::settingsButtonNoIcon,
-		.toggled = authorizations->callsDisabledHereValue()
-			| rpl::map(!rpl::mappers::_1),
-		.keywords = { u"accept"_q, u"receive"_q, u"incoming"_q },
-		.highlight = { .rippleShape = true },
-	});
-
-	if (acceptCalls) {
-		acceptCalls->toggledChanges(
-		) | rpl::filter([=](bool value) {
-			return (value == authorizations->callsDisabledHere());
-		}) | rpl::on_next([=](bool value) {
-			authorizations->toggleCallsDisabledHere(!value);
-		}, acceptCalls->lifetime());
-	}
 
 	builder.addButton({
 		.id = u"calls/system-prefs"_q,
@@ -432,7 +288,6 @@ void BuildCallsSectionContent(
 		rpl::variable<bool> *testingMicrophone = nullptr) {
 	BuildOutputSection(builder);
 	BuildInputSection(builder, testingMicrophone);
-	BuildCallDevicesSection(builder);
 	BuildCameraSection(builder);
 	BuildOtherSection(builder);
 }
@@ -650,8 +505,6 @@ Calls::Calls(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
 : Section(parent, controller) {
-	controller->session().api().authorizations().reload();
-
 	setupContent();
 	requestPermissionAndStartTestingMicrophone();
 }

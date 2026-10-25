@@ -373,7 +373,7 @@ void Manager::Private::showNotification(
 	}
 	[notification setUserInfo:
 		[NSDictionary dictionaryWithObjectsAndKeys:
-			[NSNumber numberWithUnsignedLongLong:peer->session().uniqueId()],
+			[NSNumber numberWithUnsignedLongLong:Window::Notifications::SessionId(&peer->session())],
 			@"session",
 			[NSNumber numberWithUnsignedLongLong:peer->id.value],
 			@"peer",
@@ -575,7 +575,7 @@ void Manager::Private::clearAll() {
 
 void Manager::Private::clearFromItem(not_null<HistoryItem*> item) {
 	putClearTask(ClearFromItem{ ContextId{
-		.sessionId = item->history()->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&item->history()->session()),
 		.peerId = item->history()->peer->id,
 		.topicRootId = item->topicRootId(),
 		.monoforumPeerId = item->sublistPeerId(),
@@ -584,7 +584,7 @@ void Manager::Private::clearFromItem(not_null<HistoryItem*> item) {
 
 void Manager::Private::clearFromTopic(not_null<Data::ForumTopic*> topic) {
 	putClearTask(ClearFromTopic{ ContextId{
-		.sessionId = topic->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&topic->session()),
 		.peerId = topic->history()->peer->id,
 		.topicRootId = topic->rootId(),
 	} });
@@ -593,7 +593,7 @@ void Manager::Private::clearFromTopic(not_null<Data::ForumTopic*> topic) {
 void Manager::Private::clearFromSublist(
 		not_null<Data::SavedSublist*> sublist) {
 	putClearTask(ClearFromSublist{ ContextId{
-		.sessionId = sublist->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&sublist->session()),
 		.peerId = sublist->owningHistory()->peer->id,
 		.monoforumPeerId = sublist->sublistPeer()->id,
 	} });
@@ -601,13 +601,13 @@ void Manager::Private::clearFromSublist(
 
 void Manager::Private::clearFromHistory(not_null<History*> history) {
 	putClearTask(ClearFromHistory{ ContextId{
-		.sessionId = history->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&history->session()),
 		.peerId = history->peer->id,
 	} });
 }
 
 void Manager::Private::clearFromSession(not_null<Main::Session*> session) {
-	putClearTask(ClearFromSession{ session->uniqueId() });
+	putClearTask(ClearFromSession{ Window::Notifications::SessionId(session) });
 }
 
 void Manager::Private::updateDelegate() {

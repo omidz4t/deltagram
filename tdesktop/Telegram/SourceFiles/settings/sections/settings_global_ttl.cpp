@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_global_ttl.h"
 
+#include "delta/delta_bridge.h"
+
 #include "api/api_self_destruct.h"
 #include "apiwrap.h"
 #include "boxes/peer_list_controllers.h"
@@ -495,6 +497,10 @@ rpl::producer<QString> GlobalTTL::title() {
 }
 
 void GlobalTTL::setupContent() {
+	if (Delta::Active()) {
+		_state->show->showToast(u"Auto-delete controls are not available in Deltagram."_q);
+		return;
+	}
 	setFocusPolicy(Qt::StrongFocus);
 	setFocus();
 
@@ -552,7 +558,9 @@ const auto kMeta = BuildHelper({
 	.parentId = PrivacySecurityId(),
 	.title = &tr::lng_settings_ttl_title,
 	.icon = &st::menuIconTTL,
+	.available = [] { return !Delta::Active(); },
 }, [](SectionBuilder &builder) {
+	if (Delta::Active()) return;
 	builder.add(nullptr, [] {
 		return SearchEntry{
 			.id = u"auto-delete/period"_q,

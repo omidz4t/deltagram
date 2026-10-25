@@ -98,13 +98,13 @@ namespace {
 
 class ContactListRow final : public PeerListRow {
 public:
-	explicit ContactListRow(ContactRow contact)
+	explicit ContactListRow(ContactRow contact, bool showAddress = false)
 	: PeerListRow(contact.id)
 	, data(std::move(contact))
 	, _empty(Ui::EmptyUserpic::UserpicColor(Ui::EmptyUserpic::ColorIndex(data.id)), data.name)
 	, _photo(data.avatar) {
 		if (data.name == data.address) data.name = u"Contact"_q;
-		setCustomStatus(QString());
+		setCustomStatus(showAddress ? data.address : QString());
 		setSkipPeerBadge(true);
 		for (const auto &word : (data.name + ' ' + data.address).toLower().split(' ', Qt::SkipEmptyParts)) {
 			_words.emplace(word);
@@ -179,13 +179,17 @@ public:
 		const auto receive = [=](std::vector<ContactRow> contacts, QString error) {
 			if (guard.expired()) return;
 			if (!error.isEmpty()) {
+				_loadError = error;
 				setDescriptionText(error);
 				return;
 			}
 			for (auto &contact : contacts) {
-				if (contact.id > 9) delegate()->peerListAppendRow(std::make_unique<ContactListRow>(std::move(contact)));
+				if (contact.id > 9 && !delegate()->peerListFindRow(contact.id)) {
+					delegate()->peerListAppendRow(std::make_unique<ContactListRow>(std::move(contact), bool(_pick)));
+				}
 			}
-			setDescriptionText(delegate()->peerListFullRowsCount() ? QString() : tr::lng_contacts_not_found(tr::now));
+			setDescriptionText(!_loadError.isEmpty() ? _loadError
+				: delegate()->peerListFullRowsCount() ? QString() : tr::lng_contacts_not_found(tr::now));
 			sort();
 		};
 		ListContacts(receive);
@@ -289,6 +293,7 @@ private:
 	const not_null<Main::Session*> _session;
 	Fn<void(int)> _done;
 	Fn<void(ContactRow)> _pick;
+	QString _loadError;
 	std::shared_ptr<int> _alive = std::make_shared<int>(0);
 	bool _alphabet = false;
 	bool _busy = false;
@@ -1351,6 +1356,12 @@ void ShowInviteQr() {
 
 void ShowSecondDevice() {
 	Ui::show(Box([=](not_null<Ui::GenericBox*> box) {
+		struct State {
+			rpl::variable<bool> busy = false;
+			int generation = 0;
+			Fn<void()> cancel;
+		};
+		const auto state = box->lifetime().make_state<State>();
 		box->setTitle(rpl::single(u"Add Second Device"_q));
 		const auto status = box->addRow(
 			object_ptr<Ui::FlatLabel>(
@@ -1383,11 +1394,14 @@ void ShowSecondDevice() {
 			}
 		}, canvas->lifetime());
 		const auto weak = base::make_weak(box);
-		box->addButton(rpl::single(u"Continue"_q), [=] {
+		const auto start = box->addButton(rpl::single(u"Continue"_q), [=] {
+			if (state->busy.current()) return;
+			state->busy = true;
+			const auto generation = ++state->generation;
 			status->setText(u"Preparing account…"_q);
-			StartSecondDevice(
+			state->cancel = StartSecondDevice(
 				[=](QString svg, QString error) {
-					if (!weak) {
+					if (!weak || generation != state->generation) {
 						return;
 					}
 					if (!error.isEmpty() || svg.isEmpty()) {
@@ -1411,9 +1425,13 @@ void ShowSecondDevice() {
 						u"Install Delta Chat on the other device, use the same network, then tap Scan QR Code."_q);
 				},
 				[=](QString error) {
-					if (!weak) {
+					if (!weak || generation != state->generation) {
 						return;
 					}
+					++state->generation;
+					state->cancel = nullptr;
+					state->busy = false;
+					qrWrap->toggle(false, anim::type::instant);
 					if (error.isEmpty()) {
 						box->closeBox();
 						return;
@@ -1421,11 +1439,22 @@ void ShowSecondDevice() {
 					status->setText(error);
 				});
 		});
+		state->busy.value() | rpl::on_next([=](bool busy) {
+			if (start) start->setEnabled(!busy);
+		}, box->lifetime());
 		box->addButton(rpl::single(u"Cancel"_q), [=] {
-			StopSecondDevice();
 			box->closeBox();
 		});
-		box->lifetime().add([] { StopSecondDevice(); });
+		const auto cancel = [=] {
+			++state->generation;
+			if (!state->busy.current()) return;
+			state->busy = false;
+			if (const auto cancel = std::exchange(state->cancel, nullptr)) {
+				cancel();
+			}
+		};
+		box->boxClosing() | rpl::on_next(cancel, box->lifetime());
+		box->lifetime().add(cancel);
 	}));
 }
 
@@ -2037,6 +2066,157 @@ void ShowCreateGroup(Fn<void(int)> done) {
 		box->setFocusCallback([=] { name->setFocusFast(); });
 		box->addButton(rpl::single(u"Create"_q), submit);
 		box->addButton(tr::lng_cancel(), [=] { box->closeBox(); });
+	}));
+}
+
+void ConfirmContactBlocking(not_null<Window::SessionController*> controller,
+		int contactId, QString name, bool blocked, Fn<void()> changed) {
+	const auto current = CaptureAccountGuard();
+	controller->show(Ui::MakeConfirmBox({
+		.text = blocked
+			? u"Block %1? You can unblock this contact in Settings. Your existing messages and drafts will be kept."_q.arg(name)
+			: u"Unblock %1?"_q.arg(name),
+		.confirmed = crl::guard(controller, [=](Fn<void()> close) {
+			close();
+			if (!current || !current()) return;
+			SetContactBlocked(contactId, blocked, crl::guard(controller, [=](QString error) {
+				if (!current()) return;
+				controller->showToast(error.isEmpty()
+					? (blocked ? u"Contact blocked."_q : u"Contact unblocked."_q) : error);
+				if (changed) changed();
+			}));
+		}),
+		.confirmText = rpl::single(blocked ? u"Block"_q : u"Unblock"_q),
+		.confirmStyle = blocked ? &st::attentionBoxButton : &st::defaultBoxButton,
+	}), Ui::LayerOption::KeepOther);
+}
+
+void ChooseContactToBlock(not_null<Window::SessionController*> controller, Fn<void()> changed) {
+	const auto current = CaptureAccountGuard();
+	const auto holder = std::make_shared<QPointer<PeerListBox>>();
+	auto list = std::make_unique<ContactListController>(&controller->session(), nullptr, false,
+		crl::guard(controller, [=](ContactRow contact) {
+			if (*holder) (*holder)->closeBox();
+			if (current && current()) ConfirmContactBlocking(controller, contact.id, contact.name, true, changed);
+		}));
+	controller->show(Box<PeerListBox>(std::move(list), [=](not_null<PeerListBox*> box) {
+		*holder = box.get();
+		box->addButton(tr::lng_cancel(), [=] { box->closeBox(); });
+	}), Ui::LayerOption::KeepOther);
+}
+
+void ManageContactBlocking(not_null<Window::SessionController*> controller, uint64 userId) {
+	const auto current = CaptureAccountGuard();
+	const auto inspect = crl::guard(controller, [=](int id) {
+		if (!current || !current() || id <= 9) return;
+		AccountRequest(u"get_contact"_q, { id }, crl::guard(controller, [=](QJsonValue value, QString error) {
+			if (!current()) return;
+			const auto state = CoreContactBlocked({{u"result"_q, value}}, id);
+			if (!error.isEmpty() || !state) {
+				controller->showToast(u"The contact state could not be checked. Try again after reconnecting."_q);
+				return;
+			}
+			const auto name = value.toObject().value(u"displayName"_q).toString();
+			ConfirmContactBlocking(controller, id, name, !*state);
+		}));
+	});
+	if (const auto contact = ContactForPeer(userId)) {
+		inspect(contact->id);
+	} else if (IsDirectChat(userId) && !IsSystemUser(int(userId))) {
+		ChannelRequest(int(userId), u"get_full_chat_by_id"_q, {},
+			crl::guard(controller, [=](QJsonValue value, QString error) {
+				if (!current || !current()) return;
+				const auto chat = value.toObject();
+				const auto contacts = chat.value(u"contactIds"_q).toArray();
+				if (!error.isEmpty() || chat.value(u"chatType"_q).toString() != u"Single"_q
+					|| contacts.size() != 1 || contacts.first().toInt() <= 9
+					|| contacts.first().toDouble() != contacts.first().toInt()) {
+					controller->showToast(u"This conversation's contact could not be checked."_q);
+					return;
+				}
+				inspect(contacts.first().toInt());
+			}));
+	}
+}
+
+void ShowSavedReplies(not_null<Window::SessionController*> controller) {
+	const auto current = CaptureAccountGuard();
+	LoadSavedReplies(crl::guard(controller, [=](std::vector<SavedReply> replies, QString error) {
+		if (!current || !current()) return;
+		controller->show(Box([=](not_null<Ui::GenericBox*> box) {
+			box->setTitle(rpl::single(u"Saved replies"_q));
+			box->setWidth(st::boxWideWidth);
+			box->setMaxHeight(style::ConvertScale(480));
+			const auto info = !error.isEmpty() ? error : replies.empty()
+				? u"There are no notification replies to review."_q
+				: u"Replies saved from notifications. Your conversation drafts are kept separately."_q;
+			box->addRow(object_ptr<Ui::FlatLabel>(box, info, st::aboutLabel), st::boxRowPadding);
+			for (const auto &reply : replies) {
+				const auto status = !reply.durable ? u"Not saved yet"_q
+					: reply.state == ReplyState::Pending ? u"Not sent"_q
+					: reply.state == ReplyState::Attempted ? u"Send outcome unknown"_q : u"Sent"_q;
+				const auto button = box->addRow(object_ptr<Ui::SettingsButton>(box,
+					rpl::single(reply.chatName), st::settingsButtonNoIcon), style::margins());
+				box->addRow(object_ptr<Ui::FlatLabel>(box, status, st::aboutLabel), st::boxRowPadding);
+				button->setClickedCallback(crl::guard(controller, [=] {
+					box->closeBox();
+					if (!current()) return;
+					controller->show(Box([=](not_null<Ui::GenericBox*> detail) {
+						detail->setTitle(rpl::single(reply.chatName));
+						detail->setWidth(st::boxWideWidth);
+						detail->setMaxHeight(style::ConvertScale(480));
+						const auto explanation = reply.state == ReplyState::Attempted
+							? u"This reply may already have been sent. Check the conversation before dismissing it. It will not be sent again automatically."_q
+							: reply.state == ReplyState::Sent ? u"This reply was sent. You can dismiss its saved record."_q
+							: u"This reply has not been sent. You can send it or discard it."_q;
+						detail->addRow(object_ptr<Ui::FlatLabel>(detail, explanation, st::aboutLabel), st::boxRowPadding);
+						const auto text = detail->addRow(object_ptr<Ui::FlatLabel>(detail, reply.text, st::aboutLabel), st::boxRowPadding);
+						text->setSelectable(true);
+						const auto copy = detail->addRow(object_ptr<Ui::SettingsButton>(detail,
+							rpl::single(u"Copy reply"_q), st::settingsButtonNoIcon), style::margins());
+						copy->setClickedCallback([=] { if (current()) QGuiApplication::clipboard()->setText(reply.text); });
+						if (reply.userId > 0) {
+							const auto open = detail->addRow(object_ptr<Ui::SettingsButton>(detail,
+								rpl::single(u"Open conversation"_q), st::settingsButtonNoIcon), style::margins());
+							open->setClickedCallback(crl::guard(controller, [=] {
+								detail->closeBox();
+								if (current()) controller->showPeerHistory(peerFromUser(UserId(reply.userId)));
+							}));
+						}
+						const auto finished = crl::guard(controller, [=](QString error) {
+							if (!current()) return;
+							if (!error.isEmpty()) controller->showToast(error);
+							ShowSavedReplies(controller);
+						});
+						if (reply.state == ReplyState::Pending) detail->addButton(rpl::single(u"Send"_q), [=] {
+							detail->closeBox();
+							if (current()) SendSavedReply(reply, finished);
+						});
+						detail->addButton(rpl::single(u"Dismiss"_q), crl::guard(controller, [=] {
+							detail->closeBox();
+							if (!current()) return;
+							controller->show(Ui::MakeConfirmBox({
+								.text = reply.state == ReplyState::Pending
+									? u"Discard this unsent notification reply?"_q
+									: u"Dismiss this saved reply? Any message already sent stays in the conversation."_q,
+								.confirmed = [=](Fn<void()> close) {
+									close();
+									if (current()) DiscardSavedReply(reply, finished);
+								},
+								.confirmText = rpl::single(u"Dismiss"_q),
+								.confirmStyle = &st::attentionBoxButton,
+							}));
+						}));
+						detail->addButton(tr::lng_close(), [=] { detail->closeBox(); });
+					}));
+				}));
+			}
+			box->addButton(rpl::single(u"Refresh"_q), crl::guard(controller, [=] {
+				box->closeBox();
+				if (current()) ShowSavedReplies(controller);
+			}));
+			box->addButton(tr::lng_close(), [=] { box->closeBox(); });
+		}));
 	}));
 }
 

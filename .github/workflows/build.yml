@@ -10,6 +10,10 @@ on:
         description: Publish a release when Conventional Commits require one
         type: boolean
         default: true
+      verify_packages:
+        description: Build and verify portable and distribution packages without publishing
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -46,7 +50,7 @@ jobs:
       - name: Plan release
         id: plan
         env:
-          PUBLISH: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && (github.event_name == 'push' || inputs.publish) }}
+          PUBLISH: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && (github.event_name == 'push' || (inputs.publish && !inputs.verify_packages)) }}
         run: |
           if [[ "$PUBLISH" == true ]]; then
             python3 scripts/ci-release.py
@@ -56,7 +60,7 @@ jobs:
       - name: Decide whether compilation is needed
         id: build
         env:
-          REQUIRED: ${{ steps.plan.outputs.publish == 'true' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.publish) }}
+          REQUIRED: ${{ steps.plan.outputs.publish == 'true' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && (!inputs.publish || inputs.verify_packages)) }}
         run: echo "required=$REQUIRED" >> "$GITHUB_OUTPUT"
       - name: Free unused runner SDK space
         if: steps.build.outputs.required == 'true'
@@ -77,7 +81,7 @@ jobs:
         uses: nix-community/cache-nix-action@b16f249a0248efec86dd9d4224cb75f1ffa48bcc
         with:
           primary-key: nix-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
-          save: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+          save: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') }}
       - name: Restore Qt compiler cache
         id: compiler-cache
         if: steps.build.outputs.required == 'true'
@@ -116,14 +120,35 @@ jobs:
             bash nix/test-rpc.sh
             ccache --show-stats
           '
-      - name: Save successful Qt compilation before packaging
-        if: steps.build.outputs.required == 'true' && steps.compiler-cache.outputs.cache-hit != 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      - name: Save incremental Qt compilation before packaging
+        if: always() && steps.build.outputs.required == 'true' && steps.compiler-cache.outputs.cache-primary-key != '' && steps.compiler-cache.outputs.cache-hit != 'true' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
         uses: actions/cache/save@3edfce9056124e459a23f683a21433670d47daca
         with:
           path: data/ccache
           key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
+      - name: Stage manual validation binaries
+        if: github.event_name == 'workflow_dispatch' && steps.build.outputs.required == 'true' && steps.plan.outputs.publish != 'true'
+        run: |
+          ./nix/develop.sh --command bash -euo pipefail -c '
+            mkdir -p data/validation-artifacts
+            cp data/tdesktop-release/bin/deltagram.stripped data/validation-artifacts/
+            cp data/tdesktop-release/bin/deltagram.version data/validation-artifacts/
+            nm --numeric-sort --demangle data/tdesktop-release/bin/Telegram > data/validation-artifacts/deltagram.symbols
+            strip --strip-all -o data/validation-artifacts/deltachat-rpc-server data/cargo-target/debug/deltachat-rpc-server
+            cp data/delta-shell/Testing/Temporary/LastTest.log data/validation-artifacts/integrity-tests.log
+            cd data/validation-artifacts
+            sha256sum deltagram.stripped deltachat-rpc-server deltagram.symbols > SHA256SUMS
+          '
+      - name: Upload manual validation binaries
+        if: github.event_name == 'workflow_dispatch' && steps.build.outputs.required == 'true' && steps.plan.outputs.publish != 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-nix-validation-${{ github.sha }}
+          path: data/validation-artifacts/*
+          if-no-files-found: error
+          retention-days: 3
       - name: Save pinned Core compilation before packaging
-        if: steps.build.outputs.required == 'true' && steps.rust-cache.outputs.cache-hit != 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: steps.build.outputs.required == 'true' && steps.rust-cache.outputs.cache-primary-key != '' && steps.rust-cache.outputs.cache-hit != 'true' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
         uses: actions/cache/save@3edfce9056124e459a23f683a21433670d47daca
         with:
           path: |
@@ -131,12 +156,30 @@ jobs:
             data/cargo-home/git
             data/cargo-target
           key: ${{ steps.rust-cache.outputs.cache-primary-key }}
+      - name: Verify manual validation packages
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_packages && steps.plan.outputs.publish != 'true'
+        run: |
+          ./nix/develop.sh --command python3 nix/stage-release.py
+          bash docker/build.sh
+          bash docker/verify.sh
+          DELTA_TEST_IMAGE=ubuntu:22.04 bash docker/verify.sh
+          bash docker/package-formats.sh
+      - name: Upload verified manual validation packages
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_packages && steps.plan.outputs.publish != 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-packages-validation-${{ github.sha }}
+          path: dist/**
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
       - name: Package release assets and matching source
         if: steps.plan.outputs.publish == 'true'
         run: |
           ./nix/develop.sh --command python3 nix/stage-release.py
           bash docker/build.sh
           bash docker/verify.sh
+          DELTA_TEST_IMAGE=ubuntu:22.04 bash docker/verify.sh
           bash docker/package-formats.sh
           python3 scripts/ci-release.py --source-archive
           mkdir -p data/release-upload

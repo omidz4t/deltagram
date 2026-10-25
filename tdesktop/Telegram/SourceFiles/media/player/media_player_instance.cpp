@@ -1487,6 +1487,15 @@ void Instance::stopAndClose() {
 	Shortcuts::ToggleMediaShortcuts(false);
 }
 
+void Instance::resetForAccountChange() {
+	_pendingContext.reset();
+	_pendingContextFor = AudioMsgId();
+	_closePlayerRequests.fire({});
+	stopAndClear(&_voiceData);
+	stopAndClear(&_songData);
+	Shortcuts::ToggleMediaShortcuts(false);
+}
+
 void Instance::handleStreamingUpdate(
 		not_null<Data*> data,
 		Streaming::Update &&update) {

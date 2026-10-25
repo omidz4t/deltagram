@@ -3227,6 +3227,10 @@ void VoiceRecordBar::clearListenState() {
 	}
 }
 
+bool VoiceRecordBar::hasRecording(const QByteArray &bytes) const {
+	return isListenState() && _data.content == bytes;
+}
+
 float64 VoiceRecordBar::showAnimationRatio() const {
 	// There is no reason to set the final value to zero,
 	// because at zero this widget is hidden.

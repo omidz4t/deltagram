@@ -289,6 +289,7 @@ private:
 	crl::time _started;
 
 	History *_history = nullptr;
+	const uint64 _sessionId;
 	Data::ForumTopic *_topic = nullptr;
 	MsgId _topicRootId = 0;
 	Data::SavedSublist *_sublist = nullptr;

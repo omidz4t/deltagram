@@ -76,6 +76,13 @@ void RecentPeers::clear() {
 	_session->local().writeSearchSuggestionsDelayed();
 }
 
+void RecentPeers::resetForAccountChange() {
+	_list.clear();
+	_opens.clear();
+	_chatOpenUserpicsCache.clear();
+	_updates.fire({});
+}
+
 QByteArray RecentPeers::serialize() const {
 	_session->local().readSearchSuggestions();
 
@@ -108,7 +115,7 @@ void RecentPeers::applyLocal(QByteArray serialized) {
 	auto streamAppVersion = quint32();
 	auto count = quint32();
 	stream >> streamAppVersion >> count;
-	if (!stream.ok()) {
+	if (!stream.ok() || count > kLimit) {
 		DEBUG_LOG(("Suggestions: Bad RecentPeers local, not ok."));
 		return;
 	}

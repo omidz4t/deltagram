@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_chat.h"
 
+#include "delta/delta_bridge.h"
+
 #include "settings/settings_common_session.h"
 
 #include "base/timer_rpl.h"
@@ -1849,19 +1851,21 @@ void SetupExport(
 		not_null<Window::SessionController*> controller,
 		not_null<Ui::VerticalLayout*> container,
 		Fn<void(Type)> showOther) {
-	AddButtonWithIcon(
-		container,
-		tr::lng_settings_export_data(),
-		st::settingsButton,
-		{ &st::menuIconExport }
-	)->addClickHandler([=] {
-		const auto session = &controller->session();
-		controller->window().hideSettingsAndLayer();
-		base::call_delayed(
-			st::boxDuration,
-			session,
-			[=] { Core::App().exportManager().start(session); });
-	});
+	if (!Delta::Active()) {
+		AddButtonWithIcon(
+			container,
+			tr::lng_settings_export_data(),
+			st::settingsButton,
+			{ &st::menuIconExport }
+		)->addClickHandler([=] {
+			const auto session = &controller->session();
+			controller->window().hideSettingsAndLayer();
+			base::call_delayed(
+				st::boxDuration,
+				session,
+				[=] { Core::App().exportManager().start(session); });
+		});
+	}
 
 	AddButtonWithIcon(
 		container,

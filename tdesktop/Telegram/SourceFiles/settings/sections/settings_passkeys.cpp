@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_passkeys.h"
+#include "delta/delta_bridge.h"
 
 #include "base/unixtime.h"
 #include "core/application.h"
@@ -136,6 +137,7 @@ const auto kMeta = BuildHelper({
 	.parentId = PrivacySecurityId(),
 	.title = &tr::lng_settings_passkeys_title,
 	.icon = &st::menuIconPermissions,
+	.available = [] { return !Delta::Active(); },
 }, [](SectionBuilder &builder) {
 	BuildPasskeysSection(builder, nullptr, [](not_null<Ui::VerticalLayout*>) {});
 });
@@ -165,6 +167,7 @@ rpl::producer<QString> Passkeys::title() {
 }
 
 void Passkeys::setupContent() {
+	if (Delta::Active()) return;
 	const auto session = &controller()->session();
 	const auto addButton = &_addButton;
 
@@ -368,6 +371,10 @@ void Passkeys::setupContent() {
 void PasskeysNoneBox(
 		not_null<Ui::GenericBox*> box,
 		not_null<::Main::Session*> session) {
+	if (Delta::Active()) {
+		Ui::InformBox(box, { .text = u"Passkeys are not available for this profile."_q });
+		return;
+	}
 	box->setWidth(st::boxWideWidth);
 	box->setNoContentMargin(true);
 	box->setCloseByEscape(true);

@@ -511,7 +511,7 @@ void Manager::Private::clearFromItem(not_null<HistoryItem*> item) {
 	}
 
 	auto i = _notifications.find(ContextId{
-		.sessionId = item->history()->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&item->history()->session()),
 		.peerId = item->history()->peer->id,
 		.topicRootId = item->topicRootId(),
 		.monoforumPeerId = item->sublistPeerId(),
@@ -537,7 +537,7 @@ void Manager::Private::clearFromTopic(not_null<Data::ForumTopic*> topic) {
 	}
 
 	const auto i = _notifications.find(ContextId{
-		.sessionId = topic->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&topic->session()),
 		.peerId = topic->history()->peer->id,
 		.topicRootId = topic->rootId(),
 	});
@@ -558,7 +558,7 @@ void Manager::Private::clearFromSublist(
 	}
 
 	const auto i = _notifications.find(ContextId{
-		.sessionId = sublist->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&sublist->session()),
 		.peerId = sublist->owningHistory()->peer->id,
 		.monoforumPeerId = sublist->sublistPeer()->id,
 	});
@@ -577,7 +577,7 @@ void Manager::Private::clearFromHistory(not_null<History*> history) {
 		return;
 	}
 
-	const auto sessionId = history->session().uniqueId();
+	const auto sessionId = Window::Notifications::SessionId(&history->session());
 	const auto peerId = history->peer->id;
 	auto i = _notifications.lower_bound(ContextId{
 		.sessionId = sessionId,
@@ -600,7 +600,7 @@ void Manager::Private::clearFromSession(not_null<Main::Session*> session) {
 		return;
 	}
 
-	const auto sessionId = session->uniqueId();
+	const auto sessionId = Window::Notifications::SessionId(session);
 	auto i = _notifications.lower_bound(ContextId{
 		.sessionId = sessionId,
 	});
@@ -721,7 +721,7 @@ bool Manager::Private::showNotificationInTryCatch(
 	auto toastXml = XmlDocument();
 
 	const auto key = ContextId{
-		.sessionId = peer->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&peer->session()),
 		.peerId = peer->id,
 		.topicRootId = info.topicRootId,
 		.monoforumPeerId = info.monoforumPeerId,

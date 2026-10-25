@@ -1421,6 +1421,7 @@ void TopBarWidget::updateControlsVisibility() {
 		&& _controller->canShowThirdSection()
 		&& !_chooseForReportReason);
 	const auto callsEnabled = [&] {
+		if (Delta::Active()) return false;
 		if (const auto peer = _activeChat.key.peer()) {
 			if (const auto user = peer->asUser()) {
 				if (Delta::IsSystemUser(int(peerToUser(user->id).bare))
@@ -1439,6 +1440,7 @@ void TopBarWidget::updateControlsVisibility() {
 		&& callsEnabled
 		&& !_chooseForReportReason);
 	const auto groupCallsEnabled = [&] {
+		if (Delta::Active()) return false;
 		if (const auto peer = _activeChat.key.peer()) {
 			if (!peer->isUser() && peer->canManageGroupCall()) {
 				return true;

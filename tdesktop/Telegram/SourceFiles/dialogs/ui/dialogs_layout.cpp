@@ -823,6 +823,7 @@ void PaintRow(
 			texttop,
 			context.width);
 	}
+	auto sendFailed = false;
 	const auto sendStateIcon = [&]() -> const style::icon* {
 		if (!thread) {
 			return nullptr;
@@ -843,11 +844,12 @@ void PaintRow(
 			const auto delivery = Delta::Active()
 				? Delta::MessageDelivery(item->id.bare)
 				: std::nullopt;
-			const auto pending = delivery
-				&& (*delivery == Delta::DeliveryState::Pending
-					|| *delivery == Delta::DeliveryState::Failed);
+			sendFailed = Delta::Active() && (delivery
+				? *delivery == Delta::DeliveryState::Failed : item->hasFailed());
+			if (sendFailed) return nullptr;
+			const auto pending = delivery && *delivery == Delta::DeliveryState::Pending;
 			if (delivery ? !pending : (!item->isSending() && !item->hasFailed())) {
-				if (item->unread(thread)) {
+				if (delivery ? *delivery != Delta::DeliveryState::Read : item->unread(thread)) {
 					return &ThreeStateIcon(
 						st::dialogsSentIcon,
 						context.active,
@@ -865,7 +867,9 @@ void PaintRow(
 		}
 		return nullptr;
 	}();
-	if (sendStateIcon) {
+	if (sendFailed) {
+		PaintRowTopRight(p, tr::lng_attach_failed(tr::now), rectForName, context);
+	} else if (sendStateIcon) {
 		rectForName.setWidth(rectForName.width() - st::dialogsSendStateSkip);
 		sendStateIcon->paint(p, rectForName.topLeft() + QPoint(rectForName.width(), 0), context.width);
 	}
@@ -1300,7 +1304,7 @@ void RowPainter::Paint(
 		if (const auto searchChat = row->searchInChat()) {
 			if (const auto peer = searchChat.peer()) {
 				if (const auto forwarded = item->Get<HistoryMessageForwarded>()) {
-					if (peer->isSelf() || forwarded->imported) {
+					if (!forwarded->anonymous && (peer->isSelf() || forwarded->imported)) {
 						return forwarded->savedFromHiddenSenderInfo.get()
 							? forwarded->savedFromHiddenSenderInfo.get()
 							: forwarded->originalHiddenSenderInfo.get();

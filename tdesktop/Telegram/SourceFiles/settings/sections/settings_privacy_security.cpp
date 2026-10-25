@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_privacy_security.h"
 
+#include "delta/delta_bridge.h"
+
 #include "settings/settings_common_session.h"
 
 #include "api/api_authorizations.h"
@@ -552,30 +554,34 @@ void BuildSecuritySection(
 		.keywords = { u"security"_q, u"password"_q, u"passcode"_q },
 	});
 
-	auto ttlLabel = rpl::combine(
-		session->api().selfDestruct().periodDefaultHistoryTTL(),
-		tr::lng_settings_ttl_after_off()
-	) | rpl::map([](int ttl, const QString &none) {
-		return ttl ? Ui::FormatTTL(ttl) : none;
-	});
+	if (!Delta::Active()) {
+		auto ttlLabel = rpl::combine(
+			session->api().selfDestruct().periodDefaultHistoryTTL(),
+			tr::lng_settings_ttl_after_off()
+		) | rpl::map([](int ttl, const QString &none) {
+			return ttl ? Ui::FormatTTL(ttl) : none;
+		});
 
-	builder.addButton({
-		.id = u"security/ttl"_q,
-		.title = tr::lng_settings_ttl_title(),
-		.icon = { &st::menuIconTTL },
-		.label = std::move(ttlLabel),
-		.onClick = [showOther] {
-			showOther(GlobalTTLId());
-		},
-		.keywords = { u"ttl"_q, u"auto-delete"_q, u"timer"_q },
-	});
+		builder.addButton({
+			.id = u"security/ttl"_q,
+			.title = tr::lng_settings_ttl_title(),
+			.icon = { &st::menuIconTTL },
+			.label = std::move(ttlLabel),
+			.onClick = [showOther] {
+				showOther(GlobalTTLId());
+			},
+			.keywords = { u"ttl"_q, u"auto-delete"_q, u"timer"_q },
+		});
+	}
 
-	builder.add([session, updateTrigger = rpl::duplicate(updateTrigger)](const WidgetContext &ctx) mutable {
-		std::move(updateTrigger) | rpl::on_next([=] {
-			session->api().selfDestruct().reload();
-		}, ctx.container->lifetime());
-		return SectionBuilder::WidgetToAdd{};
-	});
+	if (!Delta::Active()) {
+		builder.add([session, updateTrigger = rpl::duplicate(updateTrigger)](const WidgetContext &ctx) mutable {
+			std::move(updateTrigger) | rpl::on_next([=] {
+				session->api().selfDestruct().reload();
+			}, ctx.container->lifetime());
+			return SectionBuilder::WidgetToAdd{};
+		});
+	}
 
 	auto passcodeHas = rpl::single(rpl::empty) | rpl::then(
 		session->domain().local().localPasscodeChanged()
@@ -605,7 +611,7 @@ void BuildSecuritySection(
 		.keywords = { u"passcode"_q, u"lock"_q, u"pin"_q },
 	});
 
-	if (session->passkeys().possible()) {
+	if (!Delta::Active() && session->passkeys().possible()) {
 		auto passkeysLabel = rpl::combine(
 			tr::lng_profile_loading(),
 			(rpl::single(rpl::empty_value())
@@ -654,6 +660,17 @@ void BuildSecuritySection(
 			.keywords = { u"passkeys"_q, u"biometric"_q },
 			.shown = std::move(passkeysShown),
 		});
+	}
+
+	if (Delta::Active()) {
+		builder.addButton({
+			.id = u"security/blocked"_q,
+			.title = tr::lng_settings_blocked_users(),
+			.icon = { &st::menuIconBlock },
+			.onClick = [=] { showOther(BlockedPeersId()); },
+			.keywords = { u"blocked"_q, u"ban"_q },
+		});
+		return;
 	}
 
 	auto blockedCount = rpl::combine(

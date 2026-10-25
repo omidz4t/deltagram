@@ -32,9 +32,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "storage/storage_account.h"
 #include "apiwrap.h"
 #include "delta/delta_bridge.h"
+#include "delta/prepared_attachment.h"
+#include "delta/compose_batch.h"
 
 #include <QtCore/QDir>
 #include <QtCore/QFileInfo>
+#include <QtCore/QTemporaryFile>
 
 namespace Storage {
 namespace {
@@ -259,12 +262,14 @@ void Uploader::processDocumentProgress(FullMsgId itemId) {
 
 void Uploader::processPhotoFailed(FullMsgId itemId) {
 	if (const auto item = session().data().message(itemId)) {
+		if (Delta::Active() && item->isSending()) item->sendFailed();
 		sendProgressUpdate(item, Api::SendProgressType::UploadPhoto, -1);
 	}
 }
 
 void Uploader::processDocumentFailed(FullMsgId itemId) {
 	if (const auto item = session().data().message(itemId)) {
+		if (Delta::Active() && item->isSending()) item->sendFailed();
 		const auto media = item->media();
 		const auto document = media ? media->document() : nullptr;
 		const auto sendAction = (document && document->isVoiceMessage())
@@ -310,6 +315,7 @@ FullMsgId Uploader::currentUploadId() const {
 void Uploader::upload(
 		FullMsgId itemId,
 		const std::shared_ptr<FilePrepareResult> &file) {
+	if (file->accountGuard && !file->accountGuard()) return;
 	auto preparing = false;
 	if (file->type == SendMediaType::Photo) {
 		const auto photo = session().data().processPhoto(
@@ -601,6 +607,11 @@ void Uploader::finishTranscode(
 void Uploader::deliverDelta(
 		FullMsgId itemId,
 		const std::shared_ptr<FilePrepareResult> &file) {
+	if (file->accountGuard && !file->accountGuard()) return;
+	if (file->to.composeBatch && file->to.composeBatch->state() == Delta::ComposeBatch::State::Discarded) {
+		notifyFailed(Entry(itemId, file));
+		return;
+	}
 	auto path = file->filepath;
 	if (!path.isEmpty() && QFileInfo(path).size() <= 0) {
 		path.clear();
@@ -610,12 +621,8 @@ void Uploader::deliverDelta(
 		&& QFileInfo::exists(file->transcodedTempPath)) {
 		path = file->transcodedTempPath;
 	}
-	auto bytes = file->content;
-	if (bytes.isEmpty()) {
-		for (const auto &part : file->fileparts) {
-			bytes.append(part);
-		}
-	}
+	const auto bytes = Delta::PreparedAttachmentBytes(
+		file->type == SendMediaType::Photo, file->content, file->fileparts);
 	if (file->type == SendMediaType::Photo && !bytes.isEmpty()) {
 		path.clear();
 	}
@@ -639,19 +646,36 @@ void Uploader::deliverDelta(
 		} else if (file->type == SendMediaType::Audio && !namedAudio) {
 			name += u".ogg"_q;
 		}
-		path = QDir::temp().filePath(
-			u"delta-tel-%1-%2"_q.arg(file->id).arg(name));
-		QFile out(path);
-		if (!out.open(QIODevice::WriteOnly)
-			|| out.write(bytes) != bytes.size()) {
+		const auto suffix = QFileInfo(name).suffix();
+		auto out = QTemporaryFile(QDir::temp().filePath(
+			u"delta-tel-XXXXXX"_q
+				+ (suffix.isEmpty() ? QString() : u"."_q + suffix)));
+		if (!out.open()
+			|| out.write(bytes) != bytes.size()
+			|| !out.flush()) {
 			path = QString();
+		} else {
+			path = out.fileName();
+			if (!file->transcodedTempPath.isEmpty()) {
+				QFile::remove(file->transcodedTempPath);
+			}
+			// The retained preparation owner removes this private staging file
+			// after Core accepts it, or when the rejected upload is discarded.
+			file->transcodedTempPath = path;
+			out.setAutoRemove(false);
 		}
 	}
 	if (path.isEmpty() || QFileInfo(path).size() <= 0) {
-		failed(itemId);
+		// Delta delivery bypasses the upload queue (and prepared entries have
+		// already been removed). Notify directly so a failed staging write
+		// cannot leave the local message permanently marked as sending.
+		notifyFailed(Entry(itemId, file));
 		return;
 	}
-	Delta::RememberPendingFile(itemId.peer.value, itemId.msg.bare, path);
+	if (!file->to.composeBatch) {
+		Delta::RememberPendingFile(itemId.peer.value, itemId.msg.bare,
+			path, file->filename, file, file->forceFile, file->to.preparedSend);
+	}
 	if (file->type == SendMediaType::Photo) {
 		session().data().photo(file->id)->uploadingData = nullptr;
 	} else if (file->type == SendMediaType::File
@@ -664,6 +688,24 @@ void Uploader::deliverDelta(
 				document->setLocation(Core::FileLocation(path));
 			}
 		}
+	}
+	if (const auto batch = std::exchange(file->to.composeBatch, nullptr)) {
+		auto kind = u"File"_q;
+		if (!file->forceFile) {
+			if (file->type == SendMediaType::Photo) kind = u"Image"_q;
+			else if (file->type == SendMediaType::Audio) kind = u"Voice"_q;
+			else if (const auto document = session().data().document(file->id)) {
+				if (document->isVoiceMessage()) kind = u"Voice"_q;
+				else if (document->isVideoFile() || document->isVideoMessage()
+					|| file->filemime.startsWith(u"video/"_q)) kind = u"Video"_q;
+				else if (file->filemime.startsWith(u"image/"_q)) kind = u"Image"_q;
+			}
+		}
+		batch->prepared(file->to.composeBatchIndex, Delta::ComposeDraft{
+			file->caption.text, int(file->to.replyTo.messageId.msg.bare),
+			path, file->filename, kind,
+		}, file);
+		return;
 	}
 	const auto options = file->to.options;
 	const auto edit = (file->to.replaceMediaOf != MsgId());
@@ -735,8 +777,15 @@ void Uploader::failed(FullMsgId itemId) {
 }
 
 void Uploader::notifyFailed(const Entry &entry) {
+	if (entry.file->to.composeBatch) {
+		entry.file->to.composeBatch->failed(entry.file->to.composeBatchIndex,
+			u"An attachment could not be prepared. Review the batch using the attachment button."_q);
+	}
 	const auto type = entry.file->type;
 	if (type == SendMediaType::Photo) {
+		if (Delta::Active()) {
+			session().data().photo(entry.file->id)->uploadingData = nullptr;
+		}
 		_photoFailed.fire_copy(entry.itemId);
 	} else if (type == SendMediaType::File
 		|| type == SendMediaType::ThemeFile
@@ -747,6 +796,7 @@ void Uploader::notifyFailed(const Entry &entry) {
 			document->uploadingData->preparing = false;
 			document->status = FileUploadFailed;
 		}
+		if (Delta::Active()) document->uploadingData = nullptr;
 		_documentFailed.fire_copy(entry.itemId);
 	} else if (type == SendMediaType::SecondaryFile) {
 		_secondaryFileFailed.fire_copy(entry.itemId);
@@ -1027,6 +1077,21 @@ void Uploader::maybeSend() {
 
 void Uploader::cancel(FullMsgId itemId) {
 	failed(itemId);
+}
+
+void Uploader::cancelComposeBatch(const std::shared_ptr<Delta::ComposeBatch> &batch) {
+	while (true) {
+		const auto i = ranges::find_if(_queue, [&](const Entry &entry) {
+			return entry.file->to.composeBatch == batch;
+		});
+		if (i == end(_queue)) break;
+		failed(i->itemId);
+	}
+}
+
+void Uploader::resetForAccountChange() {
+	clear();
+	_pausedId = FullMsgId();
 }
 
 void Uploader::cancelAll() {

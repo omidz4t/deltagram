@@ -3822,8 +3822,31 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 	}
 
 	const auto infoItem = _dragStateItem ? _dragStateItem : leaderOrSelf;
+	if (infoItem && isUponSelected <= 0
+		&& Delta::CanRetryPreparedAttachment(infoItem)) {
+		const auto id = infoItem->fullId();
+		const auto current = Delta::CaptureAccountGuard();
+		_menu->addAction(tr::lng_bot_download_retry(tr::now),
+			crl::guard(controller, [=] {
+				if (!current || !current()) return;
+				if (const auto item = controller->session().data().message(id)) {
+					const auto history = item->history();
+					Delta::RetryPreparedAttachment(item, crl::guard(controller, [=](bool sent) {
+						if (!sent || !current() || controller->activeChatCurrent().history() != history) return;
+						controller->showPeerHistory(history->peer,
+							Window::SectionShow::Way::ClearStack, ShowAtTheEndMsgId);
+					}));
+				}
+			}), &st::menuIconSend);
+	}
 	if (Delta::Active() && infoItem && infoItem->id.bare > 0 && isUponSelected <= 0) {
 		const auto infoId = infoItem->id.bare;
+		if (Delta::CanDownloadMessage(infoId)) {
+			const auto generation = Delta::AccountGeneration();
+			_menu->addAction(tr::lng_media_download(tr::now), crl::guard(controller, [=] {
+				if (generation == Delta::AccountGeneration()) Delta::DownloadMessage(infoId);
+			}), &st::menuIconDownload);
+		}
 		_menu->addAction(u"Info"_q, crl::guard(controller, [=] {
 			Delta::ShowMessageInfo(controller, infoId);
 		}), &st::menuIconInfo);

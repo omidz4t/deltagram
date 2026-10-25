@@ -71,6 +71,11 @@ int MuteValue::until() const {
 class NotifyPeerSettingsValue {
 public:
 	NotifyPeerSettingsValue(const MTPDpeerNotifySettings &data);
+	NotifyPeerSettingsValue(
+		MuteValue muteForSeconds,
+		std::optional<bool> silentPosts,
+		std::optional<NotifySound> sound,
+		std::optional<bool> storiesMuted);
 
 	bool change(const MTPDpeerNotifySettings &data);
 	bool change(
@@ -103,6 +108,14 @@ private:
 NotifyPeerSettingsValue::NotifyPeerSettingsValue(
 		const MTPDpeerNotifySettings &data) {
 	change(data);
+}
+
+NotifyPeerSettingsValue::NotifyPeerSettingsValue(
+		MuteValue muteForSeconds,
+		std::optional<bool> silentPosts,
+		std::optional<NotifySound> sound,
+		std::optional<bool> storiesMuted) {
+	change(muteForSeconds, silentPosts, sound, storiesMuted);
 }
 
 bool NotifyPeerSettingsValue::change(const MTPDpeerNotifySettings &data) {
@@ -236,24 +249,13 @@ bool PeerNotifySettings::change(
 			sound,
 			storiesMuted);
 	}
-	using Flag = MTPDpeerNotifySettings::Flag;
-	const auto flags = (muteForSeconds ? Flag::f_mute_until : Flag(0))
-		| (silentPosts ? Flag::f_silent : Flag(0))
-		| (sound ? Flag::f_other_sound : Flag(0))
-		| (storiesMuted ? Flag::f_stories_muted : Flag(0));
-	return change(MTP_peerNotifySettings(
-		MTP_flags(flags),
-		MTPBool(),
-		silentPosts ? MTP_bool(*silentPosts) : MTPBool(),
-		MTP_int(muteForSeconds.until()),
-		MTPNotificationSound(),
-		MTPNotificationSound(),
-		SerializeSound(sound),
-		storiesMuted ? MTP_bool(*storiesMuted) : MTPBool(),
-		MTPBool(), // stories_hide_sender
-		MTPNotificationSound(),
-		MTPNotificationSound(),
-		SerializeSound(std::nullopt))); // stories_sound
+	_known = true;
+	_value = std::make_unique<NotifyPeerSettingsValue>(
+		muteForSeconds,
+		silentPosts,
+		sound,
+		storiesMuted);
+	return true;
 }
 
 bool PeerNotifySettings::resetToDefault() {

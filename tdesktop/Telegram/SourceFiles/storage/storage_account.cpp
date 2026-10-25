@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "storage/storage_account.h"
+#include "delta/delta_bridge.h"
 
 #include "storage/localstorage.h"
 #include "storage/storage_domain.h"
@@ -1284,6 +1285,26 @@ void Account::unregisterDraftSource(
 }
 
 void Account::writeDrafts(not_null<History*> history) {
+	if (Delta::Active()) {
+		auto text = QString();
+		auto replyId = MsgId();
+		if (const auto draft = history->localDraft({}, {})) {
+			text = draft->textWithTags.text;
+			replyId = draft->reply.messageId.msg;
+		}
+		const auto sources = _draftSources.find(history);
+		if (sources != _draftSources.end()) {
+			const auto source = sources->second.find(Data::DraftKey::Local({}, {}));
+			if (source != sources->second.end()) {
+				const auto draft = source->second.draft();
+				text = draft.textWithTags.text;
+				replyId = draft.reply.messageId.msg;
+			}
+		}
+		Delta::SaveDraft(int(history->peer->id.value), text,
+			IsClientMsgId(replyId) ? 0 : int(replyId.bare));
+		return;
+	}
 	const auto peerId = history->peer->id;
 	const auto &map = history->draftsMap();
 	const auto supportMode = history->session().supportMode();
@@ -1383,6 +1404,7 @@ void Account::writeDrafts(not_null<History*> history) {
 }
 
 void Account::writeDraftCursors(not_null<History*> history) {
+	if (Delta::Active()) return;
 	const auto peerId = history->peer->id;
 	const auto &map = history->draftsMap();
 	const auto supportMode = history->session().supportMode();
@@ -1532,7 +1554,20 @@ void Account::readDraftCursorsLegacy(
 	}
 }
 
-void Account::readDraftsWithCursors(not_null<History*> history) {
+void Account::readDraftsWithCursors(not_null<History*> history, Fn<void()> loaded) {
+	if (Delta::Active()) {
+		Delta::LoadDraft(int(history->peer->id.value), [=](Delta::ComposeDraft draft) {
+			if (!history->localDraft({}, {})) {
+				history->setLocalDraft(std::make_unique<Data::Draft>(
+					TextWithTags{ draft.text },
+					FullReplyTo{ .messageId = draft.quotedMessageId > 0
+						? FullMsgId(history->peer->id, MsgId(draft.quotedMessageId)) : FullMsgId() },
+					SuggestOptions(), MessageCursor(), Data::WebPageDraft()));
+			}
+			if (loaded) loaded();
+		});
+		return;
+	}
 	const auto guard = gsl::finally([&] {
 		if (const auto migrated = history->migrateFrom()) {
 			readDraftsWithCursors(migrated);
@@ -3188,6 +3223,11 @@ void Account::readMediaLastPlaybackPositions() {
 	}
 }
 
+void Account::useTransientSearchPeers() {
+	Expects(!_owner->sessionExists());
+	_transientSearchPeers = true;
+}
+
 void Account::writeSearchSuggestionsDelayed() {
 	Expects(_owner->sessionExists());
 
@@ -3206,12 +3246,17 @@ void Account::writeSearchSuggestionsIfNeeded() {
 void Account::writeSearchSuggestions() {
 	Expects(_owner->sessionExists());
 
-	const auto top = _owner->session().topPeers().serialize();
-	const auto recent = _owner->session().recentPeers().serialize();
+	const auto top = _transientSearchPeers
+		? QByteArray()
+		: _owner->session().topPeers().serialize();
+	const auto recent = _transientSearchPeers
+		? QByteArray()
+		: _owner->session().recentPeers().serialize();
 	const auto settingsSearches
 		= _owner->session().recentSettingsSearches().serialize();
-	const auto guestChatBots
-		= _owner->session().topGuestChatBots().serialize();
+	const auto guestChatBots = _transientSearchPeers
+		? QByteArray()
+		: _owner->session().topGuestChatBots().serialize();
 	if (top.isEmpty()
 		&& recent.isEmpty()
 		&& settingsSearches.isEmpty()
@@ -3269,11 +3314,13 @@ void Account::readSearchSuggestions() {
 		suggestions.stream >> guestChatBots;
 	}
 	if (CheckStreamStatus(suggestions.stream)) {
-		_owner->session().topPeers().applyLocal(top);
-		_owner->session().recentPeers().applyLocal(recent);
+		if (!_transientSearchPeers) {
+			_owner->session().topPeers().applyLocal(top);
+			_owner->session().recentPeers().applyLocal(recent);
+			_owner->session().topGuestChatBots().applyLocal(guestChatBots);
+		}
 		_owner->session().recentSettingsSearches().applyLocal(
 			settingsSearches);
-		_owner->session().topGuestChatBots().applyLocal(guestChatBots);
 	} else {
 		DEBUG_LOG(("Suggestions: Could not read content."));
 	}

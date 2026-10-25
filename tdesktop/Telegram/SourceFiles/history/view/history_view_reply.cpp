@@ -648,6 +648,7 @@ void Reply::updateName(
 		&& (externalPeer->isChat() || externalPeer->isMegagroup());
 	const auto originalNameAdded = !displayAsExternal
 		&& forwarded
+		&& !forwarded->anonymous
 		&& !message->isDiscussionPost()
 		&& (forwarded->forwardOfForward()
 			|| (!message->showForwardsFromSender(forwarded)

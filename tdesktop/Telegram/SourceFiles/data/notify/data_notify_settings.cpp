@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/notify/data_notify_settings.h"
+#include "delta/delta_bridge.h"
 
 #include "apiwrap.h"
 #include "api/api_ringtones.h"
@@ -26,6 +27,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "main/main_session.h"
 #include "window/notifications_manager.h"
+
+#include <limits>
 
 namespace Data {
 namespace {
@@ -91,6 +94,7 @@ NotifySettings::NotifySettings(not_null<Session*> owner)
 }
 
 void NotifySettings::request(not_null<PeerData*> peer) {
+	if (Delta::Active()) return;
 	if (peer->notify().settingsUnknown()) {
 		const auto channel = peer->asChannel();
 		peer->session().api().requestNotifySettings(
@@ -108,6 +112,7 @@ void NotifySettings::request(not_null<PeerData*> peer) {
 }
 
 void NotifySettings::request(not_null<Thread*> thread) {
+	if (Delta::Active()) return;
 	if (const auto topic = thread->asTopic()) {
 		if (topic->notify().settingsUnknown()) {
 			topic->session().api().requestNotifySettings(
@@ -117,6 +122,14 @@ void NotifySettings::request(not_null<Thread*> thread) {
 		}
 	}
 	request(thread->peer());
+}
+
+void NotifySettings::applyBackendMute(not_null<PeerData*> peer, bool muted) {
+	if (peer->notify().change({ .unmute = !muted, .forever = muted }, {}, {}, {})) {
+		updateException(peer);
+		updateLocal(peer);
+		Core::App().notifications().checkDelayed();
+	}
 }
 
 void NotifySettings::apply(
@@ -232,6 +245,10 @@ void NotifySettings::update(
 		std::optional<bool> silentPosts,
 		std::optional<NotifySound> sound,
 		std::optional<bool> storiesMuted) {
+	if (Delta::Active()) {
+		update(thread->peer(), muteForSeconds, silentPosts, sound, storiesMuted);
+		return;
+	}
 	if (thread->notify().change(
 			muteForSeconds,
 			silentPosts,
@@ -246,6 +263,10 @@ void NotifySettings::update(
 }
 
 void NotifySettings::resetToDefault(not_null<Thread*> thread) {
+	if (Delta::Active()) {
+		update(thread, { .unmute = true });
+		return;
+	}
 	// Duplicated in clearExceptions(type) and resetToDefault(peer).
 	if (thread->notify().resetToDefault()) {
 		if (const auto history = thread->asHistory()) {
@@ -263,6 +284,13 @@ void NotifySettings::update(
 		std::optional<bool> silentPosts,
 		std::optional<NotifySound> sound,
 		std::optional<bool> storiesMuted) {
+	if (Delta::Active()) {
+		const auto seconds = (!muteForSeconds || silentPosts || sound || storiesMuted)
+			? -2 : muteForSeconds.forever ? -1 : muteForSeconds.unmute ? 0 : muteForSeconds.period;
+		const auto user = peer->isUser() ? peerToUser(peer->id).bare : uint64(0);
+		Delta::SetChatMute(user <= std::numeric_limits<int>::max() ? int(user) : 0, seconds);
+		return;
+	}
 	if (peer->notify().change(
 			muteForSeconds,
 			silentPosts,
@@ -275,6 +303,10 @@ void NotifySettings::update(
 }
 
 void NotifySettings::resetToDefault(not_null<PeerData*> peer) {
+	if (Delta::Active()) {
+		update(peer, { .unmute = true });
+		return;
+	}
 	// Duplicated in clearExceptions(type) and resetToDefault(thread).
 	if (peer->notify().resetToDefault()) {
 		updateException(peer);

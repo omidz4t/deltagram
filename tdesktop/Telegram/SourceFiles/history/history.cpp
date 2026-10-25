@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history.h"
+#include "delta/delta_bridge.h"
 
 #include "history/view/history_view_element.h"
 #include "history/view/history_view_item_preview.h"
@@ -678,6 +679,7 @@ not_null<HistoryItem*> History::insertItem(
 }
 
 void History::destroyMessage(not_null<HistoryItem*> item) {
+	if (Delta::Active()) Delta::ForgetPendingFile(peer->id.value, item->id.bare);
 	Expects(item->isHistoryEntry() || !item->mainView());
 
 	if (item->isHistoryEntry()) {
@@ -2061,9 +2063,11 @@ void History::calculateFirstUnreadMessage() {
 			if (!item->isRegular()) {
 				continue;
 			} else if (!item->out()) {
-				if (item->id >= *_inboxReadBefore) {
+				if (Delta::Active()
+					? Delta::MessageUnread(item->id.bare).value_or(false)
+					: item->id >= *_inboxReadBefore) {
 					_firstUnreadView = message.get();
-				} else {
+				} else if (!Delta::Active()) {
 					return;
 				}
 			}
@@ -2081,7 +2085,9 @@ bool History::readInboxTillNeedsRequest(MsgId tillId) {
 	DEBUG_LOG(("Reading: readInboxTillNeedsRequest is_server %1, before %2."
 		).arg(Logs::b(IsServerMsgId(tillId))
 		).arg(_inboxReadBefore.value_or(-666).bare));
-	return IsServerMsgId(tillId) && (_inboxReadBefore.value_or(1) <= tillId);
+	return IsServerMsgId(tillId) && (Delta::Active()
+		? unreadCount() > 0 || Delta::MessageUnread(tillId.bare).value_or(false)
+		: _inboxReadBefore.value_or(1) <= tillId);
 }
 
 void History::readClientSideMessages() {
@@ -2092,11 +2098,13 @@ void History::readClientSideMessages() {
 }
 
 bool History::unreadCountRefreshNeeded(MsgId readTillId) const {
+	if (Delta::Active()) return true;
 	return !unreadCountKnown()
 		|| ((readTillId + 1) > _inboxReadBefore.value_or(0));
 }
 
 std::optional<int> History::countStillUnreadLocal(MsgId readTillId) const {
+	if (Delta::Active()) return std::nullopt;
 	if (!folderKnown()) {
 		return std::nullopt;
 	}
@@ -2296,7 +2304,10 @@ void History::setUnreadCount(int newUnreadCount) {
 			&& blocks.back()->messages.back()->data() == last
 			&& last->out();
 	}();
-	if (newUnreadCount == 1 && !lastOutgoing) {
+	if (Delta::Active()) {
+		_firstUnreadView = nullptr;
+		if (newUnreadCount) calculateFirstUnreadMessage();
+	} else if (newUnreadCount == 1 && !lastOutgoing) {
 		if (loadedAtBottom()) {
 			_firstUnreadView = !isEmpty()
 				? blocks.back()->messages.back().get()
@@ -2997,6 +3008,12 @@ bool History::isReadyFor(MsgId msgId) {
 			}
 		}
 		if (unreadCount() && _inboxReadBefore) {
+			if (Delta::Active()) {
+				// Core IDs are not chronological; check the actual unread anchor.
+				const auto anchor = owner().message(peer, *_inboxReadBefore);
+				return (anchor && anchor->history() == this && anchor->mainView())
+					|| (loadedAtTop() && loadedAtBottom());
+			}
 			if (!isEmpty()) {
 				return (loadedAtTop() || minMsgId() <= *_inboxReadBefore)
 					&& (loadedAtBottom() || maxMsgId() >= *_inboxReadBefore);
@@ -3421,6 +3438,11 @@ bool History::isUnknownMessageDeleted(MsgId messageId) const {
 
 bool History::isServerSideUnread(not_null<const HistoryItem*> item) const {
 	Expects(item->isRegular());
+	if (Delta::Active()) {
+		if (const auto unread = Delta::MessageUnread(int(item->id.bare))) {
+			return *unread;
+		}
+	}
 
 	return item->out()
 		? (!_outboxReadBefore || (item->id >= *_outboxReadBefore))
@@ -3467,9 +3489,11 @@ void History::applyDialog(
 		}
 		channel->setViewAsMessagesFlag(data.is_view_forum_as_messages());
 	}
-	owner().notifySettings().apply(
-		MTP_notifyPeer(data.vpeer()),
-		data.vnotify_settings());
+	if (!Delta::Active()) {
+		owner().notifySettings().apply(
+			MTP_notifyPeer(data.vpeer()),
+			data.vnotify_settings());
+	}
 
 	const auto draft = data.vdraft();
 	if (draft && draft->type() == mtpc_draftMessage) {
@@ -3585,7 +3609,11 @@ void History::applyDialogFields(
 	} else {
 		clearFolder();
 	}
-	if (!skipUnreadUpdate()
+	if (Delta::Active()) {
+		_inboxReadBefore = maxInboxRead + 1;
+		setUnreadCount(unreadCount);
+		calculateFirstUnreadMessage();
+	} else if (!skipUnreadUpdate()
 		&& maxInboxRead + 1 >= _inboxReadBefore.value_or(1)) {
 		setUnreadCount(unreadCount);
 		setInboxReadTill(maxInboxRead);
@@ -3779,6 +3807,7 @@ MsgId History::msgIdForRead() const {
 	const auto result = (last && last->isRegular())
 		? last->id
 		: MsgId(0);
+	if (Delta::Active()) return loadedAtBottom() ? maxMsgId() : result;
 	return loadedAtBottom()
 		? std::max(result, maxMsgId())
 		: result;

@@ -557,7 +557,7 @@ void Manager::Private::showNotification(
 	const auto peer = info.peer;
 	const auto options = info.options;
 	const auto key = ContextId{
-		.sessionId = peer->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&peer->session()),
 		.peerId = peer->id,
 		.topicRootId = info.topicRootId,
 		.monoforumPeerId = info.monoforumPeerId,
@@ -608,7 +608,7 @@ void Manager::Private::showNotification(
 			GLib::Variant::new_dict_entry(
 				GLib::Variant::new_string("session"),
 				GLib::Variant::new_variant(
-					GLib::Variant::new_uint64(peer->session().uniqueId()))),
+					GLib::Variant::new_uint64(key.sessionId))),
 			GLib::Variant::new_dict_entry(
 				GLib::Variant::new_string("peer"),
 				GLib::Variant::new_variant(
@@ -857,7 +857,7 @@ void Manager::Private::clearAll() {
 
 void Manager::Private::clearFromItem(not_null<HistoryItem*> item) {
 	const auto i = _notifications.find(ContextId{
-		.sessionId = item->history()->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&item->history()->session()),
 		.peerId = item->history()->peer->id,
 		.topicRootId = item->topicRootId(),
 		.monoforumPeerId = item->sublistPeerId(),
@@ -871,7 +871,7 @@ void Manager::Private::clearFromItem(not_null<HistoryItem*> item) {
 
 void Manager::Private::clearFromTopic(not_null<Data::ForumTopic*> topic) {
 	_notifications.remove(ContextId{
-		.sessionId = topic->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&topic->session()),
 		.peerId = topic->history()->peer->id,
 		.topicRootId = topic->rootId(),
 	});
@@ -880,14 +880,14 @@ void Manager::Private::clearFromTopic(not_null<Data::ForumTopic*> topic) {
 void Manager::Private::clearFromSublist(
 		not_null<Data::SavedSublist*> sublist) {
 	_notifications.remove(ContextId{
-		.sessionId = sublist->session().uniqueId(),
+		.sessionId = Window::Notifications::SessionId(&sublist->session()),
 		.peerId = sublist->owningHistory()->peer->id,
 		.monoforumPeerId = sublist->sublistPeer()->id,
 	});
 }
 
 void Manager::Private::clearFromHistory(not_null<History*> history) {
-	const auto sessionId = history->session().uniqueId();
+	const auto sessionId = Window::Notifications::SessionId(&history->session());
 	const auto peerId = history->peer->id;
 	auto i = _notifications.lower_bound(ContextId{
 		.sessionId = sessionId,
@@ -901,7 +901,7 @@ void Manager::Private::clearFromHistory(not_null<History*> history) {
 }
 
 void Manager::Private::clearFromSession(not_null<Main::Session*> session) {
-	const auto sessionId = session->uniqueId();
+	const auto sessionId = Window::Notifications::SessionId(session);
 	auto i = _notifications.lower_bound(ContextId{
 		.sessionId = sessionId,
 	});

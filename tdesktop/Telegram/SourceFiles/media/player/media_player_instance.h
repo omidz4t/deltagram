@@ -188,6 +188,7 @@ public:
 		return _closePlayerRequests.events();
 	}
 	void stopAndClose();
+	void resetForAccountChange();
 
 private:
 	using SharedMediaType = Storage::SharedMediaType;

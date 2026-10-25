@@ -266,7 +266,7 @@ QString ReplySenderNameForSelectedCopy(
 		}
 	} else if (item->Has<HistoryMessageForwarded>()) {
 		const auto forwarded = message->Get<HistoryMessageForwarded>();
-		if (forwarded) {
+		if (forwarded && !forwarded->anonymous) {
 			if (forwarded->originalSender) {
 				return forwarded->originalSender->name();
 			} else if (forwarded->originalHiddenSenderInfo) {

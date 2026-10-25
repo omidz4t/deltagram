@@ -152,7 +152,7 @@ int BottomInfo::firstLineWidth() const {
 }
 
 bool BottomInfo::isWide() const {
-	return (_data.flags & Data::Flag::Edited)
+	return (_data.flags & (Data::Flag::Edited | Data::Flag::Failed))
 		|| _data.scheduleRepeatPeriod
 		|| !_data.author.isEmpty()
 		|| !_views.isEmpty()
@@ -486,9 +486,12 @@ void BottomInfo::layout() {
 void BottomInfo::layoutDateText() {
 	const auto updated = (_data.flags & Data::Flag::Updated);
 	const auto editedPrimary = !updated
+		&& !(_data.flags & Data::Flag::Failed)
 		&& (_data.flags & Data::Flag::EditedPrimary)
 		&& !(_data.flags & Data::Flag::ForwardedDate);
-	const auto edited = editedPrimary
+	const auto edited = (_data.flags & Data::Flag::Failed)
+		? (tr::lng_attach_failed(tr::now) + u" · "_q)
+		: editedPrimary
 		? QString()
 		: updated
 		? (tr::lng_ephemeral_updated(tr::now) + ' ')
@@ -716,9 +719,14 @@ BottomInfo::Data BottomInfoDataFromMessage(not_null<Message*> message) {
 	const auto delivery = Delta::Active()
 		? Delta::MessageDelivery(item->id.bare)
 		: std::nullopt;
-	if (delivery
-		? (*delivery == Delta::DeliveryState::Pending
-			|| *delivery == Delta::DeliveryState::Failed)
+	const auto failed = Delta::Active() && (delivery
+		? *delivery == Delta::DeliveryState::Failed
+		: item->hasFailed());
+	if (failed) {
+		result.flags |= Flag::Failed;
+		result.flags &= ~Flag::OutLayout;
+	} else if (delivery
+		? *delivery == Delta::DeliveryState::Pending
 		: (item->isSending() || item->hasFailed())) {
 		result.flags |= Flag::Sending;
 	}

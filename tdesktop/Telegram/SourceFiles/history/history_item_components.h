@@ -228,6 +228,7 @@ struct HistoryMessageForwarded
 	bool savedFromOutgoing = false;
 	bool imported = false;
 	bool story = false;
+	bool anonymous = false;
 };
 
 struct HistoryMessageSavedMediaData

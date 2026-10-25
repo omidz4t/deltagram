@@ -1,6 +1,6 @@
 # Experimental compatibility tracker
 
-Last reviewed: 2026-10-07. Deltagram is experimental and is not yet a complete
+Last reviewed: 2026-10-26. Deltagram is experimental and is not yet a complete
 Delta Chat client. Core provides messaging protocols and encryption; retaining
 a Telegram widget does not establish that its action works with Core.
 
@@ -27,11 +27,11 @@ are not copied here. Deltagram evidence comes from [PROGRESS.md](PROGRESS.md),
 | Contacts and contact deletion | ✅ Locally checked | Search, profile opening, chat creation and confirmed deletion have isolated checks. |
 | Shared contact cards | ✅ Locally checked | Send/import, card photo and profile navigation checked. Core does not import vCard NOTE biographies; available Core contact status is displayed. |
 | Group creation | ✅ Locally checked | Name/photo and member selection persist through Core; selection chips and stored members checked. |
-| Invitation links | ✅ Locally checked | Contact/group/channel previews, confirmation and navigation checked. SecureJoin completion over the network remains unverified. |
+| Invitation links | 🟡 Partial | Contact/group/channel previews, confirmation and navigation checked locally. Fresh disposable GUI onboarding and QR-image SecureJoin passed against official Desktop 2.62.0 on `3c2def3`. Physical camera scanning remains unverified. |
 | Channel profiles | ✅ Locally checked | Adaptive page/modal navigation, centered cover, large photo preview, contained action menu, description links, photo/name/description updates, mute control and Core media counts. Media rows open the selected message. |
 | Broadcast channels | ✅ Locally checked | Creation and subscriber write restrictions checked. Owner counts are Core read receipts, not public view totals. |
 | Message information | ✅ Locally checked | Context action and Core-backed details checked. |
-| Reactions | ✅ Locally checked | Picker, stored reactions and rendering checked locally; multi-device delivery remains unverified. |
+| Reactions | 🟡 Partial | Live GUI replay on `35f036c` confirms bidirectional reactions, rejected-change recovery, hidden transport-message filtering and group counts without invented avatars. Reactor-list browsing is unavailable. |
 | Profile sidebar | ✅ Locally checked | Optional experimental toggle replaces the folder strip with profile photos/names. Switching, active colors, immediate toggling and restart persistence checked locally. |
 | Profile ordering | ✅ Locally checked | Core RPC ordering and UI feedback recorded. |
 
@@ -39,22 +39,24 @@ are not copied here. Deltagram evidence comes from [PROGRESS.md](PROGRESS.md),
 
 | Capability | Status | Remaining work or validation |
 | --- | --- | --- |
-| Text, images, files, videos and forwarding | 🟡 Partial | MP4 sending, GUI forwarding and local playback checked with Core, including silent videos and forwarded labels in Saved Messages. Fresh cross-client delivery and download checks are needed. |
-| Delivery and read indicators | 🟡 Partial | Pending, server-delivered and read-receipt transitions checked in an offline fixture; Core state controls message and chat-list checks. Live transport and multi-recipient receipt behavior need validation. |
-| Quotes and replies | 🟡 Partial | Core quote mapping corrected; complete create/display/jump behavior needs live conversation checks. |
-| Message editing, deletion and chat archiving | 🟡 Partial | Core paths exist; received-deletion regressions passed, but two-device UI behavior needs checking. |
-| Voice messages | 🟡 Partial | Native waveform, duration, play/pause and seeking are implemented; local attachment playback is verified. Microphone recording and live cross-client delivery still need broader testing. |
-| Multiple profiles | 🟡 Partial | Add/delete/order paths exist; replacing the complete chat list after switching remains unfinished. |
+| Text, images, files, videos and forwarding | 🟡 Partial | Live Core API checks passed bidirectional text and byte-identical file delivery against Delta Chat 2.62.0. MP4 sending, GUI forwarding and local playback have earlier local checks. `3c2def3` passed bidirectional GUI text, explicit partial download with rejection, byte-identical GUI saving, and anonymous forwarding. Save As defaults were corrected in `6a6d60d`; broader video/staging checks remain. |
+| Delivery and read indicators | 🟡 Partial | A live cross-client Core read receipt passed. The `9397be0` GUI displays a live read receipt; `d05d666` passes event-before-ack reconciliation. Multi-recipient behavior needs validation. |
+| Quotes and replies | 🟡 Partial | A live Core reply retained its quote across clients. Complete GUI create/display/jump behavior remains unverified. |
+| Message editing, deletion and chat archiving | 🟡 Partial | Live Core edits retained message IDs and remote deletion passed. Rejected deletion preserves messages in verified GUIs. `9397be0` passes plain-text GUI edits in both clients; Core-aware edit eligibility passed on `e846f9b`; immediate quote retention after deletion passed on `8323369`. Broader deletion paths remain. |
+| Voice messages | 🟡 Partial | Native waveform, duration, play/pause and seeking are implemented. Ordinary GUI recording on `49454ee` passed preview, rejected storage, explicit retry, restart, quoted delivery and byte-identical playback in official Desktop 2.62.0 using isolated virtual audio. Both clients displayed the 21-second duration. Quoted voice-plus-forwarding also passes rejected-send/restart/delivery and reference playback on `5182d5e`. Physical audio devices and round-video capture remain unverified. |
+| Multiple profiles | 🟡 Partial | Switching clears reused histories, drafts, pending messages and attachment caches. Core draft storage and asynchronous callbacks are scoped to the account. `3c2def3` passed distinct drafts, red/blue images, two-/four-second voice clips, and playback/search reset across overlapping message IDs. |
 | Profile and group photos | 🟡 Partial | Settings image selection/crop/save and account avatar colors checked locally with Core; group checks recorded. Complete camera workflows and live photo distribution need checking. |
-| Onboarding and relay settings | 🟡 Partial | Core transport configuration and backup restore paths exist; full live onboarding needs validation. |
+| Onboarding and relay settings | 🟡 Partial | Fresh GUI creation, repeated-submit protection, fail-closed discovery, QR-image join and live exchange passed on `3c2def3`. Configured-account recovery without duplicate provisioning passed on `a8c544f`; backup restore remains unverified. |
 | Invite QR scanning | 🟡 Partial | Camera capture, QR image files and clipboard screenshots feed Core invites for an explicit Join. Image decoding is checked locally; physical camera capture needs hardware validation. |
-| Second-device setup | 🟡 Partial | Real Core backup QR generation exists; completed transfer to another device is unverified. |
+| Second-device setup | 🟡 Partial | Full transfer, restored image bytes and bidirectional synchronization passed on `27656b4` against official Desktop 2.62.0. Early/ready cancellation, duplicate starts and a profile switch during preparation passed. Camera/mobile receive paths remain unverified. |
 | Contact status and biographies | 🟡 Partial | Available Core contact status displayed; imported vCard biographies are unsupported by the current Core snapshot. |
-| Search | 🟡 Partial | Core message search is wired into the bridge; global/in-chat result navigation and help/HTML searches need separate checks. |
+| Search | 🟡 Partial | Core result IDs now feed paged global/in-chat search, with canceled-query/account guards and visible failures. Saved Messages self-peer loading no longer requires a Telegram phone number. `3c2def3` passed all 60 global/in-chat matches, final-page navigation, delayed replacement/cancellation and visible rejection. Help/HTML searches need separate checks. |
 | App picker and webxdc | 🟡 Partial | Embedded app store exists; host rendering, draft preparation and synchronized webxdc updates are unverified. |
-| Calls | ❌ Unavailable | Delta Chat calling is not implemented. Telegram conference creation/joining is disabled and tde2e is excluded. |
+| Calls | ❌ Unavailable | Delta Chat calling is not implemented. Chat-header call buttons are hidden, call entry points stop before device permissions, Telegram conference creation/joining is disabled, and tde2e is excluded. Unsupported call acceptance and separate call-device settings are removed; native settings replay passed on `a6d878d`. |
 | Service-event presentation | ❌ Unavailable | Recorded as unfinished in the development log. |
+| Donor export, sharing restrictions and auto-delete controls | ❌ Unavailable | These Telegram-only actions are hidden/guarded; no Core-backed implementation is claimed. |
 | Settings privacy presentation | 🟡 Partial | Hiding the settings email remains unfinished. |
+| Blocked-user settings | 🟡 Partial | Core-backed block/list/unblock controls and account-scoped readback are implemented. Focused tests cover failures, isolation and real-Core restart/draft preservation. Native GUI and two-client replay remain pending. |
 
 ## Compatibility checks still needed
 
@@ -64,10 +66,10 @@ They are **unverified**, rather than assumed to work because the donor UI has th
 | Feature area | Status | Checks to record |
 | --- | --- | --- |
 | Media browser | ❓ Unverified | Combined media list, previous/next, delete and return to message. |
-| Chat management | ❓ Unverified | Clear history, bulk selection, bulk read state and last-read positioning. |
+| Chat management | ❓ Unverified | Clear history rejection/success and date-range deletion have targeted GUI checks; bulk read state and last-read positioning still need coverage. |
 | Member profiles | ❓ Unverified | Opening a profile from a group member list. |
-| Attachments | ❓ Unverified | Staging, multiple files/images/videos and image editing before send. |
-| Notifications | ❓ Unverified | Background delivery and unread indicators for inactive profiles. |
+| Attachments | 🟡 Partial | Ordinary single-file recovery, prepared/resized/rotated image delivery, uncompressed bytes, private staging cleanup and generated archives have revision-specific checks below. Prepared-image restart/retry passes with an older quote after the Core lookup fix. Multiple-file/video paths and broader prepared-media recovery remain open. |
+| Notifications | 🟡 Partial | `94ad667` passes native/package checks and 211 focused checks. Disposable replay verifies inactive-profile delivery/counts, collapsed and sidebar badges, mute persistence/suppression, and rejection of stale notification actions across switches/restarts; valid activation/read actions work. A new Core mute read fixes the reproduced post-expiry notification loss; rejected reads preserve messages without popups, and late reads cannot notify another profile. Native/package validation at `a6d878d` passes 226 checks. Disposable inline-reply recovery covers rejected sends, lost send/storage acknowledgements, restart, exact text recovery and composer preservation against official Desktop 2.62.0. `148156d` fixes the reproduced 15 ms popup loss during dialog refresh and passes native/package checks plus fault-free inline delivery, notification cleanup, draft preservation and muted suppression. `d428416` passes native/package checks, rendered notification/settings-search cleanup and direct-to-Core inline delivery, restart and draft-preservation replay. Unsupported notification defaults and subscription search entries are removed. Idle expiry, inactive-profile popups and desktop-shell rendering remain open. |
 | Accessibility and localization | ❓ Unverified | Screen readers, keyboard navigation and RTL layouts. |
 | Appearance | 🟡 Partial | General wallpaper: local gallery and custom images in Settings → Chat Settings. Custom-image persistence checked across chats, profiles and restart; per-chat wallpaper is unavailable and removed from the chat menu. Full day/night combinations remain unverified. |
 | External integration | ❓ Unverified | Camera capture and sharing into/out of the application. |
@@ -75,6 +77,201 @@ They are **unverified**, rather than assumed to work because the donor UI has th
 | Message content | ❓ Unverified | Stickers, copying links and complete media rendering. |
 | Trust information | ❓ Unverified | Core-backed verification details and “verified by” presentation. |
 | Group duplication | ❓ Unverified | Cloning a group with correct Core membership semantics. |
+
+## Client integrity verification (2026-10-24)
+
+See [VALIDATION.md](VALIDATION.md) for revision-specific build, focused-test,
+Core API and GUI evidence. Full native/portable/package CI passed at `ff64414`,
+including all 33 focused Qt cases and complete Debian 13/Ubuntu 22.04 runtime
+checks. Its GUI/Core/symbol artifacts were checksum-verified before live replay.
+
+Disposable live GUI checks cover account/media isolation, crash-free repeated
+profile switches, paged global/in-chat search, explicit partial downloads,
+rejected Clear history, date-range deletion, send acknowledgement races,
+reaction rendering, configured-onboarding recovery, anonymous forwarding and
+standalone quotes. Fresh provisioning and QR-image SecureJoin passed against
+official Desktop 2.62.0. Plain text, read receipts, edits, quoted replies and
+remote deletion work through both GUIs on the recorded artifacts.
+
+The `8323369` GUI preserves rejected text alongside newer drafts and recovers
+late failures into the original profile after switching. Quote text survives
+immediate deletion of its original. Delayed dialog/edit callbacks and Core exit
+are handled without a crash; an already persisted draft returns after restart.
+The `ff64414` normal-text composer keeps Core's durable draft until handoff.
+Live replay passes rejected-send quit/restart with quote retention, accepted-send
+quit before acknowledgement without duplicates, committed-send error replies,
+quit during persistence, pending-send profile switches and Core-crash recovery.
+The independent reference GUI displays the accepted texts and quote. Combined
+forwarding and attachment-send durability and the broader gaps above remain
+open. No production readiness or complete Delta Chat feature parity is claimed.
+Existing unscoped draft files are retained without loading into another profile.
+
+`be7b043` passes native/portable/package CI and 41 focused cases. Disposable GUI
+replay on 2026-10-25 verifies ordinary single-file restart recovery after deleting
+the original file, explicit retry, rejected/successful removal with caption
+retention, uncertain send replies, accepted-send quit, profile isolation and
+Core-process failure recovery. Official Desktop 2.62.0 received the accepted
+attachments and caption-only text. Multi-file batches and transformed-media
+durability remain open; this does not establish complete media compatibility.
+
+`8e37b6c` passes native/portable/package CI and disposable generated-ZIP replay:
+delayed Core reads, a profile switch while the request is pending, matching
+filename/content/bytes in official Desktop 2.62.0, cleanup after acceptance,
+and retention followed by explicit deletion after rejection. Background media
+preparation guards have focused tests; live interruption of preparation itself
+remains unverified. Byte-backed staging cleanup, private permissions, second-device dialog
+start/cancel guards and a full transfer passed native/live validation on `a1cbe2a`.
+The `27656b4` early-cancellation fix passes native/package checks, all 49 focused
+checks and disposable GUI replay, including a repeated complete transfer and
+mail exchange. A rejected clipboard image still disappears after quit/restart
+with no Core draft, as reproduced on `a1cbe2a`. Failed/pending status display is
+corrected in `2e051d8`, which passes native/package checks and GUI display
+fixtures for Core failure/pending/read states plus local image rejection.
+Assistive-technology runtime coverage remains open. The presentation fix does
+not repair transformed-media durability.
+
+`21bbd2a` passes native/portable/package validation and all 50 focused checks.
+It removes a separate preparation-time clipboard copy missed by the earlier
+uploader-path checks and sends prepared/resized photo bytes instead of original
+encoded clipboard bytes. Disposable live replay confirms private staging,
+cleanup after acceptance or explicit removal, and matching resized/rotated
+images in official Desktop 2.62.0. `703ae5b` also passes native/package checks
+and preserves a 5 MB JPEG through the explicit uncompressed path. Core accepts
+`File` to skip recompression, then classifies recognized images as `Image`;
+document rendering is not guaranteed. `f751489` clarifies the English option
+label and passes native/package validation plus single/multi-image label checks.
+A deterministic archive race reproduced silent omission of a deleted selected
+file, and its rejected send exposed a chat row that kept a pending clock until
+repaint. Fixes `a2b2b61` and `1a3017c` pass native/package checks and live replay:
+the missing-file race aborts before any send, a healthy archive arrives intact,
+and a rejected image updates the row immediately. `10cd8fe` marks preparation
+failures explicitly; `d25dcee` reports staging-write failures for items that
+bypass the upload queue; `c9962d2` clears stopped upload state. The combined
+`c9962d2` build passes native/portable/package checks and all 50 focused checks.
+Its verified GUI shows Failed and supports explicit Delete for both the archive
+race and an unwritable image-staging path, without sending either. After staging
+is restored, a newly selected image arrives intact in official Desktop 2.62.0
+through the same GUI session. Failed-image preview/recovery is not established.
+Those failure-state checks alone did not establish prepared-media restart recovery.
+
+`7f95cca` passes native/portable/package validation and 56 focused checks. Its
+verified GUI retains a rejected prepared image and caption across quit/restart,
+then delivers one explicit retry with byte-identical prepared JPEG content in
+official Desktop 2.62.0. Temporary staging is cleaned and other profiles remain
+isolated. The replay also exposed a jump to old history after recovery; the
+`252bfa0` fix selects the actual chat end and passes native/package validation
+and uncompressed-image restart/retry replay. Original JPEG bytes reach the
+reference client unchanged, with the new message visible at the chat end.
+A separate lost-save-ack/restart case retained the quote in Core but dropped it
+on explicit retry because its older message was not loaded in the GUI. The
+Core-backed lookup and quote-preservation fix `7f25d36` passes all 85 focused
+checks, native/portable/package validation and live restart/retry: the reply bar
+restores, the outgoing message retains its quote, and official Desktop 2.62.0
+shows the original quote with matching image bytes. A rejected quote lookup
+keeps the reply through caption edits; explicitly removing it sends without
+the quote while preserving the attachment. A delayed lookup cannot restore a
+reply removed while it was loading. A generated ZIP also passes rejected-send
+restart/retry on `7f95cca`, with identical archive bytes and contents in both
+clients. `252bfa0` also verifies failed pre-save attachment retention, blocked
+normal quit/profile switching, and explicit Delete cleanup/unlock with caption
+retention. A prepared send with a lost acknowledgement reconciles once and
+survives restart with no duplicate; both clients retain the prepared image bytes.
+Direct retry before Core ownership passes native validation and disposable
+unquoted-image replay on `7d64366`: repeated save rejection retains private
+prepared bytes, a delayed Retry blocks duplicate actions, and one send delivers
+identical bytes to both clients. Normal restart retains one message and no draft.
+A separate quoted Retry setup exposed a reproducible search-result crash while
+loading saved recent peers. `490cadd` passes native/package checks and opens that
+same result with the original cache preserved. Quoted Retry then delivers the
+older quote and identical image bytes to the reference client, but Deltagram's
+accepted bubble disappears from its open history until restart. A follow-up
+history refresh fix passes native/package checks and disposable replay on
+`b5c4e9e`: the quoted image remains visible immediately after one Retry, both
+clients retain the older quote and matching bytes, and the draft/staging clear.
+Broader interruption and delayed-callback checks remain open.
+
+A follow-up source change clears recent/ranked peers and open-chat navigation
+on profile switch and prevents importing unscoped donor suggestion records.
+Peer suggestions are currently session-local; settings-search history remains
+available. `6078103` passes native/package checks and disposable profile-switch
+checks: Recent and Ctrl+Tab history clear, the alternate draft stays unchanged,
+and the pending queue remains in its original account. Active-popup races and
+malformed-record runtime cases remain unverified.
+
+`ca039dc` adds Core-backed batch compose storage, and `8a2b78c` adds durable-send
+checkpoint continuation and verified-ID resume without replacing a Core draft.
+`47f5752` adds checkpointed advancement and recovery of known draft/outgoing IDs;
+`ed427be` preserves newer text/quote drafts and rejects advancement during active
+draft operations. All 116 focused checks pass, including queue storage faults,
+stale actions, account isolation, real-Core rejected-send restart, and discard
+after restart while the second queued file retains its bytes.
+
+Saved-queue review and serial Send remaining controls are wired through the
+attachment button in `99df1ac`. Confirmed Discard next in `8c41b45` removes only
+the reviewed entry and its matching Core draft, preserving newer drafts and
+already-sent messages. `490cadd` passes native/package checks and disposable
+recovery from a directly seeded two-file ledger: rejected send, normal restart,
+same-ID resume, ordered byte-identical delivery to both GUIs and queue/pin/draft
+cleanup. A separate GUI case preserves a newer draft through rejected queue
+advancement and both confirmed discards; the remaining file retains its bytes.
+`6078103` additionally preserves a matching draft/queue after rejected removal,
+and reconciles a committed removal with an error acknowledgement through readback,
+clearing only the first entry and matching draft while retaining the second file.
+The new batch coordinator preserves preparation order and source owners, waits
+for the entire selection, and reconciles uncertain publication without sending.
+Real-Core testing exposed blob renaming when a temporary path and display name
+have different extensions; staging now privately copies under the intended name
+before Core import. The coordinator and this storage fix pass native/package
+validation on `8268add`, including restart after original-file removal and
+private-copy cleanup. Follow-up source wires new batch selections, preparation
+failure review, explicit retry/discard, and saved-queue discovery on chat open.
+It waits for prior composer writes, checks for existing attachment drafts, and
+retains pending selection metadata. A follow-up fixes recovery when Core recodes
+an image after its draft checkpoint: the same confirmed outgoing message can
+advance the queue despite its changed blob, while unsent draft identity stays
+strict. A disposable Saved Messages probe confirms Core's recoding, and the
+153 focused checks include no-resend recovery, mismatched-message rejection and
+queue mutation during a held discovery read. Discovery uses a read-only snapshot
+so it cannot reserve the mutation lock, and rejects superseded UI replies.
+The batch GUI revision `7074268` passes native/portable/package validation and
+disposable GUI selection/rejected-send/restart replay. With both original files
+removed, explicit recovery delivers them once in order to official Desktop
+2.62.0 with matching bytes and caption, then clears queue/pins/draft while
+preserving the alternate profile. Subsequent recovery, discovery and
+recording changes pass native/portable/package validation on `49454ee` and
+`5182d5e`. Ordinary recording passes virtual-audio capture/preview, rejected
+storage, restart and quoted cross-client playback on `49454ee`. Seeded-ledger
+image recovery on `5182d5e` handles Core recoding plus rejected queue removal
+across restart without another send. Held discovery on that GUI allows a
+foreground send to finish and ignores the stale queue snapshot afterward.
+A separate `7074268` storage-rejection
+replay preserves the pending batch, blocks normal quit, and recovers its files
+and caption through explicit Retry. Confirmed discard then clears both entries
+without delivery or changes to the alternate profile's draft. Broader
+interruption/profile cases need live coverage. The review
+dialog's clipped Cancel button and one-item count wording pass native visual
+replay on `b5c4e9e`.
+
+The generic queue backend now supports text, prepared files and individual
+forwards as one durable plan. It persists a forward attempt before calling Core,
+requires explicit review/discard after an uncertain result, and never resends a
+confirmed forward. All 182 focused checks pass, including source isolation,
+interrupted replies and exact publication reconciliation. A disposable Core
+probe confirms that a multi-source forward can partially commit before returning
+an error. Follow-up source connects composer text, files, recordings and direct
+forwarding controls to this backend, removes the MTProto-shaped forwarding
+adapter, and exposes explicit review/discard for uncertain forwards. The 184
+focused checks and native/portable/package validation pass on `5182d5e`.
+Disposable GUI replay delivers a text prefix and two forwards once and in order
+to official Desktop 2.62.0, preserving file bytes, caption and forward markers.
+Rejected initial send survives restart; an accepted forward with a lost
+acknowledgement remains uncertain across restart and cannot be resent from
+review. Explicit discard preserves that delivered message before the tail is
+sent. The alternate profile draft remains intact. Additional `5182d5e` replays
+pass a selected file plus forward after original-file removal, and a quoted
+voice recording plus forward after rejected send and restart. Both deliver
+once in order with matching bytes; reference voice playback passes. Broader
+forwarding interruption/profile cases and round-video capture still need replay.
 
 ## Updating this tracker
 
