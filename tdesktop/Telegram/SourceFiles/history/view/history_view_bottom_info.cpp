@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_bottom_info.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "ui/chat/message_bubble.h"
@@ -561,7 +562,10 @@ void BottomInfo::layoutViewsText() {
 	}
 	_views.setText(
 		st::msgDateTextStyle,
-		Lang::FormatCountToShort(Delta::Active() ? *_data.views : std::max(*_data.views, 1)).string,
+		Lang::FormatCountToShort(
+			Delta::UsesCoreBackend(&_reactionsOwner->session())
+				? *_data.views
+				: std::max(*_data.views, 1)).string,
 		Ui::NameTextOptions());
 }
 
@@ -713,13 +717,16 @@ BottomInfo::Data BottomInfoDataFromMessage(not_null<Message*> message) {
 			result.forwardsCount = views->forwardsCount;
 		}
 	}
-	if (Delta::Active()) {
+	const auto session = &item->history()->session();
+	const auto owns = Delta::UsesCoreBackend(session)
+		&& Delta::OwnsSession(session);
+	if (owns) {
 		if (const auto count = Delta::ChannelViewCount(item->id.bare)) result.views = *count;
 	}
-	const auto delivery = Delta::Active()
+	const auto delivery = owns
 		? Delta::MessageDelivery(item->id.bare)
 		: std::nullopt;
-	const auto failed = Delta::Active() && (delivery
+	const auto failed = owns && (delivery
 		? *delivery == Delta::DeliveryState::Failed
 		: item->hasFailed());
 	if (failed) {

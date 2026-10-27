@@ -215,9 +215,10 @@ void Session::watchDcOptionsChanges() {
 }
 
 void Session::start() {
-	killConnection();
-	// Delta Tel never opens a connection to Telegram servers.
-	return;
+	if (_instance->backend() != Main::AccountBackend::Telegram) {
+		killConnection();
+		return;
+	}
 	_private = new SessionPrivate(
 		_instance,
 		_thread.get(),
@@ -331,6 +332,9 @@ void Session::needToResumeAndSend() {
 	if (!_private) {
 		DEBUG_LOG(("Session Info: resuming session dcWithShift %1").arg(_shiftedDcId));
 		start();
+	}
+	if (!_private) {
+		return;
 	}
 	const auto captured = _private;
 	const auto ping = base::take(_ping);

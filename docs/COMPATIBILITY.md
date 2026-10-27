@@ -1,8 +1,18 @@
 # Experimental compatibility tracker
 
-Last reviewed: 2026-10-26. Deltagram is experimental and is not yet a complete
-Delta Chat client. Core provides messaging protocols and encryption; retaining
-a Telegram widget does not establish that its action works with Core.
+Real Telegram accounts are required alongside Chatmail profiles. Source now
+contains persisted backend identity, account-type selection, restored donor
+MTProto dispatch/connections, and session-scoped UI/data routing. These changes
+link and pass the complete native run at `227cfc4` (994 checks in 24 targets,
+zero failures/skips). Its artifact hashes/provenance match. Native credential-free
+checks cover compact backend choice, Telegram country lookup and phone-login
+entry. A subsequent welcome-copy correction still needs linked/render validation.
+These results do not establish Telegram authentication, session recovery, feature
+compatibility, or mixed authenticated account isolation.
+
+Last reviewed: 2026-10-27. Deltagram remains experimental. Core provides
+Chatmail protocols and encryption; Telegram uses the donor backend. Retaining
+a widget or passing a helper test does not establish its runtime behavior.
 
 The feature categories below use the
 [Delta Chat platform feature overview, interface issue #39](https://github.com/deltachat/interface/issues/39)
@@ -19,14 +29,59 @@ are not copied here. Deltagram evidence comes from [PROGRESS.md](PROGRESS.md),
 - **❌ Unavailable:** explicitly disabled or recorded as unfinished.
 - **❓ Unverified:** no adequate Deltagram compatibility check is recorded.
 
+## Current readiness gates
+
+The last verified complete native artifact is `227cfc4`, with 24 Qt suites,
+994 checks and zero failures/skips, verified hashes and matching source provenance.
+It resolves the prior Qt 6.11 RPC-lifetime CI failure. Native replay confirms both
+backend choices and wrapped copy at 380x480 in screen-reader mode, then fetches a
+fresh 232-country Telegram catalog and reaches phone login without credentials.
+Welcome copy incorrectly claiming the app is official Delta Chat is corrected
+in source, with language generation/native syntax checks; the new copy still
+needs a linked/render check. RTL, scale, localized/error layout remain open.
+
+Earlier `ef176e9` replay opens Core, adds an Unspecified slot, then selects Telegram
+and reaches phone login with a DC connection. Cold restart preserves the offline
+Core fixture and both backend sidecars. Core mail IO was suppressed. Authorized
+session recovery and mixed message-ID isolation remain unproven. Periodic
+unsupported Core background requests remain unattributed. Historical `bd1ea60`
+viewer/cancellation evidence applies only to that revision. The forgotten-passcode
+guard passes focused Qt tests and an exact reset-method recorder.
+
+Historical Core-only replay covers encryption information, onboarding avatar
+layout at tested LTR sizes, startup Loading/Retry/Open Profile, group-sidebar
+open/reopen/switch/resize, search failure/retry, restore/retry-open, and profile
+name/deletion. See [VALIDATION.md](VALIDATION.md) for exact revisions and limits.
+The sidebar metadata storm did not recur. RTL/scale, broader startup cases,
+cross-window setup/teardown, latest-head regression replay and final packages
+remain open.
+
+Live Core profile setup also retains its shared RPC through mutation replies
+and error readback. Thirty-two real-process sanitizer checks and an offline pinned-
+Core wrong/correct-passphrase owner-loss retry pass. Native onboarding teardown,
+first-run cancellation and actual second-device transfer remain unverified.
+
+Release gates include current native linking, real Telegram authentication and
+session persistence, mixed-backend account isolation, and donor feature replay.
+Production Telegram API configuration is explicit; test-API binaries are
+refused by production packaging/publication guards. Real production credentials
+and login have not been validated.
+
+PR builds compile and smoke-test; they do not execute the workflow's optional
+package-verification step. After the final source is fixed and built, one
+serialized unpublished validation run must also check the portable runtime on
+Debian 13 and Ubuntu 22.04 and the Debian/RPM/Arch payloads and metadata.
+Artifact hashes and source provenance must match the tested revision. The
+unverified feature areas below remain open independently of those build gates.
+
 ## What works in local checks
 
 | Capability | Status | Evidence and limits |
 | --- | --- | --- |
 | Core account creation and chat-list loading | ✅ Locally checked | Qt/Core RPC self-test creates a disposable account and loads its list without mail IO. |
-| Contacts and contact deletion | ✅ Locally checked | Search, profile opening, chat creation and confirmed deletion have isolated checks. |
+| Contacts and contact deletion | ✅ Locally checked | Native `2908654` passes private alias set/clear with one write per action, rejected and confirmed contact-only deletion preserving the chat/draft, and rejected/confirmed optional deletion of a new synthetic chat. The checked confirmation removes only that fixture and unselects it; deletion persists across restart with no repeated write. Original profile data is preserved. The newer deferred contact-open path now rechecks list lifetime and profile identity after the RPC reply and again at timer dispatch; the exact-method Qt recorder passes 19 assertions and native syntax checks pass. Broader lost-ack/profile-switch UI cases remain unverified. |
 | Shared contact cards | ✅ Locally checked | Send/import, card photo and profile navigation checked. Core does not import vCard NOTE biographies; available Core contact status is displayed. |
-| Group creation | ✅ Locally checked | Name/photo and member selection persist through Core; selection chips and stored members checked. |
+| Group creation | 🟡 Partial | Name/photo and member selection persist through Core. A disposable two-member group exchanged messages with official Desktop 2.62.0 on `44a91b5`; its persisted first-message info notice remains while Core confirms promotion completed. The wrong sender-profile Message destination reproduced there is corrected and passes native replay on `e669e85`, with the original draft restored. Later permission/request-UI changes still need native replay. |
 | Invitation links | 🟡 Partial | Contact/group/channel previews, confirmation and navigation checked locally. Fresh disposable GUI onboarding and QR-image SecureJoin passed against official Desktop 2.62.0 on `3c2def3`. Physical camera scanning remains unverified. |
 | Channel profiles | ✅ Locally checked | Adaptive page/modal navigation, centered cover, large photo preview, contained action menu, description links, photo/name/description updates, mute control and Core media counts. Media rows open the selected message. |
 | Broadcast channels | ✅ Locally checked | Creation and subscriber write restrictions checked. Owner counts are Core read receipts, not public view totals. |
@@ -44,19 +99,23 @@ are not copied here. Deltagram evidence comes from [PROGRESS.md](PROGRESS.md),
 | Quotes and replies | 🟡 Partial | A live Core reply retained its quote across clients. Complete GUI create/display/jump behavior remains unverified. |
 | Message editing, deletion and chat archiving | 🟡 Partial | Live Core edits retained message IDs and remote deletion passed. Rejected deletion preserves messages in verified GUIs. `9397be0` passes plain-text GUI edits in both clients; Core-aware edit eligibility passed on `e846f9b`; immediate quote retention after deletion passed on `8323369`. Broader deletion paths remain. |
 | Voice messages | 🟡 Partial | Native waveform, duration, play/pause and seeking are implemented. Ordinary GUI recording on `49454ee` passed preview, rejected storage, explicit retry, restart, quoted delivery and byte-identical playback in official Desktop 2.62.0 using isolated virtual audio. Both clients displayed the 21-second duration. Quoted voice-plus-forwarding also passes rejected-send/restart/delivery and reference playback on `5182d5e`. Physical audio devices and round-video capture remain unverified. |
+| File backups | 🟡 Partial | Core-only Advanced Settings export is implemented with selected-profile ownership, private per-attempt directories, optional confirmed database passphrase, and serialized/stale-safe callbacks. Twenty-two export-helper and five real child-process privacy checks pass, plus an unprivileged actual DeltaRpc/Core export/import round-trip with matching IDs/drafts/blobs and 0600/0700 output modes. Normal quit/restart waits for terminal export completion; sixteen exact-method recorder assertions pass, while native quit/restart replay remains pending. Profile deletion and export are mutually exclusive; twenty exact Bridge-method assertions pass. RPC ownership survives originating-session release through terminal completion; ten real-process sanitizer checks and a pinned-Core owner-loss export/restore pass. Core passphrases do not encrypt attachment files. Native export dialog, live-IO/background completion, teardown and package replay remain open. |
+| Forgotten local passcode | 🟡 Partial | Chatmail or unknown locked storage preserves profiles and the lock. Guidance requires the passcode, previously enabled system unlock, or an existing backup restored in a fresh installation. Confirmed Telegram-only storage keeps donor logout recovery. Focused Qt/filesystem and reset-method checks pass; locked-start and system-unlock GUI replay on the latest native binary remain pending. |
 | Multiple profiles | 🟡 Partial | Switching clears reused histories, drafts, pending messages and attachment caches. Core draft storage and asynchronous callbacks are scoped to the account. `3c2def3` passed distinct drafts, red/blue images, two-/four-second voice clips, and playback/search reset across overlapping message IDs. |
 | Profile and group photos | 🟡 Partial | Settings image selection/crop/save and account avatar colors checked locally with Core; group checks recorded. Complete camera workflows and live photo distribution need checking. |
-| Onboarding and relay settings | 🟡 Partial | Fresh GUI creation, repeated-submit protection, fail-closed discovery, QR-image join and live exchange passed on `3c2def3`. Configured-account recovery without duplicate provisioning passed on `a8c544f`; backup restore remains unverified. |
+| Onboarding and relay settings | 🟡 Partial | Fresh GUI creation, repeated-submit protection, fail-closed discovery, QR-image join and live exchange passed on `3c2def3`. Native `122a3ec` passes plain restore, preserved draft/photo, retry-open and bidirectional delivery; timed actions during held import issue no duplicate setup operation. Native `a19d9e2` passes delayed discovery, selection-error Retry and opening-error Open Profile without allocating a profile. Offline imports interrupted at measured blob-extraction and SQL-write checkpoints recover on the same unconfigured destination and preserve another restored profile. SQL follow-up compares every non-device message column and passes database integrity checks. Encrypted import now has an optional masked passphrase prompt in source; helper and real-Core wrong/correct-passphrase retry checks pass. Native prompt/cancel/retry, exhaustive interruption stages, GUI/cross-window teardown, broader startup cases and RTL/scale layout remain open. |
 | Invite QR scanning | 🟡 Partial | Camera capture, QR image files and clipboard screenshots feed Core invites for an explicit Join. Image decoding is checked locally; physical camera capture needs hardware validation. |
 | Second-device setup | 🟡 Partial | Full transfer, restored image bytes and bidirectional synchronization passed on `27656b4` against official Desktop 2.62.0. Early/ready cancellation, duplicate starts and a profile switch during preparation passed. Camera/mobile receive paths remain unverified. |
 | Contact status and biographies | 🟡 Partial | Available Core contact status displayed; imported vCard biographies are unsupported by the current Core snapshot. |
-| Search | 🟡 Partial | Core result IDs now feed paged global/in-chat search, with canceled-query/account guards and visible failures. Saved Messages self-peer loading no longer requires a Telegram phone number. `3c2def3` passed all 60 global/in-chat matches, final-page navigation, delayed replacement/cancellation and visible rejection. Help/HTML searches need separate checks. |
+| Contact requests | 🟡 Partial | Native `4b5e093` passes 451 checks. Disposable GUI replay covers request inspection/actions/restart, pending sender Message without acceptance, accepted-contact opening, and one-shot lost-ack Group Delete with an unverified GUI outcome. Drafts/history and unrelated requests are preserved. Mailing-list/broadcast cases and final-head replay remain open; Core lookup/create atomicity remains unresolved. |
+| Search | 🟡 Partial | Core result IDs feed paged global/in-chat search. `3c2def3` passed 60 matches and final-page navigation. Native `2908654` passes archived Device messages naming, metadata Failed/Retry and read-only opening. Native `122a3ec` passes initial-ID failure/keyboard retry and stale-query error suppression. Native `a19d9e2` passes profile-switch cancellation and offline 61-hit load-more failure/retry. HTML fixture search finds the plain representation; HTML-only remainder is not indexed by Core, and native No Results matches that contract. |
 | App picker and webxdc | 🟡 Partial | Embedded app store exists; host rendering, draft preparation and synchronized webxdc updates are unverified. |
-| Calls | ❌ Unavailable | Delta Chat calling is not implemented. Chat-header call buttons are hidden, call entry points stop before device permissions, Telegram conference creation/joining is disabled, and tde2e is excluded. Unsupported call acceptance and separate call-device settings are removed; native settings replay passed on `a6d878d`. |
+| Calls | 🟡 Partial | Chatmail calls remain unavailable and are blocked before call start. Telegram donor call paths and pinned v7.2.10 conference E2E source/dependencies are restored and pass syntax/type checks; the tde2e wrapper and primitive checks pass separately. Current full native linking, Telegram calls, physical media devices and mixed-account call routing remain unverified. |
 | Service-event presentation | ❌ Unavailable | Recorded as unfinished in the development log. |
 | Donor export, sharing restrictions and auto-delete controls | ❌ Unavailable | These Telegram-only actions are hidden/guarded; no Core-backed implementation is claimed. |
 | Settings privacy presentation | 🟡 Partial | Hiding the settings email remains unfinished. |
-| Blocked-user settings | 🟡 Partial | Core-backed block/list/unblock controls and account-scoped readback are implemented. Focused tests cover failures, isolation and real-Core restart/draft preservation. Native GUI and two-client replay remain pending. |
+| Local storage and cache limits | 🟡 Partial | `14878ed` Clear all preserves all 56 fingerprinted Core blob files plus drafts/history through restart and subsequent photo rendering. Verified `a64895c` renders all four Core-specific cache strings. Selective clearing and limit enforcement remain unverified; limits do not cover Core account blobs. |
+| Blocked-user settings | 🟡 Partial | `44a91b5` passes 259 native checks and disposable GUI rejection, lost-ack block/unblock, restart, incoming-message suppression/restoration, draft/history preservation and profile-switch cancellation against official Desktop 2.62.0. The group-member profile action additionally passes rejection, lost-ack block/unblock and restart on `e669e85`, preserving both drafts, group history and four request fixtures. Contact-status and latest-head replay remain pending. |
 
 ## Compatibility checks still needed
 
@@ -65,17 +124,17 @@ They are **unverified**, rather than assumed to work because the donor UI has th
 
 | Feature area | Status | Checks to record |
 | --- | --- | --- |
-| Media browser | ❓ Unverified | Combined media list, previous/next, delete and return to message. |
+| Media browser | 🟡 Partial | `cacc5ce` passes a real partial-photo placeholder upgrade, two-photo previous/next, Go To Message, and the Photos grid. Rejected viewer deletion preserves the photo; a new confirmed deletion removes only that fixture from history/grid and preserves unrelated data. Combined media types and final-head replay remain unverified. |
 | Chat management | ❓ Unverified | Clear history rejection/success and date-range deletion have targeted GUI checks; bulk read state and last-read positioning still need coverage. |
-| Member profiles | ❓ Unverified | Opening a profile from a group member list. |
+| Member profiles | 🟡 Partial | Native `2908654` passes modal group information, the correct member list, inspection without mutation, and explicit Message to the correct existing chat with its original draft. Native `a19d9e2` passes sidebar open/reopen, group switch and narrow/wide resize restore without the former metadata loop. Broader member-management behavior remains partial. |
 | Attachments | 🟡 Partial | Ordinary single-file recovery, prepared/resized/rotated image delivery, uncompressed bytes, private staging cleanup and generated archives have revision-specific checks below. Prepared-image restart/retry passes with an older quote after the Core lookup fix. Multiple-file/video paths and broader prepared-media recovery remain open. |
 | Notifications | 🟡 Partial | `94ad667` passes native/package checks and 211 focused checks. Disposable replay verifies inactive-profile delivery/counts, collapsed and sidebar badges, mute persistence/suppression, and rejection of stale notification actions across switches/restarts; valid activation/read actions work. A new Core mute read fixes the reproduced post-expiry notification loss; rejected reads preserve messages without popups, and late reads cannot notify another profile. Native/package validation at `a6d878d` passes 226 checks. Disposable inline-reply recovery covers rejected sends, lost send/storage acknowledgements, restart, exact text recovery and composer preservation against official Desktop 2.62.0. `148156d` fixes the reproduced 15 ms popup loss during dialog refresh and passes native/package checks plus fault-free inline delivery, notification cleanup, draft preservation and muted suppression. `d428416` passes native/package checks, rendered notification/settings-search cleanup and direct-to-Core inline delivery, restart and draft-preservation replay. Unsupported notification defaults and subscription search entries are removed. Idle expiry, inactive-profile popups and desktop-shell rendering remain open. |
 | Accessibility and localization | ❓ Unverified | Screen readers, keyboard navigation and RTL layouts. |
-| Appearance | 🟡 Partial | General wallpaper: local gallery and custom images in Settings → Chat Settings. Custom-image persistence checked across chats, profiles and restart; per-chat wallpaper is unavailable and removed from the chat menu. Full day/night combinations remain unverified. |
+| Appearance | 🟡 Partial | General wallpaper: local gallery and custom images in Settings → Chat Settings. Custom-image persistence checked across chats, profiles and restart; per-chat wallpaper is unavailable and removed from the chat menu. `14878ed` opens the local theme editor and exports a valid palette/background archive through its primary Export action. Theme import and full day/night combinations remain unverified. |
 | External integration | ❓ Unverified | Camera capture and sharing into/out of the application. |
-| Email presentation | ❓ Unverified | Mailing lists, sender identity and HTML mail display/search. |
+| Email presentation | 🟡 Partial | Native `bd1ea60` opens full Core HTML explicitly, preserves selection/copy, scrolls long text, confirms external links and cancels pending Loading without reopening. Remote resources issued zero requests in the checked listener replay. Per-message `~` author/quote presentation and differing-author grouping are implemented in newer source; native render/click/quote replay remains pending. Contact identity stays separate. Core search intentionally excludes HTML-only/truncated remainder. Important subjects already occur in `text`; raw subject is viewer title only. |
 | Message content | ❓ Unverified | Stickers, copying links and complete media rendering. |
-| Trust information | ❓ Unverified | Core-backed verification details and “verified by” presentation. |
+| Trust information | 🟡 Partial | Core contact/chat encryption information and key-contact flags are implemented in source, without inventing Telegram verified badges. Typed lookup and mutation checks pass; final native fingerprint/name/delete replay remains pending. |
 | Group duplication | ❓ Unverified | Cloning a group with correct Core membership semantics. |
 
 ## Client integrity verification (2026-10-24)

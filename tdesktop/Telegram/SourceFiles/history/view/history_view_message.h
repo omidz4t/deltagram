@@ -369,6 +369,13 @@ private:
 		Painter &p,
 		QRect &g,
 		const PaintContext &context) const;
+	void paintFullMessageFooter(
+		Painter &p,
+		QRect &g,
+		const PaintContext &context) const;
+	[[nodiscard]] bool hasFullMessageFooter() const;
+	[[nodiscard]] int fullMessageFooterHeight() const;
+	void skipFullMessageFooter(QRect &g) const;
 	void paintFromName(
 		Painter &p,
 		QRect &trect,
@@ -413,6 +420,11 @@ private:
 		QPoint point,
 		QRect &g,
 		not_null<TextState*> outResult) const;
+	bool getStateFullMessageFooter(
+		QPoint point,
+		QRect &g,
+		not_null<TextState*> outResult) const;
+	[[nodiscard]] ClickHandlerPtr fullMessageLink() const;
 	bool getStateFromName(
 		QPoint point,
 		QRect &trect,
@@ -534,9 +546,13 @@ private:
 	mutable std::unique_ptr<LinkRipple> _linkRipple;
 	mutable QPoint _linkRippleLastPoint;
 	mutable std::unique_ptr<CommentsButton> _comments;
+	mutable ClickHandlerPtr _fullMessageLink;
+	mutable int _fullMessageGeneration = 0;
 	mutable std::unique_ptr<TranscribeButton> _summarize;
 
 	mutable Ui::Text::String _fromName;
+	mutable QString _fromNameOverride;
+	mutable uint32 _fromNameAuthorRevision = 0;
 	mutable std::unique_ptr<FromNameStatus> _fromNameStatus;
 	mutable std::unique_ptr<Ui::RoundCheckbox> _selectionRoundCheckbox;
 	mutable uint32 _fromNameVersion : 16 = 0;

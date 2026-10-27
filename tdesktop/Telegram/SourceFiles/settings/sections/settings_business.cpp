@@ -7,7 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_business.h"
 
-#include "delta/delta_bridge.h"
+#include "delta/account_backend.h"
 
 #include "api/api_chat_links.h"
 #include "api/api_premium.h"
@@ -964,7 +964,9 @@ const auto kMeta = BuildHelper({
 	.parentId = MainId(),
 	.title = &tr::lng_business_title,
 	.icon = &st::menuIconShop,
-	.available = [] { return !Delta::Active(); },
+	.available = [](not_null<::Main::Session*> session) {
+		return !Delta::UsesCoreBackend(session);
+	},
 }, [](SectionBuilder &builder) {
 	BuildBusinessSectionContent(builder, nullptr);
 });

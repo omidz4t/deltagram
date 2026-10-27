@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_contact_status.h"
 
+#include "delta/account_backend.h"
+#include "delta/delta_bridge.h"
+#include "delta/delta_boxes.h"
 #include "lang/lang_keys.h"
 #include "ui/controls/userpic_button.h"
 #include "ui/widgets/menu/menu_add_action_callback_factory.h"
@@ -899,6 +902,20 @@ void ContactStatus::setupAddHandler(not_null<UserData*> user) {
 void ContactStatus::setupBlockHandler(not_null<UserData*> user) {
 	_inner->blockClicks(
 	) | rpl::on_next([=] {
+		if (Delta::UsesCoreBackend(&user->session())) {
+			if (!Delta::OwnsSession(&user->session())) {
+				return;
+			}
+			const auto id = peerToUser(user->id).bare;
+			if (!Delta::CanManageContactBlocking(id)) {
+				return;
+			}
+			Delta::ManageContactBlocking(_controller, id);
+			return;
+		}
+		if (!Delta::UsesTelegramBackend(&user->session())) {
+			return;
+		}
 		_controller->window().show(Box(
 			Window::PeerMenuBlockUserBox,
 			&_controller->window(),

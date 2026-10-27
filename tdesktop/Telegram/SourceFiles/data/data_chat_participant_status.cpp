@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_chat_participant_status.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "base/unixtime.h"
@@ -236,8 +237,12 @@ bool CanSendAnyOf(
 		not_null<const PeerData*> peer,
 		ChatRestrictions rights,
 		bool forbidInForums) {
-	if (Delta::Active() && peer->isUser()
-		&& Delta::IsReadOnlyChannel(peerToUser(peer->id).bare)) return false;
+	if (Delta::UsesCoreBackend(&peer->session())
+		&& peer->isUser()
+		&& Delta::OwnsSession(&peer->session())
+		&& Delta::IsReadOnlyChannel(peerToUser(peer->id).bare)) {
+		return false;
+	}
 	if (peer->session().frozen()
 		&& !peer->isFreezeAppealChat()) {
 		return false;

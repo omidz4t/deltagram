@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_top_bar_widget.h"
 
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "delta/delta_boxes.h"
 
@@ -468,7 +469,11 @@ void TopBarWidget::showCallMenu() {
 }
 
 void TopBarWidget::toggleInfoSection() {
-	if (const auto peer = _activeChat.key.peer(); peer && peer->isUser()
+	const auto owns = Delta::UsesCoreBackend(&_controller->session())
+		&& Delta::OwnsSession(&_controller->session());
+	if (const auto peer = _activeChat.key.peer(); owns
+		&& peer
+		&& peer->isUser()
 		&& Delta::IsChannel(peerToUser(peer->id).bare)) {
 		Delta::ShowChannelInfo(_controller, int(peerToUser(peer->id).bare), Window::SectionShow());
 		return;
@@ -483,19 +488,40 @@ void TopBarWidget::toggleInfoSection() {
 			Core::App().settings().setThirdSectionInfoEnabled(true);
 			Core::App().saveSettingsDelayed();
 			if (isThreeColumn) {
-				_controller->showSection(
-					(_activeChat.key.topic()
-						? std::make_shared<Info::Memento>(
-							_activeChat.key.topic())
-						: (_activeChat.key.sublist()
-							&& _activeChat.key.sublist()->parentChat())
-						? std::make_shared<Info::Memento>(
-							_activeChat.key.sublist())
-						: Info::Memento::Default(_activeChat.key.peer())),
-					Window::SectionShow().withThirdColumn());
+				std::shared_ptr<Window::SectionMemento> memento;
+				if (const auto topic = _activeChat.key.topic()) {
+					memento = std::make_shared<Info::Memento>(topic);
+				} else if (const auto sublist = _activeChat.key.sublist()
+					; sublist && sublist->parentChat()) {
+					memento = std::make_shared<Info::Memento>(sublist);
+				} else if (const auto peer = _activeChat.key.peer()) {
+					if (owns) {
+						memento = Delta::GroupInfoMementoForPeer(peer);
+						if (!memento && Delta::UnresolvedCoreGroupPeer(peer)) {
+							_controller->showPeerInfo(
+								peer,
+								Window::SectionShow().withThirdColumn());
+							return;
+						}
+					}
+					if (!memento) {
+						memento = Info::Memento::Default(peer);
+					}
+				}
+				if (memento) {
+					_controller->showSection(
+						std::move(memento),
+						Window::SectionShow().withThirdColumn());
+				}
 			} else {
 				_controller->resizeForThirdSection();
 				_controller->updateColumnLayout();
+				if (const auto peer = _activeChat.key.peer()
+					; owns && peer && Delta::UnresolvedCoreGroupPeer(peer)) {
+					_controller->showPeerInfo(
+						peer,
+						Window::SectionShow().withThirdColumn());
+				}
 			}
 		} else {
 			infoClicked();
@@ -1421,13 +1447,9 @@ void TopBarWidget::updateControlsVisibility() {
 		&& _controller->canShowThirdSection()
 		&& !_chooseForReportReason);
 	const auto callsEnabled = [&] {
-		if (Delta::Active()) return false;
+		if (Delta::UsesCoreBackend(&_controller->session())) return false;
 		if (const auto peer = _activeChat.key.peer()) {
 			if (const auto user = peer->asUser()) {
-				if (Delta::IsSystemUser(int(peerToUser(user->id).bare))
-					|| Delta::IsChannel(peerToUser(user->id).bare)) {
-					return false;
-				}
 				return !user->isSelf()
 					&& !user->isBot()
 					&& !user->isInaccessible()
@@ -1440,7 +1462,7 @@ void TopBarWidget::updateControlsVisibility() {
 		&& callsEnabled
 		&& !_chooseForReportReason);
 	const auto groupCallsEnabled = [&] {
-		if (Delta::Active()) return false;
+		if (Delta::UsesCoreBackend(&_controller->session())) return false;
 		if (const auto peer = _activeChat.key.peer()) {
 			if (!peer->isUser() && peer->canManageGroupCall()) {
 				return true;

@@ -156,6 +156,10 @@ Manager::Manager(not_null<Main::Domain*> domain)
 	}) | rpl::on_next_done([=](Main::Account *account) {
 		*mtpLifetime = account->mtpMainSessionValue(
 		) | rpl::on_next([=](not_null<MTP::Instance*> instance) {
+			if (instance->backend() != Main::AccountBackend::Telegram) {
+				_api.reset();
+				return;
+			}
 			_api.emplace(instance);
 			request();
 		});

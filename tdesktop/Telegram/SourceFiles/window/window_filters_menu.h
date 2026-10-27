@@ -18,6 +18,10 @@ namespace Data {
 struct ChatFilterTitle;
 } // namespace Data
 
+namespace Main {
+class Session;
+} // namespace Main
+
 namespace Ui {
 class VerticalLayout;
 class VerticalLayoutReorder;
@@ -34,7 +38,8 @@ class SessionController;
 class FolderFavoriteButton;
 
 inline constexpr auto kOptionProfilesSidebar = "deltagram-profiles-sidebar";
-[[nodiscard]] bool ProfilesSidebarEnabled();
+[[nodiscard]] bool ProfilesSidebarEnabled(
+	not_null<Main::Session*> session);
 
 class FiltersMenu final {
 public:

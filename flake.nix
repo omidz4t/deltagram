@@ -7,6 +7,18 @@
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
+      # Match the v7.2.10 donor's prepare.py pin rather than silently using
+      # the newer tdlib API from nixpkgs. Only this external dependency is
+      # built in Nix; application sources stay in the incremental build.
+      telegramTde2e = (pkgs.tdlib.override { tde2eOnly = true; }).overrideAttrs (_: {
+        version = "1.8.49";
+        src = pkgs.fetchFromGitHub {
+          owner = "tdlib";
+          repo = "td";
+          rev = "51743dfd01dff6179e2d8f7095729caa4e2222e9";
+          hash = "sha256-duD8a/fppkmaKrvkHnbSxRnCLS60aNVcgaYyCoHzKgE=";
+        };
+      });
       # Fetched from cache.nixos.org. App and core sources are not inputs,
       # so editing them does not rebuild Qt, compilers, or the other libs.
       depList = with pkgs; [
@@ -39,6 +51,7 @@
         sysprof
         sysprof.dev
         tlottie
+        telegramTde2e
         (pkgs.lib.findFirst (p: (p.pname or "") == "tg_owt")
           (throw "Telegram dependency set has no tg_owt")
           pkgs.telegram-desktop.unwrapped.buildInputs)
@@ -86,6 +99,7 @@
     in
     {
       packages.${system} = {
+        tde2e = telegramTde2e;
         deps = pkgs.buildEnv {
           name = "delta-tel-deps";
           paths = depList;

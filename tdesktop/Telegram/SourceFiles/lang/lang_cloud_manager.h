@@ -9,6 +9,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "mtproto/sender.h"
 #include "base/weak_ptr.h"
+#include "lang/lang_backend.h"
+#include "main/account_backend.h"
+
+namespace Main {
+class Account;
+} // namespace Main
 
 namespace MTP {
 class Instance;
@@ -28,7 +34,7 @@ public:
 
 	using Languages = std::vector<Language>;
 
-	void requestLanguageList();
+	void requestLanguageList(Main::Account *initiating = nullptr);
 	const Languages &languageList() const {
 		return _languages;
 	}
@@ -39,10 +45,16 @@ public:
 	void setCurrentVersions(int version, int baseVersion);
 
 	void resetToDefault();
-	void switchWithWarning(const QString &id);
-	void switchToLanguage(const QString &id);
-	void switchToLanguage(const Language &data);
-	void switchToTestLanguage();
+	void switchWithWarning(
+		const QString &id,
+		Main::Account *initiating = nullptr);
+	void switchToLanguage(
+		const QString &id,
+		Main::Account *initiating = nullptr);
+	void switchToLanguage(
+		const Language &data,
+		Main::Account *initiating = nullptr);
+	void switchToTestLanguage(Main::Account *initiating = nullptr);
 	void setSuggestedLanguage(const QString &langCode);
 	QString suggestedLanguage() const {
 		return _suggestedLanguage;
@@ -59,7 +71,7 @@ private:
 	Pack packTypeFromId(const QString &id) const;
 	void requestLangPackDifference(Pack pack);
 	bool canApplyWithoutRestart(const QString &id) const;
-	void performSwitchToCustom();
+	void performSwitchToCustom(Main::Account *initiating);
 	void performSwitch(const Language &data);
 	void performSwitchAndAddToRecent(const Language &data);
 	void performSwitchAndRestart(const Language &data);
@@ -68,7 +80,10 @@ private:
 	bool showOfferSwitchBox();
 	Language findOfferedLanguage() const;
 
-	void requestLanguageAndSwitch(const QString &id, bool warning);
+	void requestLanguageAndSwitch(
+		const QString &id,
+		bool warning,
+		Main::Account *initiating);
 	void applyLangPackData(Pack pack, const MTPDlangPackDifference &data);
 	void switchLangPackId(const Language &data);
 	void changeIdAndReInitConnection(const Language &data);
@@ -76,8 +91,20 @@ private:
 	void sendSwitchingToLanguageRequest();
 	void resendPendingValueRequests();
 	void resendRequests();
+	void refreshBackingAccount();
+	void bindBackingAccount(Main::Account *account);
+	void markInFlightForResend();
+	void failPendingValueRequests();
+	[[nodiscard]] Main::AccountBackend backingBackend() const;
+	[[nodiscard]] bool allowsCloudRequest(
+		Main::Account *initiating,
+		LanguageRequestOrigin origin) const;
 
 	std::optional<MTP::Sender> _api;
+	base::weak_ptr<Main::Account> _backingAccount;
+	base::weak_ptr<Main::Account> _activeAccount;
+	rpl::lifetime _backingLifetime;
+	int _backingGeneration = 0;
 	Instance &_langpack;
 	Languages _languages;
 	mtpRequestId _langPackRequestId = 0;
@@ -93,6 +120,7 @@ private:
 	mtpRequestId _switchingToLanguageRequest = 0;
 	QString _switchingToLanguageId;
 	bool _switchingToLanguageWarning = false;
+	base::weak_ptr<Main::Account> _switchingToLanguageInitiating;
 
 	mtpRequestId _getKeysForSwitchRequestId = 0;
 

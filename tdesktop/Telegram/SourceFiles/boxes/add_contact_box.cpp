@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "boxes/add_contact_box.h"
 
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "delta/delta_boxes.h"
 #include <QtCore/QTemporaryFile>
@@ -605,7 +606,8 @@ void GroupInfoBox::prepare() {
 		[=] { submit(); });
 	addButton(tr::lng_cancel(), [this] { closeBox(); });
 
-	if (_type == Type::Group && !Delta::Active()) {
+	if (_type == Type::Group
+		&& Delta::UsesTelegramBackend(&_navigation->session())) {
 		_navigation->session().api().selfDestruct().reload();
 
 		const auto top = addTopButton(st::infoTopBarMenu);
@@ -775,7 +777,7 @@ void GroupInfoBox::submit() {
 		_title->showError();
 		return;
 	}
-	if (Delta::Active() && _type == Type::Group) {
+	if (Delta::OwnsSession(&_navigation->session()) && _type == Type::Group) {
 		const auto weak = base::make_weak(this);
 		Delta::ChooseGroupMembers(&_navigation->session(), [=](std::vector<int> ids, Fn<void(QString)> finished) {
 			if (!weak) { finished(u"Group window closed."_q); return; }
@@ -802,6 +804,8 @@ void GroupInfoBox::submit() {
 	}
 	if (_type != Type::Group) {
 		createChannel(title, description);
+	} else if (!Delta::UsesTelegramBackend(&_navigation->session())) {
+		return;
 	} else if (_canAddBot) {
 		createGroup(nullptr, title, { not_null<PeerData*>(_canAddBot) });
 	} else {
@@ -831,7 +835,7 @@ void GroupInfoBox::createChannel(
 		const QString &title,
 		const QString &description) {
 	Expects(!_creationRequestId);
-	if (Delta::Active() && _type == Type::Channel) {
+	if (Delta::OwnsSession(&_navigation->session()) && _type == Type::Channel) {
 		const auto image = _photo->takeResultImage();
 		const auto file = std::make_shared<QTemporaryFile>(QDir::tempPath() + u"/delta-channel-XXXXXX.jpg"_q);
 		if (!image.isNull() && (!file->open() || !image.save(file.get(), "JPG") || !file->flush())) {
@@ -855,6 +859,8 @@ void GroupInfoBox::createChannel(
 				closeBox();
 				QTimer::singleShot(0, proceed);
 			});
+		return;
+	} else if (!Delta::UsesTelegramBackend(&_navigation->session())) {
 		return;
 	}
 
@@ -1688,7 +1694,7 @@ void EditNameBox::save() {
 		last = QString();
 	}
 	_sentName = first;
-	if (Delta::Active()) {
+	if (Delta::OwnsSession(&_user->session())) {
 		const auto name = last.isEmpty() ? first : (first + u" "_q + last);
 		const auto user = _user;
 		_requestId = 1;
@@ -1702,6 +1708,8 @@ void EditNameBox::save() {
 			user->setName(first, last, QString(), user->username());
 			closeBox();
 		}));
+		return;
+	} else if (!Delta::UsesTelegramBackend(&_user->session())) {
 		return;
 	}
 	auto flags = MTPaccount_UpdateProfile::Flag::f_first_name

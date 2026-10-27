@@ -567,6 +567,13 @@ QPoint Controller::getPointForCallPanelCenter() const {
 }
 
 void Controller::showLogoutConfirmation() {
+	if (Core::App().passcodeLocked()) {
+		const auto recovery = Core::App().domain().forgottenPasscodeRecovery();
+		if (recovery != Delta::PasscodeRecovery::TelegramLogout) {
+			show(Ui::MakeInformBox(Main::PasscodeRecoveryWarning(recovery)));
+			return;
+		}
+	}
 	const auto account = Core::App().passcodeLocked()
 		? nullptr
 		: sessionController()

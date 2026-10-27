@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 """Stage the current GUI/Core release and its Nix runtime for single-file packaging."""
+import argparse
+import importlib.util
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = Path(os.environ.get("DELTA_TEL_DATA", ROOT / "data"))
 RELEASE = Path(os.environ.get("RELEASE_DIR", DATA / "tdesktop-release"))
 TARGET = Path(os.environ.get("CARGO_TARGET_DIR", DATA / "cargo-target"))
 DEST = DATA / "release-stage"
+_HELPER = importlib.util.spec_from_file_location(
+    "build_provenance", Path(__file__).with_name("build-provenance.py"))
+PROVENANCE = importlib.util.module_from_spec(_HELPER)
+_HELPER.loader.exec_module(PROVENANCE)
 
 
 def output(*args):
@@ -34,15 +40,19 @@ def dependencies(binary, destination):
     listing = output("ldd", str(binary))
     if "not found" in listing:
         raise RuntimeError(f"Unresolved runtime dependency of {binary}:\n{listing}")
-    for library in re.findall(r"(?:=>\s+|^\s*)(/\S+)\s+\(", listing, re.M):
+    for library in re.findall(r"(?:=>\s+|^\s*)(/\S+)\s+\(", listing, re.MULTILINE):
         path = Path(library)
         copy(path, destination / path.name)
 
 
-def stage():
+def stage(allow_test_api=False):
+    # Bind packaging to the GUI that was actually stripped in this mode. A
+    # CMake cache flipped to OFF is not evidence that the binary is production.
+    PROVENANCE.verify_stage_release(RELEASE, allow_test_api=allow_test_api)
     gui = RELEASE / "bin/deltagram.stripped"
     rpc = TARGET / "debug/deltachat-rpc-server"
-    for required in (gui, rpc, RELEASE / "bin/deltagram.version"):
+    sidecar = RELEASE / "bin" / PROVENANCE.SIDECAR_NAME
+    for required in (gui, rpc, RELEASE / "bin/deltagram.version", sidecar):
         if not required.is_file():
             raise SystemExit(f"Missing release input: {required}. Build the release first.")
     # This directory is disposable packaging output, never an incremental tree.
@@ -53,6 +63,7 @@ def stage():
     lib.mkdir(parents=True)
     copy(gui, DEST / "Telegram")
     copy(RELEASE / "bin/deltagram.version", DEST / "deltagram.version")
+    copy(sidecar, DEST / PROVENANCE.SIDECAR_NAME)
     dependencies(gui, lib)
     loader = Path(output("patchelf", "--print-interpreter", str(gui)))
     copy(loader, lib / "ld-linux-x86-64.so.2.real")
@@ -99,6 +110,7 @@ def stage():
     copy(ROOT / "tdesktop/LEGAL", DEST / "licenses/Telegram-LEGAL")
     copy(ROOT / "context/core/LICENSE", DEST / "licenses/Core-LICENSE")
     copy(ROOT / "licenses/ZXing-LICENSE", DEST / "licenses/ZXing-LICENSE")
+    copy(ROOT / "licenses/TDLib-LICENSE", DEST / "licenses/TDLib-LICENSE")
     for binary in DEST.rglob("*"):
         if not binary.is_file():
             continue
@@ -119,4 +131,11 @@ def stage():
 
 
 if __name__ == "__main__":
-    stage()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--allow-test-api",
+        action="store_true",
+        help="Stage a test-API validation package. Publish paths must not set this.",
+    )
+    args = parser.parse_args()
+    stage(allow_test_api=args.allow_test_api)

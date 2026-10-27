@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "window/notifications_manager.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "base/options.h"
@@ -1457,8 +1458,8 @@ void Manager::notificationReplied(
 		return;
 	}
 	const auto history = session->data().history(id.contextId.peerId);
-	if (Delta::Active() && !reply.text.trimmed().isEmpty()) {
-		if (history->peer->isUser()) {
+	if (Delta::UsesCoreBackend(session) && !reply.text.trimmed().isEmpty()) {
+		if (history->peer->isUser() && Delta::OwnsSession(session)) {
 			Delta::SendNotificationReply(peerToUser(history->peer->id).bare, reply.text);
 			history->owner().histories().readInbox(history);
 			system()->clearFromHistory(history);

@@ -53,6 +53,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_message_reactions.h"
 #include "inline_bots/bot_attach_web_view.h"
 #include "chat_helpers/emoji_interactions.h"
+#include "delta/account_backend.h"
 #include "lang/lang_cloud_manager.h"
 #include "history/history.h"
 #include "history/history_item.h"
@@ -2835,11 +2836,17 @@ void Updates::feedUpdate(const MTPUpdate &update) {
 
 	////// Cloud langpacks
 	case mtpc_updateLangPack: {
+		if (!Delta::UsesTelegramBackend(&session())) {
+			break;
+		}
 		const auto &data = update.c_updateLangPack();
 		Lang::CurrentCloudManager().applyLangPackDifference(data.vdifference());
 	} break;
 
 	case mtpc_updateLangPackTooLong: {
+		if (!Delta::UsesTelegramBackend(&session())) {
+			break;
+		}
 		const auto &data = update.c_updateLangPackTooLong();
 		const auto code = qs(data.vlang_code());
 		if (!code.isEmpty()) {

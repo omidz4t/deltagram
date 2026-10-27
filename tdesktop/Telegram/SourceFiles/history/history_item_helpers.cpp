@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history_item_helpers.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "api/api_reactions_notify_settings.h"
@@ -594,7 +595,7 @@ void RequestDependentMessageStory(
 
 MessageFlags NewMessageFlags(not_null<PeerData*> peer) {
 	return MessageFlag::BeingSent
-		| ((peer->isSelf() && !Delta::Active())
+		| ((peer->isSelf() && !Delta::UsesCoreBackend(&peer->session()))
 			? MessageFlag()
 			: MessageFlag::Outgoing);
 }

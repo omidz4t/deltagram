@@ -1,8 +1,14 @@
 # Delta Tel
 
-Telegram Desktop (`tdesktop/`) is the Qt donor. Chatmail Core (`context/core/`) is the
-backend. The client must not speak MTProto and must not reimplement IMAP,
-SMTP, or OpenPGP.
+Telegram Desktop (`tdesktop/`) provides the Qt donor and the Telegram backend.
+Chatmail Core (`context/core/`) is the backend for Core profiles. Real Telegram
+accounts are also required, as explicitly clarified by the user on 2026-10-26.
+
+Core accounts must use Core exclusively and must not speak MTProto or reimplement
+IMAP, SMTP, or OpenPGP. Telegram accounts must retain the donor's authentication,
+MTProto transport and account behavior. Backend identity and routing must be
+explicit per account/session; a global bridge or active-window flag must not
+route one backend's requests or data through the other.
 
 Read these before changing messaging behavior:
 
@@ -13,8 +19,8 @@ Read these before changing messaging behavior:
 
 `tdesktop/AGENTS.md` still holds the donor repo's style, rpl, and platform
 rules. Where it tells you how to send an `MTP*` request, that applies only to
-code that has not been cut over. New send and list paths use the generic
-backend in the MVP plan.
+Telegram paths. New Core send and list paths use the generic backend in the
+MVP plan; those hooks must not intercept genuine Telegram accounts.
 
 Build the toolchain with `./nix/develop.sh`. Do not put the application
 sources inside a Nix derivation; Ninja and ccache under

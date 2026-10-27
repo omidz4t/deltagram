@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "boxes/background_box.h"
 
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "lang/lang_keys.h"
@@ -434,7 +435,7 @@ BackgroundBox::Inner::Inner(
 }
 
 void BackgroundBox::Inner::requestPapers() {
-	if (Delta::Active()) {
+	if (!Delta::UsesTelegramBackend(_session)) {
 		updatePapers();
 		return;
 	}
@@ -537,7 +538,7 @@ void BackgroundBox::Inner::sortPapers() {
 }
 
 void BackgroundBox::Inner::updatePapers() {
-	if (Delta::Active() && !_forPeer) {
+	if (!Delta::UsesTelegramBackend(_session)) {
 		_over = _overDown = Selection();
 		_papers.clear();
 		auto current = Window::Theme::Background()->paper();

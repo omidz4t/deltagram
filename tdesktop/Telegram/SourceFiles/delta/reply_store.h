@@ -30,6 +30,8 @@ public:
 	ReplyStore(Call call, std::function<void()> changed);
 	ReplyStore(const ReplyStore&) = delete;
 	ReplyStore &operator=(const ReplyStore&) = delete;
+	using Persisted = std::function<void(std::optional<SavedReply>, QString)>;
+	void persist(int account, int chat, QString text, Persisted done);
 	void submit(int account, int chat, QString text, Done done);
 	void load(int account, Listed done);
 	void send(int account, SavedReply reviewed, Done done);

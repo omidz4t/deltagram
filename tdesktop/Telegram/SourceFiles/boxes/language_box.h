@@ -18,6 +18,10 @@ struct ScrollToRequest;
 class VerticalLayout;
 } // namespace Ui
 
+namespace Main {
+class Account;
+} // namespace Main
+
 namespace Window {
 class SessionController;
 } // namespace Window
@@ -28,11 +32,20 @@ public:
 		QWidget*,
 		Window::SessionController *controller,
 		const QString &highlightId = QString());
+	LanguageBox(
+		QWidget*,
+		Window::SessionController *controller,
+		Main::Account *account,
+		const QString &highlightId = QString());
 
 	void setInnerFocus() override;
 
 	[[nodiscard]] static base::binary_guard Show(
 		Window::SessionController *controller,
+		const QString &highlightId = QString());
+	[[nodiscard]] static base::binary_guard Show(
+		Window::SessionController *controller,
+		Main::Account *account,
 		const QString &highlightId = QString());
 
 protected:
@@ -46,6 +59,7 @@ private:
 	[[nodiscard]] int rowsInPage() const;
 
 	Window::SessionController *_controller = nullptr;
+	Main::Account *_account = nullptr;
 	QString _highlightId;
 	QPointer<Ui::RpWidget> _showButtonToggle;
 	QPointer<Ui::RpWidget> _translateChatsToggle;

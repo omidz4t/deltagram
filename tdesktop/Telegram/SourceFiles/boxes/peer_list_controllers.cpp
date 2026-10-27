@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "boxes/peer_list_controllers.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "api/api_chat_participants.h"
@@ -434,9 +435,9 @@ ChatsListBoxController::Row::Row(
 ChatsListBoxController::ChatsListBoxController(
 	not_null<Main::Session*> session)
 : ChatsListBoxController(
-	Delta::Active()
-		? nullptr
-		: std::make_unique<PeerListGlobalSearchController>(session)) {
+	Delta::UsesTelegramBackend(session)
+		? std::make_unique<PeerListGlobalSearchController>(session)
+		: nullptr) {
 }
 
 ChatsListBoxController::ChatsListBoxController(

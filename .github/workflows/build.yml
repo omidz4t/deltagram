@@ -88,10 +88,10 @@ jobs:
         uses: actions/cache/restore@3edfce9056124e459a23f683a21433670d47daca
         with:
           path: data/ccache
-          key: compile-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/build-release.sh') }}-${{ github.sha }}
+          key: compile-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/build-release.sh', 'nix/telegram-api-config.sh') }}-${{ github.sha }}
           restore-keys: |
-            compile-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/build-release.sh') }}-
-            compile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/context-sources.sh', 'nix/build-release.sh', 'nix/build-rpc.sh') }}-
+            compile-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/build-release.sh', 'nix/telegram-api-config.sh') }}-
+            compile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/context-sources.sh', 'nix/build-release.sh', 'nix/build-rpc.sh', 'nix/telegram-api-config.sh') }}-
             compile-v2-${{ runner.os }}-${{ runner.arch }}-
       - name: Restore pinned Core and Rust cache
         id: rust-cache
@@ -104,15 +104,36 @@ jobs:
             data/cargo-target
           key: rust-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/context-sources.sh', 'nix/build-rpc.sh') }}
           restore-keys: |
-            compile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/context-sources.sh', 'nix/build-release.sh', 'nix/build-rpc.sh') }}-
+            compile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/context-sources.sh', 'nix/build-release.sh', 'nix/build-rpc.sh', 'nix/telegram-api-config.sh') }}-
       - name: Initialize Core and dependency shell
         if: steps.build.outputs.required == 'true'
         run: |
           bash nix/init-context.sh
           ./nix/develop.sh --command true
       - name: Compile and smoke-test
-        if: steps.build.outputs.required == 'true'
+        if: steps.build.outputs.required == 'true' && steps.plan.outputs.publish != 'true'
+        env:
+          DELTA_TEL_API_MODE: test
         run: |
+          ./nix/develop.sh --command bash -euo pipefail -c '
+            ccache --zero-stats
+            bash nix/build-rpc.sh
+            bash nix/build-release.sh
+            bash nix/test-rpc.sh
+            ccache --show-stats
+          '
+      - name: Compile production release
+        if: steps.build.outputs.required == 'true' && steps.plan.outputs.publish == 'true'
+        env:
+          DELTA_TEL_API_MODE: production
+          TDESKTOP_API_ID: ${{ secrets.TDESKTOP_API_ID }}
+          TDESKTOP_API_HASH: ${{ secrets.TDESKTOP_API_HASH }}
+        run: |
+          set +x
+          if [[ -z "${TDESKTOP_API_ID:-}" || -z "${TDESKTOP_API_HASH:-}" ]]; then
+            echo 'production publish requires repository secrets TDESKTOP_API_ID and TDESKTOP_API_HASH' >&2
+            exit 1
+          fi
           ./nix/develop.sh --command bash -euo pipefail -c '
             ccache --zero-stats
             bash nix/build-rpc.sh
@@ -126,21 +147,16 @@ jobs:
         with:
           path: data/ccache
           key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
-      - name: Stage manual validation binaries
-        if: github.event_name == 'workflow_dispatch' && steps.build.outputs.required == 'true' && steps.plan.outputs.publish != 'true'
-        run: |
-          ./nix/develop.sh --command bash -euo pipefail -c '
-            mkdir -p data/validation-artifacts
-            cp data/tdesktop-release/bin/deltagram.stripped data/validation-artifacts/
-            cp data/tdesktop-release/bin/deltagram.version data/validation-artifacts/
-            nm --numeric-sort --demangle data/tdesktop-release/bin/Telegram > data/validation-artifacts/deltagram.symbols
-            strip --strip-all -o data/validation-artifacts/deltachat-rpc-server data/cargo-target/debug/deltachat-rpc-server
-            cp data/delta-shell/Testing/Temporary/LastTest.log data/validation-artifacts/integrity-tests.log
-            cd data/validation-artifacts
-            sha256sum deltagram.stripped deltachat-rpc-server deltagram.symbols > SHA256SUMS
-          '
-      - name: Upload manual validation binaries
-        if: github.event_name == 'workflow_dispatch' && steps.build.outputs.required == 'true' && steps.plan.outputs.publish != 'true'
+      - name: Stage validation binaries
+        if: (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && steps.build.outputs.required == 'true' && steps.plan.outputs.publish != 'true'
+        env:
+          VALIDATION_INCLUDE_SYMBOLS: ${{ github.event_name == 'workflow_dispatch' }}
+          VALIDATION_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          VALIDATION_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          VALIDATION_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: ./nix/develop.sh --command python3 nix/stage-validation-artifacts.py
+      - name: Upload validation binaries
+        if: (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && steps.build.outputs.required == 'true' && steps.plan.outputs.publish != 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: linux-nix-validation-${{ github.sha }}
@@ -159,7 +175,7 @@ jobs:
       - name: Verify manual validation packages
         if: github.event_name == 'workflow_dispatch' && inputs.verify_packages && steps.plan.outputs.publish != 'true'
         run: |
-          ./nix/develop.sh --command python3 nix/stage-release.py
+          ./nix/develop.sh --command python3 nix/stage-release.py --allow-test-api
           bash docker/build.sh
           bash docker/verify.sh
           DELTA_TEST_IMAGE=ubuntu:22.04 bash docker/verify.sh
@@ -175,6 +191,8 @@ jobs:
           retention-days: 3
       - name: Package release assets and matching source
         if: steps.plan.outputs.publish == 'true'
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
         run: |
           ./nix/develop.sh --command python3 nix/stage-release.py
           bash docker/build.sh
@@ -185,8 +203,13 @@ jobs:
           mkdir -p data/release-upload
           cp data/tdesktop-release/bin/deltagram.stripped data/release-upload/
           cp data/tdesktop-release/bin/deltagram.version data/release-upload/
+          cp data/tdesktop-release/bin/deltagram.build-provenance.json data/release-upload/
           cp data/release-plan/notes.md data/release-upload/RELEASE-NOTES.md
           find dist -type f -exec cp '{}' data/release-upload/ \;
+          python3 nix/build-provenance.py verify-publish \
+            --assets-dir data/release-upload \
+            --source-sha "$SOURCE_COMMIT" \
+            --require-source-sha
           cd data/release-upload
           sha256sum deltagram.stripped > deltagram.stripped.sha256
       - name: Upload verified release assets
@@ -209,10 +232,21 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: release-${{ needs.linux.outputs.version }}
           path: release-assets
+      - name: Verify production provenance
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          python3 nix/build-provenance.py verify-publish \
+            --assets-dir release-assets \
+            --source-sha "$SOURCE_COMMIT" \
+            --require-source-sha
       - name: Publish experimental release
         env:
           GH_TOKEN: ${{ github.token }}

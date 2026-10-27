@@ -255,6 +255,30 @@ public:
 	void refreshMainView();
 	void setLocalDocument(not_null<DocumentData*> document, const QString &caption);
 	void setAnonymousForwarded(bool forwarded);
+	void setBackendAuthorPresentation(
+		QString override,
+		bool originalMsg,
+		bool info,
+		QString quoteDisplayName,
+		QString quoteOverride);
+	[[nodiscard]] QString backendAuthorOverride() const {
+		return _backendAuthor ? _backendAuthor->override : QString();
+	}
+	[[nodiscard]] uint32 backendAuthorRevision() const {
+		return _backendAuthor ? _backendAuthor->revision : 0;
+	}
+	[[nodiscard]] bool backendAuthorOriginalMsg() const {
+		return _backendAuthor && _backendAuthor->originalMsg;
+	}
+	[[nodiscard]] bool backendAuthorInfo() const {
+		return _backendAuthor && _backendAuthor->info;
+	}
+	[[nodiscard]] QString backendQuoteAuthorDisplayName() const {
+		return _backendAuthor ? _backendAuthor->quoteDisplayName : QString();
+	}
+	[[nodiscard]] QString backendQuoteAuthorOverride() const {
+		return _backendAuthor ? _backendAuthor->quoteOverride : QString();
+	}
 	void clearMainView();
 	void removeMainView(
 		Data::ViewRemovalReason reason = Data::ViewRemovalReason::Removed);
@@ -824,6 +848,17 @@ private:
 	mutable MessageFlags _flags = 0;
 
 	TextWithEntities _text;
+
+	struct BackendAuthorPresentation {
+		QString override;
+		QString quoteDisplayName;
+		QString quoteOverride;
+		uint32 revision = 0;
+		bool originalMsg = false;
+		bool info = false;
+
+	};
+	std::unique_ptr<BackendAuthorPresentation> _backendAuthor;
 
 	std::unique_ptr<Data::Media> _media;
 	std::unique_ptr<Data::MessageReactions> _reactions;

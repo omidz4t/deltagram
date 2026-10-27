@@ -33,6 +33,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/call_delayed.h"
 #include "core/file_utilities.h"
 #include "core/application.h"
+#include "delta/account_backend.h"
+#include "delta/delta_bridge.h"
 #include "lang/lang_keys.h"
 #include "styles/style_window.h"
 #include "styles/style_dialogs.h"
@@ -677,7 +679,9 @@ Editor::Editor(
 , _topShadow(this)
 , _save(
 		this,
-		tr::lng_theme_editor_save_button(tr::now),
+		Delta::UsesCoreBackend(&_window->account())
+			? tr::lng_theme_editor_menu_export(tr::now)
+			: tr::lng_theme_editor_save_button(tr::now),
 		st::dialogsUpdateButton) {
 	const auto path = EditingPalettePath();
 
@@ -839,6 +843,11 @@ QByteArray Editor::ColorizeInContent(
 void Editor::save() {
 	if (Core::App().passcodeLocked()) {
 		_window->showToast(tr::lng_theme_editor_need_unlock(tr::now));
+		return;
+	} else if (Delta::UsesCoreBackend(&_window->account())) {
+		exportTheme();
+		return;
+	} else if (!Delta::UsesTelegramBackend(&_window->account())) {
 		return;
 	} else if (!_window->account().sessionExists()) {
 		_window->showToast(tr::lng_theme_editor_need_auth(tr::now));

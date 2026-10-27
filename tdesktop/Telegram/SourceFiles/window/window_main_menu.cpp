@@ -8,8 +8,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_main_menu.h"
 
 #include "apiwrap.h"
+#include "delta/account_backend.h"
 #include "delta/delta_boxes.h"
 #include "delta/delta_bridge.h"
+#include "delta/unread_aggregation.h"
 #include "ui/image/image_prepare.h"
 #include "data/data_peer_id.h"
 #include "base/event_filter.h"
@@ -328,8 +330,17 @@ MainMenu::ToggleAccountsButton::ToggleAccountsButton(
 	}, lifetime());
 
 	auto &settings = Core::App().settings();
-	if (Core::App().domain().accounts().size() < 2
-		&& settings.mainMenuAccountsShown()) {
+	auto keepExpanded = (Core::App().domain().accounts().size() >= 2)
+		|| Delta::UsesCoreBackend(_current);
+	if (!keepExpanded) {
+		for (const auto &[index, account] : Core::App().domain().accounts()) {
+			if (Delta::UsesCoreBackend(account.get())) {
+				keepExpanded = true;
+				break;
+			}
+		}
+	}
+	if (!keepExpanded && settings.mainMenuAccountsShown()) {
 		settings.setMainMenuAccountsShown(false);
 	}
 	settings.mainMenuAccountsShownValue(
@@ -403,10 +414,6 @@ void MainMenu::ToggleAccountsButton::validateUnreadBadge() {
 }
 
 QString MainMenu::ToggleAccountsButton::computeUnreadBadge() const {
-	if (Delta::Active()) {
-		const auto count = Delta::InactiveProfileUnreadCount();
-		return count ? Lang::FormatCountToShort(count).string : QString();
-	}
 	const auto state = OtherAccountsUnreadStateCurrent(_current);
 	return state.allMuted
 		? QString()
@@ -753,12 +760,15 @@ void MainMenu::toggleAccounts() {
 	const auto shown = !settings.mainMenuAccountsShown();
 	settings.setMainMenuAccountsShown(shown);
 	Core::App().saveSettingsDelayed();
-	if (shown) {
+	if (shown && Delta::OwnsSession(&_controller->session())) {
 		fillProfiles();
 	}
 }
 
 void MainMenu::fillProfiles() {
+	if (!Delta::OwnsSession(&_controller->session())) {
+		return;
+	}
 	const auto inner = _accounts->entity();
 	if (_profileList) {
 		delete _profileList;
@@ -849,6 +859,43 @@ void MainMenu::fillProfiles() {
 			closeLayer();
 			controller->widget()->showDeltaAddProfile();
 		});
+		for (const auto &account : Core::App().domain().orderedAccounts()) {
+			if (!account->sessionExists()
+				|| Delta::UsesCoreBackend(account)) {
+				continue;
+			}
+			const auto user = account->session().user();
+			const auto raw = account.get();
+			list->add(Settings::CreateButtonWithIcon(
+				list,
+				rpl::single(user->name()),
+				st::mainMenuButton,
+				{ &st::menuIconProfile }
+			))->setClickedCallback([=] {
+				const auto controller = _controller;
+				closeLayer();
+				if (const auto window = Core::App().separateWindowFor(
+						not_null(raw))) {
+					window->activate();
+				} else {
+					Core::App().domain().maybeActivate(raw);
+				}
+			});
+		}
+		list->add(Settings::CreateButtonWithIcon(
+			list,
+			tr::lng_menu_add_account(),
+			st::mainMenuButton,
+			{ &st::menuIconAdd }
+		))->setClickedCallback([=] {
+			const auto controller = _controller;
+			closeLayer();
+			controller->window().preventOrInvoke([=] {
+				Core::App().setActivePrimaryWindow(&controller->window());
+				controller->session().domain().addActivated(
+					MTP::Environment::Production);
+			});
+		});
 		inner->resizeToWidth(inner->width());
 	}));
 }
@@ -860,8 +907,21 @@ void MainMenu::setupAccounts() {
 
 	_accounts->toggleOn(Core::App().settings().mainMenuAccountsShownValue());
 	_accounts->finishAnimating();
-	if (Core::App().settings().mainMenuAccountsShown()) {
-		fillProfiles();
+	if (Delta::OwnsSession(&_controller->session())) {
+		if (Core::App().settings().mainMenuAccountsShown()) {
+			fillProfiles();
+		}
+		Core::App().domain().accountsChanges(
+		) | rpl::on_next([=] {
+			if (Core::App().settings().mainMenuAccountsShown()) {
+				fillProfiles();
+			}
+		}, lifetime());
+	} else {
+		auto events = Settings::SetupAccounts(inner, _controller);
+		std::move(events.closeRequests) | rpl::on_next([=] {
+			closeLayer();
+		}, lifetime());
 	}
 
 	_shadow->setDuration(0)->toggleOn(_accounts->shownValue());
@@ -878,7 +938,13 @@ void MainMenu::setupAccountsToggle() {
 }
 
 void MainMenu::setupSetEmojiStatus() {
-	_setEmojiStatus->hide();
+	if (!Delta::UsesTelegramBackend(&_controller->session())) {
+		_setEmojiStatus->hide();
+		return;
+	}
+	_setEmojiStatus->overrideLinkClickHandler([=] {
+		chooseEmojiStatus();
+	});
 }
 
 void MainMenu::parentResized() {
@@ -910,75 +976,155 @@ void MainMenu::setupMenu() {
 			st::mainMenuButton,
 			std::move(descriptor));
 	};
-	addAction(
-		rpl::single(u"Contacts"_q),
-		{ &st::menuIconGroups }
-	)->setClickedCallback([=] {
-		controller->hideLayer();
-		Delta::ShowContacts(&controller->session(), crl::guard(controller, [=](int chatId) {
-			if (chatId > 0) {
-				controller->showPeerHistory(peerFromUser(UserId(chatId)));
-			}
-		}));
-	});
-	if (!_controller->session().supportMode()) {
+	const auto owningCore = Delta::OwnsSession(&controller->session());
+	const auto telegram = Delta::UsesTelegramBackend(&controller->session());
+	if (owningCore) {
 		addAction(
-			rpl::single(u"New Contact"_q),
-			{ &st::menuIconQrCode }
-		)->setClickedCallback([=] {
-			controller->showAddContact();
-		});
-		addAction(
-			rpl::single(u"New Group"_q),
+			rpl::single(u"Contacts"_q),
 			{ &st::menuIconGroups }
 		)->setClickedCallback([=] {
 			controller->hideLayer();
-			controller->show(Box<GroupInfoBox>(controller, GroupInfoBox::Type::Group));
+			Delta::ShowContacts(controller, crl::guard(controller, [=](int chatId) {
+				if (chatId > 0) {
+					controller->showPeerHistory(peerFromUser(UserId(chatId)));
+				}
+			}));
 		});
+		if (!_controller->session().supportMode()) {
+			addAction(
+				rpl::single(u"New Contact"_q),
+				{ &st::menuIconQrCode }
+			)->setClickedCallback([=] {
+				controller->showAddContact();
+			});
+			addAction(
+				rpl::single(u"New Group"_q),
+				{ &st::menuIconGroups }
+			)->setClickedCallback([=] {
+				controller->hideLayer();
+				controller->show(Box<GroupInfoBox>(controller, GroupInfoBox::Type::Group));
+			});
+			addAction(
+				rpl::single(u"New Channel"_q),
+				{ &st::menuIconChannel }
+			)->setClickedCallback([=] {
+				controller->hideLayer();
+				controller->show(Box<GroupInfoBox>(controller, GroupInfoBox::Type::Channel));
+			});
+			addAction(
+				tr::lng_saved_messages(),
+				{ &st::menuIconSavedMessages }
+			)->setClickedCallback([=] {
+				controller->showPeerHistory(controller->session().user());
+			});
+		} else {
+			addAction(
+				rpl::single(u"New Contact"_q),
+				{ &st::menuIconQrCode }
+			)->setClickedCallback([=] {
+				controller->showAddContact();
+			});
+			addAction(
+				rpl::single(u"Fix chats order"_q),
+				{ &st::menuIconPin }
+			)->toggleOn(rpl::single(
+				_controller->session().settings().supportFixChatsOrder()
+			))->toggledChanges(
+			) | rpl::on_next([=](bool fix) {
+				_controller->session().settings().setSupportFixChatsOrder(fix);
+				_controller->session().saveSettings();
+			}, _menu->lifetime());
+			addAction(
+				rpl::single(u"Reload templates"_q),
+				{ &st::menuIconRestore }
+			)->setClickedCallback([=] {
+				_controller->session().supportTemplates().reload();
+			});
+		}
 		addAction(
-			rpl::single(u"New Channel"_q),
-			{ &st::menuIconChannel }
-		)->setClickedCallback([=] {
-			controller->hideLayer();
-			controller->show(Box<GroupInfoBox>(controller, GroupInfoBox::Type::Channel));
-		});
-		addAction(
-			tr::lng_saved_messages(),
-			{ &st::menuIconSavedMessages }
-		)->setClickedCallback([=] {
-			controller->showPeerHistory(controller->session().user());
-		});
-	} else {
-		addAction(
-			rpl::single(u"New Contact"_q),
-			{ &st::menuIconQrCode }
-		)->setClickedCallback([=] {
-			controller->showAddContact();
-		});
-		addAction(
-			rpl::single(u"Fix chats order"_q),
-			{ &st::menuIconPin }
-		)->toggleOn(rpl::single(
-			_controller->session().settings().supportFixChatsOrder()
-		))->toggledChanges(
-		) | rpl::on_next([=](bool fix) {
-			_controller->session().settings().setSupportFixChatsOrder(fix);
-			_controller->session().saveSettings();
-		}, _menu->lifetime());
-		addAction(
-			rpl::single(u"Reload templates"_q),
+			rpl::single(u"Saved replies"_q),
 			{ &st::menuIconRestore }
 		)->setClickedCallback([=] {
-			_controller->session().supportTemplates().reload();
+			controller->hideLayer();
+			Delta::ShowSavedReplies(controller);
 		});
+	} else if (telegram) {
+		addAction(
+			tr::lng_menu_my_profile(),
+			{ &st::menuIconProfile }
+		)->setClickedCallback([=] {
+			closeLayer();
+			controller->showPeerInfo(controller->session().user());
+		});
+		SetupMenuBots(_menu, controller);
+		if (!_controller->session().supportMode()) {
+			AddMyChannelsBox(
+				addAction(
+					tr::lng_create_group_title(),
+					{ &st::menuIconGroups }),
+				controller,
+				true
+			)->setClickedCallback([=] {
+				controller->hideLayer();
+				controller->show(Box<GroupInfoBox>(
+					controller,
+					GroupInfoBox::Type::Group));
+			});
+			AddMyChannelsBox(
+				addAction(
+					tr::lng_create_channel_title(),
+					{ &st::menuIconChannel }),
+				controller,
+				false
+			)->setClickedCallback([=] {
+				controller->hideLayer();
+				controller->show(Box<GroupInfoBox>(
+					controller,
+					GroupInfoBox::Type::Channel));
+			});
+			addAction(
+				tr::lng_menu_contacts(),
+				{ &st::menuIconProfile }
+			)->setClickedCallback([=] {
+				controller->show(PrepareContactsBox(controller));
+			});
+			addAction(
+				tr::lng_menu_calls(),
+				{ &st::menuIconPhone }
+			)->setClickedCallback([=] {
+				Calls::ShowCallsBox(controller);
+			});
+			addAction(
+				tr::lng_saved_messages(),
+				{ &st::menuIconSavedMessages }
+			)->setClickedCallback([=] {
+				controller->showPeerHistory(controller->session().user());
+			});
+		} else {
+			addAction(
+				rpl::single(u"New Contact"_q),
+				{ &st::menuIconQrCode }
+			)->setClickedCallback([=] {
+				controller->showAddContact();
+			});
+			addAction(
+				rpl::single(u"Fix chats order"_q),
+				{ &st::menuIconPin }
+			)->toggleOn(rpl::single(
+				_controller->session().settings().supportFixChatsOrder()
+			))->toggledChanges(
+			) | rpl::on_next([=](bool fix) {
+				_controller->session().settings().setSupportFixChatsOrder(fix);
+				_controller->session().saveSettings();
+			}, _menu->lifetime());
+			addAction(
+				rpl::single(u"Reload templates"_q),
+				{ &st::menuIconRestore }
+			)->setClickedCallback([=] {
+				_controller->session().supportTemplates().reload();
+			});
+		}
 	}
-	addAction(
-		rpl::single(u"Saved replies"_q),
-		{ &st::menuIconRestore }
-	)->setClickedCallback([=] {
-		controller->hideLayer();
-		Delta::ShowSavedReplies(controller);
-	});
 	addAction(
 		tr::lng_menu_settings(),
 		{ &st::menuIconSettings }
@@ -1183,21 +1329,38 @@ void MainMenu::initResetScaleButton() {
 OthersUnreadState OtherAccountsUnreadStateCurrent(
 		not_null<Main::Account*> current) {
 	const auto &domain = Core::App().domain();
-	auto counter = 0;
-	auto allMuted = true;
-	for (const auto &[index, account] : domain.accounts()) {
+	auto accounts = std::vector<Delta::DomainAccountUnread>();
+	accounts.reserve(domain.accounts().size());
+	auto skipIndex = -1;
+	auto index = 0;
+	for (const auto &[accountIndex, account] : domain.accounts()) {
 		if (account.get() == current) {
-			continue;
-		} else if (const auto session = account->maybeSession()) {
-			counter += session->data().unreadWithMentionsBadge();
-			if (!session->data().unreadWithMentionsBadgeMuted()) {
-				allMuted = false;
-			}
+			skipIndex = index;
 		}
+		auto row = Delta::DomainAccountUnread{
+			.coreBackend = Delta::UsesCoreBackend(account.get()),
+		};
+		if (const auto session = account->maybeSession()) {
+			row.count = session->data().unreadWithMentionsBadge();
+			row.muted = session->data().unreadWithMentionsBadgeMuted();
+		}
+		accounts.push_back(row);
+		++index;
 	}
+	auto coreOthers = Delta::UnreadSlice();
+	if (const auto session = current->maybeSession();
+		session && Delta::OwnsSession(session)) {
+		coreOthers.count = Delta::InactiveProfileUnreadCount();
+	} else if (!Delta::UsesCoreBackend(current)) {
+		coreOthers.count = Delta::TotalProfileUnreadCount();
+	}
+	coreOthers.muted = (coreOthers.count == 0);
+	const auto combined = Delta::CombineUnread(
+		coreOthers,
+		Delta::OtherTelegramUnread(accounts, skipIndex));
 	return {
-		.count = counter,
-		.allMuted = allMuted,
+		.count = combined.count,
+		.allMuted = combined.muted,
 	};
 }
 

@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "menu/menu_mute.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "boxes/ringtones_box.h"
@@ -311,7 +312,7 @@ void FillMuteMenu(
 		Descriptor descriptor,
 		std::shared_ptr<Ui::Show> show) {
 	const auto session = descriptor.session;
-	if (!Delta::Active()) {
+	if (Delta::UsesTelegramBackend(session)) {
 		const auto soundSelect = [=] {
 			if (const auto currentSound = descriptor.currentSound()) {
 				show->showBox(Box(

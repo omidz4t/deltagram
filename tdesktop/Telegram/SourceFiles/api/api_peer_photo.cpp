@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "api/api_updates.h"
 #include "apiwrap.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "base/random.h"
 #include "base/unixtime.h"
@@ -339,7 +340,7 @@ void PeerPhoto::upload(
 		UploadType type,
 		Fn<void()> done) {
 	peer = peer->migrateToOrMe();
-	if (Delta::Active() && peer->isSelf()) {
+	if (Delta::UsesCoreBackend(&peer->session()) && peer->isSelf()) {
 		const auto file = std::make_shared<QTemporaryFile>(
 			QDir::temp().filePath(u"delta-tel-avatar-XXXXXX.png"_q));
 		const auto image = photo.image;

@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "dialogs/dialogs_inner_widget_accessibility.h"
 
 #include "data/notify/data_notify_settings.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "data/data_channel.h"
 #include "data/data_chat_filters.h"
@@ -61,8 +62,11 @@ namespace {
 		return parts;
 	}
 	const auto dateTime = ItemDateTime(item);
-	const auto delivery = Delta::Active()
-		? Delta::MessageDelivery(item->id.bare) : std::nullopt;
+	const auto session = &item->history()->session();
+	const auto delivery = (Delta::UsesCoreBackend(session)
+			&& Delta::OwnsSession(session))
+		? Delta::MessageDelivery(item->id.bare)
+		: std::nullopt;
 
 	QString status;
 	auto statusBeforeMessage = false;
@@ -451,8 +455,11 @@ QString SubItemValue(
 		if (!chatItem || chatItem->isService()) {
 			return {};
 		}
-		const auto delivery = Delta::Active()
-			? Delta::MessageDelivery(chatItem->id.bare) : std::nullopt;
+		const auto session = &chatItem->history()->session();
+		const auto delivery = (Delta::UsesCoreBackend(session)
+				&& Delta::OwnsSession(session))
+			? Delta::MessageDelivery(chatItem->id.bare)
+			: std::nullopt;
 		if (chatItem->out()) {
 			if (delivery ? *delivery == Delta::DeliveryState::Pending : chatItem->isSending()) {
 				return tr::lng_sr_chat_sending(tr::now);

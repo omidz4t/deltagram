@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+#include "main/account_backend.h"
 #include "mtproto/details/mtproto_serialized_request.h"
 #include "mtproto/mtproto_response.h"
 
@@ -48,6 +49,7 @@ public:
 		AuthKeysList keys;
 		QString deviceModel;
 		QString systemVersion;
+		Main::AccountBackend backend = Main::AccountBackend::Unspecified;
 	};
 
 	enum class Mode {
@@ -65,6 +67,7 @@ public:
 	void suggestMainDcId(DcId mainDcId);
 	void setMainDcId(DcId mainDcId);
 	[[nodiscard]] DcId mainDcId() const;
+	[[nodiscard]] Main::AccountBackend backend() const;
 	[[nodiscard]] rpl::producer<DcId> mainDcIdValue() const;
 	[[nodiscard]] QString systemLangCode() const;
 	[[nodiscard]] QString cloudLangCode() const;

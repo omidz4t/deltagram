@@ -12,10 +12,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/premium_preview_box.h"
 #include "boxes/translate_box.h"
 #include "core/application.h"
+#include "delta/account_backend.h"
 #include "data/data_peer_values.h"
+#include "lang/lang_backend.h"
 #include "lang/lang_cloud_manager.h"
 #include "lang/lang_instance.h"
 #include "lang/lang_keys.h"
+#include "lang/translate_provider.h"
+#include "main/main_account.h"
 #include "main/main_session.h"
 #include "platform/platform_translate_provider.h"
 #include "settings/settings_common.h"
@@ -264,11 +268,47 @@ private:
 
 };
 
-std::pair<Languages, Languages> PrepareLists() {
+std::pair<Languages, Languages> PrepareLists(Main::Account *account) {
 	const auto projId = [](const Language &language) {
 		return language.id;
 	};
 	const auto current = Lang::LanguageIdOrDefault(Lang::Id());
+	if (Lang::PlanLanguagePicker(
+			account
+				? account->backend()
+				: Main::AccountBackend::Unspecified).localCatalog) {
+		auto recent = Local::readRecentLanguages();
+		ranges::stable_partition(recent, [&](const Language &language) {
+			return (language.id == current);
+		});
+		if (recent.empty() || recent.front().id != current) {
+			recent.insert(begin(recent), Language{
+				current,
+				QString(),
+				QString(),
+				(current == u"#custom"_q)
+					? u"Custom lang pack"_q
+					: Lang::GetInstance().name(),
+				Lang::GetInstance().nativeName(),
+			});
+		}
+		auto official = Languages();
+		const auto english = Lang::DefaultLanguage();
+		if (current != Lang::DefaultLanguageId()
+			&& ranges::find(recent, english.id, projId) == end(recent)) {
+			official.push_back(english);
+		}
+		if (ranges::find(recent, u"#custom"_q, projId) == end(recent)) {
+			recent.push_back(Language{
+				u"#custom"_q,
+				QString(),
+				QString(),
+				u"Custom language file"_q,
+				u"Import .strings file"_q,
+			});
+		}
+		return { std::move(recent), std::move(official) };
+	}
 	auto official = Lang::CurrentCloudManager().languageList();
 	auto recent = Local::readRecentLanguages();
 	ranges::stable_partition(recent, [&](const Language &language) {
@@ -1456,10 +1496,25 @@ rpl::producer<Ui::ScrollToRequest> Content::mustScrollTo() const {
 } // namespace
 
 LanguageBox::LanguageBox(
-	QWidget*,
+	QWidget *parent,
 	Window::SessionController *controller,
 	const QString &highlightId)
+: LanguageBox(
+	parent,
+	controller,
+	controller ? &controller->session().account() : nullptr,
+	highlightId) {
+}
+
+LanguageBox::LanguageBox(
+	QWidget*,
+	Window::SessionController *controller,
+	Main::Account *account,
+	const QString &highlightId)
 : _controller(controller)
+, _account(account
+	? account
+	: (controller ? &controller->session().account() : nullptr))
 , _highlightId(highlightId) {
 }
 
@@ -1479,7 +1534,7 @@ void LanguageBox::prepare() {
 
 	using namespace rpl::mappers;
 
-	const auto &[recent, official] = PrepareLists();
+	const auto &[recent, official] = PrepareLists(_account);
 	const auto inner = setInnerWidget(
 		object_ptr<Content>(this, recent, official),
 		st::boxScroll,
@@ -1517,8 +1572,13 @@ void LanguageBox::prepare() {
 		const auto currentId = [] {
 			return Lang::LanguageIdOrDefault(Lang::Id());
 		};
-		if (language.id != currentId()) {
-			Lang::CurrentCloudManager().switchToLanguage(language);
+		if (language.id != currentId()
+			|| (Lang::PlanLanguagePicker(
+					_account
+						? _account->backend()
+						: Main::AccountBackend::Unspecified).localCatalog
+				&& language.id == u"#custom"_q)) {
+			Lang::CurrentCloudManager().switchToLanguage(language, _account);
 			if (inner) {
 				inner->changeChosen(currentId());
 			}
@@ -1558,6 +1618,9 @@ void LanguageBox::setupTop(not_null<Ui::VerticalLayout*> container) {
 	if (!_controller) {
 		return;
 	}
+	if (!Ui::IsTranslateBackendAvailable(_account)) {
+		return;
+	}
 	const auto translateEnabled = container->add(
 		object_ptr<Ui::SettingsButton>(
 			container,
@@ -1574,7 +1637,8 @@ void LanguageBox::setupTop(not_null<Ui::VerticalLayout*> container) {
 		Core::App().saveSettingsDelayed();
 	}, translateEnabled->lifetime());
 
-	if (Platform::IsTranslateProviderAvailable()) {
+	if (Delta::UsesTelegramBackend(_account)
+		&& Platform::IsTranslateProviderAvailable()) {
 		const auto platformTranslateWrap = container->add(
 			object_ptr<Ui::SlideWrap<Ui::VerticalLayout>>(
 				container,
@@ -1610,37 +1674,43 @@ void LanguageBox::setupTop(not_null<Ui::VerticalLayout*> container) {
 	}
 
 	using namespace rpl::mappers;
-	auto premium = Data::AmPremiumValue(&_controller->session());
-	const auto translateChat = container->add(object_ptr<Ui::SettingsButton>(
-		container,
-		tr::lng_translate_settings_chat(),
-		st::settingsButtonNoIconLocked
-	))->toggleOn(rpl::merge(
-		rpl::combine(
-			Core::App().settings().translateChatEnabledValue(),
-			rpl::duplicate(premium),
-			_1 && _2),
-		_translateChatTurnOff.events()));
-	_translateChatsToggle = translateChat;
-	std::move(premium) | rpl::on_next([=](bool value) {
-		translateChat->setToggleLocked(!value);
-	}, translateChat->lifetime());
+	Ui::SettingsButton *translateChat = nullptr;
+	if (Lang::PlanLanguagePicker(
+			_account
+				? _account->backend()
+				: Main::AccountBackend::Unspecified).premiumChatTranslate) {
+		auto premium = Data::AmPremiumValue(&_controller->session());
+		translateChat = container->add(object_ptr<Ui::SettingsButton>(
+			container,
+			tr::lng_translate_settings_chat(),
+			st::settingsButtonNoIconLocked
+		))->toggleOn(rpl::merge(
+			rpl::combine(
+				Core::App().settings().translateChatEnabledValue(),
+				rpl::duplicate(premium),
+				_1 && _2),
+			_translateChatTurnOff.events()));
+		_translateChatsToggle = translateChat;
+		std::move(premium) | rpl::on_next([=](bool value) {
+			translateChat->setToggleLocked(!value);
+		}, translateChat->lifetime());
 
-	translateChat->toggledValue(
-	) | rpl::filter([=](bool checked) {
-		const auto premium = _controller->session().premium();
-		if (checked && !premium) {
-			ShowPremiumPreviewToBuy(
-				_controller,
-				PremiumFeature::RealTimeTranslation);
-			_translateChatTurnOff.fire(false);
-		}
-		return premium
-			&& (checked != Core::App().settings().translateChatEnabled());
-	}) | rpl::on_next([=](bool checked) {
-		Core::App().settings().setTranslateChatEnabled(checked);
-		Core::App().saveSettingsDelayed();
-	}, translateChat->lifetime());
+		translateChat->toggledValue(
+		) | rpl::filter([=](bool checked) {
+			const auto premium = _controller->session().premium();
+			if (checked && !premium) {
+				ShowPremiumPreviewToBuy(
+					_controller,
+					PremiumFeature::RealTimeTranslation);
+				_translateChatTurnOff.fire(false);
+			}
+			return premium
+				&& (checked != Core::App().settings().translateChatEnabled());
+		}) | rpl::on_next([=](bool checked) {
+			Core::App().settings().setTranslateChatEnabled(checked);
+			Core::App().saveSettingsDelayed();
+		}, translateChat->lifetime());
+	}
 
 	using Languages = std::vector<LanguageId>;
 	const auto translateSkipWrap = container->add(
@@ -1650,10 +1720,14 @@ void LanguageBox::setupTop(not_null<Ui::VerticalLayout*> container) {
 	translateSkipWrap->toggle(
 		translateEnabled->toggled(),
 		anim::type::normal);
-	translateSkipWrap->toggleOn(rpl::combine(
-		translateEnabled->toggledValue(),
-		translateChat->toggledValue(),
-		rpl::mappers::_1 || rpl::mappers::_2));
+	if (translateChat) {
+		translateSkipWrap->toggleOn(rpl::combine(
+			translateEnabled->toggledValue(),
+			translateChat->toggledValue(),
+			rpl::mappers::_1 || rpl::mappers::_2));
+	} else {
+		translateSkipWrap->toggleOn(translateEnabled->toggledValue());
+	}
 	const auto translateSkip = Settings::AddButtonWithLabel(
 		translateSkipWrap->entity(),
 		tr::lng_translate_settings_choose(),
@@ -1707,11 +1781,29 @@ void LanguageBox::setInnerFocus() {
 base::binary_guard LanguageBox::Show(
 		Window::SessionController *controller,
 		const QString &highlightId) {
+	return Show(
+		controller,
+		controller ? &controller->session().account() : nullptr,
+		highlightId);
+}
+
+base::binary_guard LanguageBox::Show(
+		Window::SessionController *controller,
+		Main::Account *account,
+		const QString &highlightId) {
 	auto result = base::binary_guard();
 
+	if (Lang::PlanLanguagePicker(
+			account
+				? account->backend()
+				: Main::AccountBackend::Unspecified).localCatalog) {
+		Ui::show(Box<LanguageBox>(controller, account, highlightId));
+		return result;
+	}
 	auto &manager = Lang::CurrentCloudManager();
 	if (manager.languageList().empty()) {
-		const auto weak = base::make_weak(controller);
+		const auto weakController = base::make_weak(controller);
+		const auto weakAccount = base::make_weak(account);
 		auto guard = std::make_shared<base::binary_guard>(
 			result.make_guard());
 		auto lifetime = std::make_shared<rpl::lifetime>();
@@ -1724,13 +1816,16 @@ base::binary_guard LanguageBox::Show(
 				base::take(lifetime)->destroy();
 			}
 			if (show) {
-				Ui::show(Box<LanguageBox>(weak.get(), highlightId));
+				Ui::show(Box<LanguageBox>(
+					weakController.get(),
+					weakAccount.get(),
+					highlightId));
 			}
 		}, *lifetime);
 	} else {
-		Ui::show(Box<LanguageBox>(controller, highlightId));
+		Ui::show(Box<LanguageBox>(controller, account, highlightId));
 	}
-	manager.requestLanguageList();
+	manager.requestLanguageList(account);
 
 	return result;
 }

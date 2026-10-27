@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "calls/calls_instance.h"
 
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "calls/calls_call.h"
@@ -205,8 +206,10 @@ Instance::~Instance() {
 void Instance::startOutgoingCall(
 		not_null<UserData*> user,
 		StartOutgoingCallArgs args) {
-	if (Delta::Active()) {
-		Ui::show(Ui::MakeInformBox(u"Calls are not available in Deltagram."_q));
+	if (Delta::UsesCoreBackend(&user->session())) {
+		Ui::show(Ui::MakeInformBox(u"Calls are not available for Chatmail profiles."_q));
+		return;
+	} else if (!Delta::UsesTelegramBackend(&user->session())) {
 		return;
 	}
 	if (activateCurrentCall()
@@ -235,8 +238,10 @@ void Instance::startOrJoinGroupCall(
 		std::shared_ptr<Ui::Show> show,
 		not_null<PeerData*> peer,
 		StartGroupCallArgs args) {
-	if (Delta::Active()) {
-		Ui::show(Ui::MakeInformBox(u"Calls are not available in Deltagram."_q));
+	if (Delta::UsesCoreBackend(&peer->session())) {
+		Ui::show(Ui::MakeInformBox(u"Calls are not available for Chatmail profiles."_q));
+		return;
+	} else if (!Delta::UsesTelegramBackend(&peer->session())) {
 		return;
 	}
 	confirmLeaveCurrent(show, peer, args, [=](StartGroupCallArgs args) {
@@ -264,6 +269,16 @@ void Instance::startOrJoinGroupCall(
 void Instance::startOrJoinConferenceCall(StartConferenceInfo args) {
 	Expects(args.call || args.show);
 
+	const auto session = args.show
+		? &args.show->session()
+		: &args.call->session();
+	if (Delta::UsesCoreBackend(session)) {
+		Ui::show(Ui::MakeInformBox(u"Calls are not available for Chatmail profiles."_q));
+		return;
+	} else if (!Delta::UsesTelegramBackend(session)) {
+		return;
+	}
+
 	const auto migrationInfo = (args.migrating
 		&& args.call
 		&& _currentCallPanel)
@@ -273,9 +288,6 @@ void Instance::startOrJoinConferenceCall(StartConferenceInfo args) {
 		destroyCurrentCall();
 	}
 
-	const auto session = args.show
-		? &args.show->session()
-		: &args.call->session();
 	auto call = std::make_unique<GroupCall>(_delegate.get(), args);
 	const auto raw = call.get();
 
@@ -691,6 +703,12 @@ void Instance::handleCallUpdate(
 		not_null<Main::Session*> session,
 		const MTPPhoneCall &call) {
 	if (call.type() == mtpc_phoneCallRequested) {
+		if (Delta::UsesCoreBackend(session)) {
+			Ui::show(Ui::MakeInformBox(u"Calls are not available for Chatmail profiles."_q));
+			return;
+		} else if (!Delta::UsesTelegramBackend(session)) {
+			return;
+		}
 		auto &phoneCall = call.c_phoneCallRequested();
 		auto user = session->data().userLoaded(phoneCall.vadmin_id());
 		if (!user) {

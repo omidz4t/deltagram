@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "core/application.h"
 #include "delta/delta_bridge.h"
+#include "delta/unread_aggregation.h"
 
 #include "data/data_abstract_structure.h"
 #include "data/data_channel.h"
@@ -1019,8 +1020,9 @@ rpl::producer<FullMsgId> Application::floatPlayerClosed() const {
 void Application::logout(Main::Account *account) {
 	if (account) {
 		account->logOut();
-	} else {
-		_domain->resetWithForgottenPasscode();
+	} else if (!_domain->resetWithForgottenPasscode()) {
+		Ui::show(Ui::MakeInformBox(Main::PasscodeRecoveryWarning(
+			_domain->forgottenPasscodeRecovery())));
 	}
 }
 
@@ -1182,8 +1184,19 @@ bool Application::downloadPreventsQuit() {
 	return false;
 }
 
+bool Application::backupPreventsQuit() {
+	if (!Delta::BackupExportInProgress()) return false;
+	const auto window = activeWindow() ? activeWindow() : activePrimaryWindow();
+	if (window) {
+		window->widget()->showFromTray();
+		window->showToast(tr::lng_delta_backup_export_wait(tr::now), 6000);
+	}
+	return true;
+}
+
 bool Application::preventsQuit(QuitReason reason) {
-	if (Delta::PreparingSendPreventsQuit()
+	if (backupPreventsQuit()
+		|| Delta::PreparingSendPreventsQuit()
 		|| exportPreventsQuit()
 		|| uploadPreventsQuit()
 		|| downloadPreventsQuit()) {
@@ -1198,11 +1211,21 @@ bool Application::preventsQuit(QuitReason reason) {
 }
 
 int Application::unreadBadge() const {
-	return Delta::Active() ? Delta::TotalProfileUnreadCount() : _domain->unreadBadge();
+	return Delta::CombineUnread(
+		{ .count = Delta::TotalProfileUnreadCount() },
+		{
+			.count = _domain->unreadBadge(),
+			.muted = _domain->unreadBadgeMuted(),
+		}).count;
 }
 
 bool Application::unreadBadgeMuted() const {
-	return !Delta::Active() && _domain->unreadBadgeMuted();
+	return Delta::CombineUnread(
+		{ .count = Delta::TotalProfileUnreadCount() },
+		{
+			.count = _domain->unreadBadge(),
+			.muted = _domain->unreadBadgeMuted(),
+		}).muted;
 }
 
 rpl::producer<> Application::unreadBadgeChanges() const {
@@ -2120,6 +2143,10 @@ void SetLaunchState(LaunchState state) {
 }
 
 void Restart() {
+   // A rejected restart must not leave restart flags armed for a later quit.
+   if (IsAppLaunched() && App().backupPreventsQuit()) {
+	   return;
+   }
    const auto updateReady = !UpdaterDisabled()
 	   && (UpdateChecker().state() == UpdateChecker::State::Ready);
    if (updateReady) {

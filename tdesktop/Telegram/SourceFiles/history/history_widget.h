@@ -598,6 +598,12 @@ private:
 	[[nodiscard]] Data::ForumTopic *resolveReplyToTopic();
 	[[nodiscard]] bool canWriteMessage() const;
 	[[nodiscard]] bool deltaComposerLocked() const;
+	[[nodiscard]] bool deltaSendAllowed() const;
+	[[nodiscard]] bool deltaRefuseSend();
+	[[nodiscard]] bool deltaContactRequest() const;
+	void deltaAcceptContactRequest();
+	void deltaDeclineContactRequest();
+	void deltaFinishDecline(int userId, bool confirmed);
 	[[nodiscard]] std::optional<std::vector<Delta::ForwardSource>> deltaForwardSources() const;
 	void refreshDeltaComposeQueue();
 	[[nodiscard]] int deltaQueuedAttachmentCount() const;
@@ -940,6 +946,8 @@ private:
 	object_ptr<Ui::FlatButton> _unblock;
 	object_ptr<Ui::FlatButton> _botStart;
 	object_ptr<Ui::FlatButton> _joinChannel;
+	object_ptr<Ui::FlatButton> _deltaAccept;
+	object_ptr<Ui::FlatButton> _deltaDecline;
 	object_ptr<Ui::FlatButton> _muteUnmute;
 	QPointer<Ui::IconButton> _giftToChannel;
 	QPointer<Ui::IconButton> _directMessage;

@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/notify/data_notify_settings.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "apiwrap.h"
@@ -94,7 +95,7 @@ NotifySettings::NotifySettings(not_null<Session*> owner)
 }
 
 void NotifySettings::request(not_null<PeerData*> peer) {
-	if (Delta::Active()) return;
+	if (Delta::UsesCoreBackend(&peer->session())) return;
 	if (peer->notify().settingsUnknown()) {
 		const auto channel = peer->asChannel();
 		peer->session().api().requestNotifySettings(
@@ -112,7 +113,7 @@ void NotifySettings::request(not_null<PeerData*> peer) {
 }
 
 void NotifySettings::request(not_null<Thread*> thread) {
-	if (Delta::Active()) return;
+	if (Delta::UsesCoreBackend(&thread->session())) return;
 	if (const auto topic = thread->asTopic()) {
 		if (topic->notify().settingsUnknown()) {
 			topic->session().api().requestNotifySettings(
@@ -245,7 +246,7 @@ void NotifySettings::update(
 		std::optional<bool> silentPosts,
 		std::optional<NotifySound> sound,
 		std::optional<bool> storiesMuted) {
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&thread->session())) {
 		update(thread->peer(), muteForSeconds, silentPosts, sound, storiesMuted);
 		return;
 	}
@@ -263,7 +264,7 @@ void NotifySettings::update(
 }
 
 void NotifySettings::resetToDefault(not_null<Thread*> thread) {
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&thread->session())) {
 		update(thread, { .unmute = true });
 		return;
 	}
@@ -284,7 +285,7 @@ void NotifySettings::update(
 		std::optional<bool> silentPosts,
 		std::optional<NotifySound> sound,
 		std::optional<bool> storiesMuted) {
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&peer->session())) {
 		const auto seconds = (!muteForSeconds || silentPosts || sound || storiesMuted)
 			? -2 : muteForSeconds.forever ? -1 : muteForSeconds.unmute ? 0 : muteForSeconds.period;
 		const auto user = peer->isUser() ? peerToUser(peer->id).bare : uint64(0);
@@ -303,7 +304,7 @@ void NotifySettings::update(
 }
 
 void NotifySettings::resetToDefault(not_null<PeerData*> peer) {
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&peer->session())) {
 		update(peer, { .unmute = true });
 		return;
 	}

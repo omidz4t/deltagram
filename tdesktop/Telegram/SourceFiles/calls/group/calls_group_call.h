@@ -44,6 +44,11 @@ class GroupCall;
 enum class GroupCallOrigin : uchar;
 } // namespace Data
 
+namespace TdE2E {
+class Call;
+class EncryptDecrypt;
+} // namespace TdE2E
+
 namespace Calls::Group {
 struct MuteRequest;
 struct VolumeRequest;
@@ -269,6 +274,7 @@ public:
 	[[nodiscard]] rpl::producer<QByteArray> emojiHashValue() const;
 
 	void applyInputCall(const MTPInputGroupCall &inputCall);
+	void startConference();
 	void start(TimeId scheduleDate, bool rtmp);
 	void hangup();
 	void discard();
@@ -459,6 +465,10 @@ public:
 	void pushToTalk(bool pressed, crl::time delay);
 	void setNotRequireARGB32();
 
+	[[nodiscard]] std::function<std::vector<uint8_t>(
+		std::vector<uint8_t> const &,
+		int64_t, bool,
+		int32_t)> e2eEncryptDecrypt() const;
 	void sendMessage(TextWithTags message);
 	[[nodiscard]] MTPInputGroupCall inputCall() const;
 
@@ -475,6 +485,7 @@ private:
 	struct SinkPointer;
 
 	static constexpr uint32 kDisabledSsrc = uint32(-1);
+	static constexpr int kSubChainsCount = 2;
 
 	struct LoadingPart {
 		std::shared_ptr<LoadPartTask> task;
@@ -518,6 +529,15 @@ private:
 			ssrc = updatedSsrc;
 		}
 	};
+	struct SubChainPending {
+		QVector<MTPbytes> blocks;
+		int next = 0;
+	};
+	struct SubChainState {
+		std::vector<SubChainPending> pending;
+		mtpRequestId requestId = 0;
+		bool inShortPoll = false;
+	};
 
 	friend inline constexpr bool is_flag_type(SendUpdateType) {
 		return true;
@@ -551,6 +571,10 @@ private:
 	void handleUpdate(const MTPDupdateGroupCall &data);
 	void handleUpdate(const MTPDupdateGroupCallParticipants &data);
 	void handleUpdate(const MTPDupdateGroupCallChainBlocks &data);
+	void applySubChainUpdate(
+		int subchain,
+		const QVector<MTPbytes> &blocks,
+		int next);
 	[[nodiscard]] auto lookupVideoCodecPreferences() const
 		-> std::vector<tgcalls::VideoCodecName>;
 	bool tryCreateController();
@@ -584,6 +608,9 @@ private:
 	void leavePresentation();
 	void checkNextJoinAction();
 	void sendJoinRequest();
+	void refreshLastBlockAndJoin();
+	void requestSubchainBlocks(int subchain, int height);
+	void sendOutboundBlock(QByteArray block);
 
 	void audioLevelsUpdated(const tgcalls::GroupLevelsUpdate &data);
 	void setInstanceConnected(tgcalls::GroupNetworkState networkState);
@@ -624,7 +651,9 @@ private:
 
 	void setupMediaDevices();
 	void setupOutgoingVideo();
+	void initConferenceE2E();
 	void setupConferenceCall();
+	void trackParticipantsWithAccess();
 	void setScreenEndpoint(std::string endpoint);
 	void setCameraEndpoint(std::string endpoint);
 	void addVideoOutput(const std::string &endpoint, SinkPointer sink);
@@ -650,7 +679,10 @@ private:
 
 	const not_null<Delegate*> _delegate;
 	std::shared_ptr<Data::GroupCall> _sharedCall;
+	std::unique_ptr<TdE2E::Call> _e2e;
+	std::shared_ptr<TdE2E::EncryptDecrypt> _e2eEncryptDecrypt;
 	rpl::variable<QByteArray> _emojiHash;
+	QByteArray _pendingOutboundBlock;
 	std::shared_ptr<StartConferenceInfo> _startConferenceInfo;
 
 	not_null<PeerData*> _peer; // Can change in legacy group migration.
@@ -771,6 +803,8 @@ private:
 	bool _rtmp = false;
 	bool _reloadedStaleCall = false;
 	int _singleSourceVolume = 0;
+
+	SubChainState _subchains[kSubChainsCount];
 
 	rpl::lifetime _lifetime;
 

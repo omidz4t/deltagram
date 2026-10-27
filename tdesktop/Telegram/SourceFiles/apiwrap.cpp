@@ -47,6 +47,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/components/scheduled_messages.h"
 #include "data/components/welcome_messages.h"
 #include "data/notify/data_notify_settings.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "data/data_changes.h"
 #include "data/data_chat_participant_status.h"
@@ -490,7 +491,7 @@ void ApiWrap::toggleHistoryArchived(
 	}
 	const auto isPinned = history->isPinnedDialog(0);
 	const auto archiveId = Data::Folder::kId;
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&history->session())) {
 		const auto peer = history->peer;
 		Delta::SetChatArchived(
 			peer->isSelf(),
@@ -667,7 +668,7 @@ void ApiWrap::requestMessageData(
 		PeerData *peer,
 		MsgId msgId,
 		Fn<void()> done) {
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(_session)) {
 		Delta::RequestMessageData(peer ? int(peerToUser(peer->id).bare) : 0,
 			int(msgId.bare), std::move(done));
 		return;
@@ -2155,7 +2156,7 @@ void ApiWrap::sendNotifySettingsUpdates() {
 }
 
 void ApiWrap::saveDraftToCloudDelayed(not_null<Data::Thread*> thread) {
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&thread->session())) {
 		_session->local().writeDrafts(thread->owningHistory());
 		return;
 	}
@@ -2223,7 +2224,7 @@ void ApiWrap::clearHistory(not_null<PeerData*> peer, bool revoke) {
 }
 
 void ApiWrap::deleteConversation(not_null<PeerData*> peer, bool revoke) {
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&peer->session())) {
 		deleteHistory(peer, false, revoke);
 		return;
 	}
@@ -2257,7 +2258,7 @@ void ApiWrap::deleteHistory(
 		int retries) {
 	auto deleteTillId = MsgId(0);
 	const auto history = _session->data().history(peer);
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&peer->session())) {
 		if (history->latestSendingMessage()) {
 			for (const auto &window : _session->windows()) {
 				window->showToast(
@@ -3905,10 +3906,11 @@ void ApiWrap::finishForwarding(const SendAction &action) {
 	const auto topicRootId = action.replyTo.topicRootId;
 	const auto monoforumPeerId = action.replyTo.monoforumPeerId;
 	const auto requested = history->forwardDraft(topicRootId, monoforumPeerId);
-	auto toForward = Delta::Active()
+	const auto core = Delta::UsesCoreBackend(&history->session());
+	auto toForward = core
 		? history->resolveForwardDraft(requested)
 		: history->resolveForwardDraft(topicRootId, monoforumPeerId);
-	if (Delta::Active() && requested.ids.size() != toForward.items.size()) {
+	if (core && requested.ids.size() != toForward.items.size()) {
 		if (const auto show = ShowForPeer(history->peer)) show->showToast(u"Some forwarded messages are no longer available. Review the selection before sending."_q);
 		return;
 	}
@@ -3923,7 +3925,7 @@ void ApiWrap::finishForwarding(const SendAction &action) {
 			return;
 		}
 
-		if (Delta::Active()) {
+		if (core) {
 			forwardMessages(std::move(toForward), action);
 			return;
 		}
@@ -3946,7 +3948,7 @@ void ApiWrap::forwardMessages(
 		SendAction action,
 		FnMut<void()> &&successCallback) {
 	Expects(!draft.items.empty());
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&action.history->session())) {
 		const auto history = action.history;
 		const auto userId = int(peerToUser(history->peer->id).bare);
 		const auto report = [=](QString error) {
@@ -4677,7 +4679,7 @@ void ApiWrap::sendRichMessage(
 	const auto submittedPage = fullPage ? fullPage : item->richPage();
 	const auto submittedSummary = item->originalText();
 
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&item->history()->session())) {
 		const auto summary = submittedPage
 			? Iv::FlattenRichPageSummary(*submittedPage)
 			: submittedSummary;
@@ -4687,8 +4689,8 @@ void ApiWrap::sendRichMessage(
 					action.replyTo.topicRootId,
 					action.replyTo.monoforumPeerId);
 			}
-			return;
 		}
+		return;
 	}
 
 	StripEphemeralReply(_session, action.replyTo);
@@ -5066,7 +5068,7 @@ void ApiWrap::sendMessage(
 					draftTopicRootId,
 					draftMonoforumPeerId);
 				if (failed
-					&& (Delta::Active()
+					&& (Delta::UsesCoreBackend(&history->session())
 						|| (Data::DraftIsNull(local) && Data::DraftIsNull(cloud)))) {
 					const auto text = failed->originalText();
 					auto draft = Data::Draft();
@@ -5083,7 +5085,8 @@ void ApiWrap::sendMessage(
 						Ui::kQFixedMax);
 					draft.webpage = webPageDraft;
 					const auto current = !Data::DraftIsNull(local) ? local : cloud;
-					if (Delta::Active() && !Data::DraftIsNull(current)) {
+					if (Delta::UsesCoreBackend(&history->session())
+						&& !Data::DraftIsNull(current)) {
 						// A rejected send must survive switching profiles even when
 						// the user has started another message. Keep both texts in
 						// the editable draft; never resend the rejected text here.
@@ -5116,7 +5119,7 @@ void ApiWrap::sendMessage(
 			}
 			history->owner().sendHistoryChangeNotifications();
 		};
-		if (Delta::Active() && !sending.text.isEmpty()) {
+		if (Delta::UsesCoreBackend(&history->session()) && !sending.text.isEmpty()) {
 			// Core events can precede the send reply. Use the same reconciliation
 			// as files instead of replacing Core's item with the donor placeholder.
 			_session->data().unregisterMessageRandomId(randomId);
@@ -5523,7 +5526,8 @@ void ApiWrap::sendMediaWithRandomId(
 		return;
 	}
 
-	if (Delta::Active() && Delta::SendItemMedia(item, std::move(done))) {
+	if (Delta::UsesCoreBackend(&item->history()->session())) {
+		Delta::SendItemMedia(item, std::move(done));
 		return;
 	}
 
@@ -5939,7 +5943,7 @@ void ApiWrap::saveSelfBio(const QString &text) {
 		}
 	}
 	_bio.requestedText = text;
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(_session)) {
 		_bio.requestId = 1;
 		Delta::SetSelfAbout(text, [=](QString) {
 			_bio.requestId = 0;

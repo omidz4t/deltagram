@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "base/timer.h"
+#include "delta/passcode_recovery.h"
 #include "base/weak_ptr.h"
 
 namespace Storage {
@@ -20,6 +21,8 @@ enum class Environment : uchar;
 } // namespace MTP
 
 namespace Main {
+
+[[nodiscard]] QString PasscodeRecoveryWarning(Delta::PasscodeRecovery recovery);
 
 class Account;
 class Session;
@@ -39,7 +42,8 @@ public:
 
 	[[nodiscard]] bool started() const;
 	[[nodiscard]] Storage::StartResult start(const QByteArray &passcode);
-	void resetWithForgottenPasscode();
+	[[nodiscard]] Delta::PasscodeRecovery forgottenPasscodeRecovery() const;
+	[[nodiscard]] bool resetWithForgottenPasscode();
 	void finish();
 
 	[[nodiscard]] int maxAccounts() const;

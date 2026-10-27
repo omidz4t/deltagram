@@ -13,6 +13,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "mtproto/mtproto_config.h"
 #include "main/main_domain.h"
 #include "main/main_account.h"
+#include "main/account_storage_namespace.h"
 #include "base/random.h"
 
 namespace Storage {
@@ -180,8 +181,10 @@ Domain::StartModernResult Domain::startModern(
 	for (auto i = 0; i != count; ++i) {
 		auto index = qint32();
 		info.stream >> index;
-		if (index >= 0
-			&& index < Main::Domain::kPremiumMaxAccounts
+		// WHY: count is the live-account cap; namespace indices can be
+		// sparse above kPremiumMaxAccounts when lower slots are occupied
+		// orphans. Older donor readers still drop index >= 6.
+		if (Main::IsRepresentableAccountStorageIndex(index)
 			&& tried.emplace(index).second) {
 			auto account = std::make_unique<Main::Account>(
 				_owner,

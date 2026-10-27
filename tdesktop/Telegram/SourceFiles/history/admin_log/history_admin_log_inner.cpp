@@ -2259,7 +2259,10 @@ void InnerWidget::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 				tr::lng_context_copy_selected(tr::now),
 				[this] { copySelectedText(); },
 				&st::menuIconCopy);
-			if (item && !Ui::SkipTranslate(getSelectedText().rich)) {
+			if (item
+				&& !Ui::SkipTranslate(
+					getSelectedText().rich,
+					&item->history()->session())) {
 				const auto peer = item->history()->peer;
 				_menu->addAction(tr::lng_context_translate_selected({}), [=] {
 					_controller->show(Box(
@@ -2291,7 +2294,10 @@ void InnerWidget::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 						copyContextText(itemId);
 					}, &st::menuIconCopy);
 				}
-				if (!item->isService() && !Ui::SkipTranslate(item->originalText())) {
+				if (!item->isService()
+					&& !Ui::SkipTranslate(
+						item->originalText(),
+						&item->history()->session())) {
 					const auto peer = item->history()->peer;
 					_menu->addAction(tr::lng_context_translate({}), [=] {
 						_controller->show(Box(

@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QBuffer>
 
 #include "delta/avatar_image.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "api/api_sensitive_content.h"
 #include "data/data_user.h"
@@ -378,7 +379,9 @@ void PeerData::updateNameDelayed(
 }
 
 not_null<Ui::EmptyUserpic*> PeerData::ensureEmptyUserpic() const {
-	const auto color = isSelf() ? Delta::SelfAvatarColor() : QColor();
+	const auto color = (isSelf() && Delta::OwnsSession(&session()))
+		? Delta::SelfAvatarColor()
+		: QColor();
 	if (_userpicEmpty && color.isValid()
 		&& uint32(_userpicEmpty->uniqueKey().first)
 			!= anim::getPremultiplied(color)) {
@@ -413,16 +416,18 @@ void PeerData::checkTrustedPayForMessage() {
 }
 
 ClickHandlerPtr PeerData::createOpenLink() {
-	if (const auto contact = Delta::ContactForPeer(id.value)) {
-		const auto generation = Delta::AccountGeneration();
-		return std::make_shared<LambdaClickHandler>([=](ClickContext context) {
-			const auto controller = HistoryView::ExtractController(context);
-			if (!controller || generation != Delta::AccountGeneration()) return;
-			Delta::OpenContact(*contact, crl::guard(controller, [=](int chatId, QString error) {
-				if (!error.isEmpty()) controller->showToast(error);
-				else controller->showPeerHistory(peerFromUser(UserId(chatId)));
-			}));
-		});
+	if (Delta::OwnsSession(&session())) {
+		if (const auto contact = Delta::ContactForPeer(id.value)) {
+			const auto generation = Delta::AccountGeneration();
+			return std::make_shared<LambdaClickHandler>([=](ClickContext context) {
+				const auto controller = HistoryView::ExtractController(context);
+				if (!controller || generation != Delta::AccountGeneration()) return;
+				Delta::OpenContact(*contact, crl::guard(controller, [=](int chatId, QString error) {
+					if (!error.isEmpty()) controller->showToast(error);
+					else controller->showPeerHistory(peerFromUser(UserId(chatId)));
+				}));
+			});
+		}
 	}
 	return std::make_shared<PeerClickHandler>(this);
 }
@@ -454,7 +459,7 @@ QImage *PeerData::userpicCloudImage(Ui::PeerUserpicView &view) const {
 	if (!_userpic.isCurrentView(view.cloud)) {
 		if (!_userpic.empty()) {
 			view.cloud = _userpic.createView();
-			if (view.cloud->isNull()) {
+			if (view.cloud->isNull() && Delta::OwnsSession(&session())) {
 				*view.cloud = Delta::AvatarImage(userpicPhotoId());
 			}
 			if (view.cloud->isNull()) {
@@ -520,7 +525,7 @@ Ui::PeerUserpicView PeerData::createUserpicView() {
 		return {};
 	}
 	auto result = _userpic.createView();
-	if (result->isNull()) {
+	if (result->isNull() && Delta::OwnsSession(&session())) {
 		*result = Delta::AvatarImage(userpicPhotoId());
 	}
 	if (result->isNull()) {
@@ -624,7 +629,9 @@ void PeerData::updateUserpic(
 		PhotoId photoId,
 		MTP::DcId dcId,
 		bool hasVideo) {
-	const auto local = Delta::AvatarImage(photoId);
+	const auto local = Delta::OwnsSession(&session())
+		? Delta::AvatarImage(photoId)
+		: QImage();
 	if (!local.isNull()) {
 		auto bytes = QByteArray();
 		auto buffer = QBuffer(&bytes);
@@ -832,7 +839,10 @@ bool PeerData::canEditMessagesIndefinitely() const {
 }
 
 bool PeerData::canExportChatHistory() const {
-	if (Delta::Active() || isRepliesChat() || isVerifyCodes() || !allowsForwarding()) {
+	if (Delta::UsesCoreBackend(&session())
+		|| isRepliesChat()
+		|| isVerifyCodes()
+		|| !allowsForwarding()) {
 		return false;
 	} else if (const auto channel = asChannel()) {
 		if (!channel->amIn() && channel->invitePeekExpires()) {

@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history_item.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "api/api_premium.h"
@@ -543,7 +544,8 @@ HistoryItem::HistoryItem(
 		createComponents(data);
 		if (const auto media = data.vmedia()) {
 			setMedia(*media);
-		} else if (Delta::Active() && !Delta::SharedContactData(id.bare).isEmpty()) {
+		} else if (Delta::OwnsSession(&history->session())
+			&& !Delta::SharedContactData(id.bare).isEmpty()) {
 			setMedia(MTP_messageMediaEmpty());
 		}
 		if (const auto media = _media.get()) {
@@ -593,7 +595,9 @@ HistoryItem::HistoryItem(
 		}
 	}
 
-	Delta::ApplyMessageData(this);
+	if (Delta::OwnsSession(&history->session())) {
+		Delta::ApplyMessageData(this);
+	}
 
 	if (const auto until = data.vreport_delivery_until_date()) {
 		if (base::unixtime::now() < TimeId(until->v)) {
@@ -3246,7 +3250,7 @@ bool HistoryItem::allowsForward() const {
 }
 
 bool HistoryItem::isTooOldForEdit(TimeId now) const {
-	return !Delta::Active()
+	return !Delta::UsesCoreBackend(&_history->session())
 		&& !_history->peer->canEditMessagesIndefinitely()
 		&& !isScheduled()
 		&& !isWelcomeTemplate()
@@ -3254,7 +3258,8 @@ bool HistoryItem::isTooOldForEdit(TimeId now) const {
 }
 
 bool HistoryItem::allowsEdit(TimeId now) const {
-	if (Delta::Active() && !Delta::CanEditMessage(id.bare)) {
+	if (Delta::OwnsSession(&_history->session())
+		&& !Delta::CanEditMessage(id.bare)) {
 		return false;
 	}
 	const auto richPageSource = Get<HistoryMessageRichPageSource>();
@@ -3336,7 +3341,7 @@ bool HistoryItem::allowsMediaDownloadControls() const {
 }
 
 bool HistoryItem::canDelete() const {
-	if (Delta::Active() && isSending()) {
+	if (Delta::UsesCoreBackend(&_history->session()) && isSending()) {
 		// Core may already have accepted the send, but its ID is not known yet.
 		return false;
 	} else if (isSponsored()) {
@@ -3832,7 +3837,9 @@ bool HistoryItem::canViewReactions() const {
 
 bool HistoryItem::canInferReactionPeers() const {
 	return _history->peer->isUser()
-		&& (!Delta::Active() || Delta::IsDirectChat(_history->peer->id.value));
+		&& (!Delta::UsesCoreBackend(&_history->session())
+			|| (Delta::OwnsSession(&_history->session())
+				&& Delta::IsDirectChat(_history->peer->id.value)));
 }
 
 std::vector<Data::ReactionId> HistoryItem::chosenReactions() const {
@@ -4459,6 +4466,40 @@ void HistoryItem::setAnonymousForwarded(bool forwarded) {
 	_flags &= ~MessageFlag::DisplayFromChecked;
 }
 
+void HistoryItem::setBackendAuthorPresentation(
+		QString override,
+		bool originalMsg,
+		bool info,
+		QString quoteDisplayName,
+		QString quoteOverride) {
+	const auto empty = override.isEmpty()
+		&& !originalMsg
+		&& !info
+		&& quoteDisplayName.isEmpty()
+		&& quoteOverride.isEmpty();
+	if (empty) {
+		_backendAuthor.reset();
+		return;
+	}
+	if (!_backendAuthor) {
+		_backendAuthor = std::make_unique<BackendAuthorPresentation>();
+	}
+	auto &slot = *_backendAuthor;
+	if (slot.override == override
+		&& slot.originalMsg == originalMsg
+		&& slot.info == info
+		&& slot.quoteDisplayName == quoteDisplayName
+		&& slot.quoteOverride == quoteOverride) {
+		return;
+	}
+	slot.override = std::move(override);
+	slot.originalMsg = originalMsg;
+	slot.info = info;
+	slot.quoteDisplayName = std::move(quoteDisplayName);
+	slot.quoteOverride = std::move(quoteOverride);
+	++slot.revision;
+}
+
 void HistoryItem::setLocalDocument(
 		not_null<DocumentData*> document,
 		const QString &caption) {
@@ -4472,9 +4513,11 @@ void HistoryItem::setLocalDocument(
 }
 
 bool HistoryItem::unread(not_null<Data::Thread*> thread) const {
-	if (Delta::Active()) {
-		if (const auto state = Delta::MessageDelivery(id.bare)) {
-			return *state != Delta::DeliveryState::Read;
+	if (Delta::UsesCoreBackend(&_history->session())) {
+		if (Delta::OwnsSession(&_history->session())) {
+			if (const auto state = Delta::MessageDelivery(id.bare)) {
+				return *state != Delta::DeliveryState::Read;
+			}
 		}
 		if (out()) {
 			return !_history->peer->isSelf();
@@ -4608,7 +4651,7 @@ void HistoryItem::detectTextLinks(
 }
 
 void HistoryItem::setText(TextWithEntities textWithEntities) {
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&_history->session())) {
 		TextUtilities::ParseEntities(textWithEntities, TextParseLinks);
 	}
 	detectTextLinks(textWithEntities);
@@ -6023,7 +6066,9 @@ void HistoryItem::createServiceFromMtp(const MTPDmessageService &message) {
 }
 
 void HistoryItem::setMedia(const MTPMessageMedia &media) {
-	const auto contact = Delta::Active() ? Delta::SharedContactData(id.bare) : QJsonObject();
+	const auto contact = Delta::OwnsSession(&_history->session())
+		? Delta::SharedContactData(id.bare)
+		: QJsonObject();
 	if (!contact.isEmpty()) {
 		auto details = Data::SharedContact::VcardItems();
 		details.emplace(Data::SharedContact::VcardItemType::Email,

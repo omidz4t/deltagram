@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_media_types.h"
 #include "data/data_session.h"
 #include "data/data_user.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "delta/delta_boxes.h"
 #include "history/history.h"
@@ -294,14 +295,19 @@ QSize Contact::countOptimalSize() {
 		});
 	}
 
-	if (Delta::Active()) {
+	const auto session = &_parent->data()->history()->session();
+	if (Delta::UsesCoreBackend(session)) {
 		_buttons.clear();
-		const auto messageId = _parent->data()->id.bare;
-		_mainButton.link = std::make_shared<LambdaClickHandler>([=](const ClickContext &context) {
-			if (const auto controller = context.other.value<ClickHandlerContext>().sessionWindow.get()) {
-				Delta::ShowSharedContact(controller, messageId);
-			}
-		});
+		if (Delta::OwnsSession(session)) {
+			const auto messageId = _parent->data()->id.bare;
+			_mainButton.link = std::make_shared<LambdaClickHandler>([=](const ClickContext &context) {
+				if (const auto controller = context.other.value<ClickHandlerContext>().sessionWindow.get()) {
+					if (Delta::OwnsSession(&controller->session())) {
+						Delta::ShowSharedContact(controller, messageId);
+					}
+				}
+			});
+		}
 	}
 	const auto padding = inBubblePadding() + innerMargin();
 	const auto full = Rect(currentSize());
@@ -310,7 +316,9 @@ QSize Contact::countOptimalSize() {
 	const auto lineLeft = inner.left() + _pixh + inner.left() - outer.left();
 	const auto lineHeight = UnitedLineHeight();
 
-	auto maxWidth = Delta::Active() ? 240 : _parent->skipBlockWidth();
+	auto maxWidth = Delta::UsesCoreBackend(session)
+		? 240
+		: _parent->skipBlockWidth();
 	auto minHeight = 0;
 
 	auto textMinHeight = 0;

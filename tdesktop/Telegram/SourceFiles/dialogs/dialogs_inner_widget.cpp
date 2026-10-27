@@ -29,6 +29,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/shortcuts.h"
 #include "core/ui_integration.h"
 #include "ui/widgets/buttons.h"
+#include "ui/widgets/labels.h"
 #include "ui/widgets/popup_menu.h"
 #include "ui/widgets/scroll_area.h"
 #include "ui/text/text_utilities.h"
@@ -89,6 +90,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "api/api_chat_filters.h"
 #include "base/qt/qt_common_adapters.h"
 #include "styles/style_dialogs.h"
+#include "styles/style_widgets.h"
 #include "styles/style_boxes.h"
 #include "styles/style_chat.h" // popupMenuExpandedSeparator
 #include "styles/style_chat_helpers.h"
@@ -4201,10 +4203,140 @@ void InnerWidget::searchRequested(bool loading) {
 	_searchWaiting = false;
 	_searchLoading = loading;
 	if (loading) {
+		clearSearchFailure();
 		clearSearchResults(true);
 		clearPreviewResults();
 	}
 	refresh(true);
+}
+
+void InnerWidget::showSearchFailure() {
+	_searchWaiting = false;
+	_searchLoading = false;
+	_searchFailed = true;
+	createSearchFailureWidgets();
+	refresh();
+}
+
+void InnerWidget::clearSearchFailure() {
+	_searchFailed = false;
+	_searchFailedEmpty.destroy();
+	_searchFailedLabel.destroy();
+	_searchRetry.destroy();
+}
+
+void InnerWidget::searchCancelled() {
+	_searchWaiting = false;
+	_searchLoading = false;
+	_loadingAnimation.destroy();
+	clearSearchFailure();
+}
+
+bool InnerWidget::searchHasFailure() const {
+	return _searchFailed;
+}
+
+bool InnerWidget::searchIsLoading() const {
+	return _searchLoading;
+}
+
+rpl::producer<> InnerWidget::searchRetryRequests() const {
+	return _searchRetryRequests.events();
+}
+
+void InnerWidget::createSearchFailureWidgets() {
+	_searchFailedEmpty.destroy();
+	_searchFailedLabel.destroy();
+	_searchRetry.destroy();
+	const auto empty = _filterResults.empty()
+		&& _searchResults.empty()
+		&& _peerSearchResults.empty()
+		&& _hashtagResults.empty();
+	const auto retry = [=] {
+		_searchRetryRequests.fire({});
+	};
+	if (empty) {
+		auto text = TextWithEntities();
+		text.append(tr::lng_attach_failed(tr::now, tr::bold));
+		_searchFailedEmpty = object_ptr<SearchEmpty>(
+			this,
+			SearchEmpty::Icon::Search,
+			rpl::single(std::move(text)));
+		_searchFailedEmpty->setAccessibleName(tr::lng_attach_failed(tr::now));
+		_searchFailedEmpty->show();
+		if (_controller->session().data().chatsListLoaded()) {
+			_searchFailedEmpty->animate();
+		}
+	} else {
+		_searchFailedLabel.create(
+			this,
+			rpl::single(tr::lng_attach_failed(tr::now)),
+			st::dialogsEmptyLabel);
+		_searchFailedLabel->show();
+	}
+	_searchRetry.create(
+		this,
+		tr::lng_bot_download_retry(tr::now),
+		st::defaultLinkButton);
+	_searchRetry->setAccessibleName(tr::lng_bot_download_retry(tr::now));
+	_searchRetry->setFocusPolicy(Qt::StrongFocus);
+	_searchRetry->setClickedCallback(retry);
+	_searchRetry->show();
+	_searchRetry->raise();
+	resizeSearchFailure();
+}
+
+int InnerWidget::searchFailureTop() const {
+	auto top = searchedOffset()
+		+ int(_searchResults.size()) * _st->height;
+	if (_searchFailedEmpty) {
+		top += st::recentPeersEmptyHeightMin;
+	}
+	return top;
+}
+
+int InnerWidget::searchFailureBlockHeight() const {
+	if (!_searchFailed) {
+		return 0;
+	}
+	auto height = 0;
+	if (_searchFailedEmpty) {
+		height += st::recentPeersEmptyHeightMin;
+	} else if (_searchFailedLabel) {
+		height += st::dialogEmptyButtonSkip + _searchFailedLabel->height();
+	}
+	if (_searchRetry) {
+		height += st::dialogEmptyButtonSkip + _searchRetry->height();
+	}
+	if (height) {
+		height += st::dialogEmptyButtonSkip;
+	}
+	return height;
+}
+
+void InnerWidget::resizeSearchFailure() {
+	if (_searchFailedEmpty) {
+		_searchFailedEmpty->setMinimalHeight(st::recentPeersEmptyHeightMin);
+		_searchFailedEmpty->resizeToWidth(width());
+		_searchFailedEmpty->move(0, searchedOffset());
+	}
+	if (_searchFailedLabel) {
+		const auto skip = st::searchedBarPosition.x();
+		_searchFailedLabel->resizeToWidth(width() - 2 * skip);
+		_searchFailedLabel->move(
+			skip,
+			searchFailureTop() + st::dialogEmptyButtonSkip);
+	}
+	if (_searchRetry) {
+		auto top = searchFailureTop() + st::dialogEmptyButtonSkip;
+		if (_searchFailedLabel) {
+			top = _searchFailedLabel->y()
+				+ _searchFailedLabel->height()
+				+ st::dialogEmptyButtonSkip;
+		}
+		_searchRetry->move((width() - _searchRetry->width()) / 2, top);
+		_searchRetry->raise();
+	}
 }
 
 void InnerWidget::applySearchState(SearchState state) {
@@ -4745,6 +4877,7 @@ void InnerWidget::searchReceived(
 		HistoryItem *inject,
 		SearchRequestType type,
 		int fullCount) {
+	clearSearchFailure();
 	_searchWaiting = false;
 	_searchLoading = false;
 
@@ -4922,7 +5055,12 @@ void InnerWidget::refresh(bool toTop) {
 			h = dialogsOffset() + _shownList->height();
 		}
 	} else if (_state == WidgetState::Filtered) {
-		if (_searchEmpty && !_searchEmpty->isHidden()) {
+		if (_searchFailed) {
+			h = searchedOffset()
+				+ (_searchResults.size() * _st->height)
+				+ searchFailureBlockHeight();
+			resizeSearchFailure();
+		} else if (_searchEmpty && !_searchEmpty->isHidden()) {
 			h = searchedOffset() + st::recentPeersEmptyHeightMin;
 			_searchEmpty->setMinimalHeight(st::recentPeersEmptyHeightMin);
 			_searchEmpty->move(0, h - st::recentPeersEmptyHeightMin);
@@ -4948,7 +5086,7 @@ void InnerWidget::refreshEmpty() {
 			&& _searchResults.empty()
 			&& _peerSearchResults.empty()
 			&& _hashtagResults.empty();
-		if (_searchLoading || _searchWaiting || !empty) {
+		if (_searchFailed || _searchLoading || _searchWaiting || !empty) {
 			if (_searchEmpty) {
 				_searchEmpty->hide();
 			}
@@ -4964,7 +5102,9 @@ void InnerWidget::refreshEmpty() {
 			_searchEmpty->show();
 		}
 
-		if ((!_searchLoading && !_searchWaiting) || !empty) {
+		if (_searchFailed
+			|| (!_searchLoading && !_searchWaiting)
+			|| !empty) {
 			_loadingAnimation.destroy();
 		} else if (!_loadingAnimation) {
 			_loadingAnimation = Ui::CreateLoadingDialogRowWidget(
@@ -4979,6 +5119,7 @@ void InnerWidget::refreshEmpty() {
 		_searchEmpty.destroy();
 		_loadingAnimation.destroy();
 		_searchEmptyState = {};
+		clearSearchFailure();
 	}
 
 	const auto data = &session().data();
@@ -5140,6 +5281,7 @@ void InnerWidget::resizeEmpty() {
 		_loadingAnimation->resizeToWidth(width());
 		_loadingAnimation->move(0, searchedOffset());
 	}
+	resizeSearchFailure();
 }
 
 void InnerWidget::updateCommunityRequestableGeometry() {
@@ -6654,7 +6796,9 @@ void InnerWidget::keyPressEvent(QKeyEvent *e) {
 	if (processKeyDispatch(e)) {
 		return;
 	} else if (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) {
-		chooseRow();
+		if (!chooseRow() && _searchFailed) {
+			_searchRetryRequests.fire({});
+		}
 		return;
 	}
 	// Leave unhandled keys (e.g. typed characters) for the parent

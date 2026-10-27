@@ -416,15 +416,16 @@ bool UiIntegration::handleUrlClick(
 		const QString &original,
 		const QVariant &context) {
 	const auto invite = QUrl(original);
-	if (Delta::Active()
-		&& (invite.scheme() == u"https"_q || invite.scheme() == u"http"_q)
+	if ((invite.scheme() == u"https"_q || invite.scheme() == u"http"_q)
 		&& invite.host().compare(u"i.delta.chat"_q, Qt::CaseInsensitive) == 0
 		&& (invite.path().isEmpty() || invite.path() == u"/"_q)
 		&& !invite.fragment().isEmpty()) {
 		if (const auto controller = context.value<ClickHandlerContext>().sessionWindow.get()) {
-			Delta::ShowJoinInvite(controller, original);
+			if (Delta::OwnsSession(&controller->session())) {
+				Delta::ShowJoinInvite(controller, original);
+				return true;
+			}
 		}
-		return true;
 	}
 	// Only our own token may be added below, never one that came with it,
 	// unless the url itself was given to us by the server for this login.

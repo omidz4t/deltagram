@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_histories.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "api/api_text_entities.h"
@@ -281,7 +282,7 @@ void Histories::readInboxTill(
 		).arg(Logs::b(force)));
 
 	const auto syncGuard = gsl::finally([&] {
-		if (Delta::Active()) return;
+		if (Delta::UsesCoreBackend(&history->session())) return;
 		DEBUG_LOG(("Reading: in guard, unread %1."
 			).arg(history->unreadCount()));
 		if (history->unreadCount() > 0) {
@@ -309,13 +310,14 @@ void Histories::readInboxTill(
 		return;
 	}
 	const auto maybeState = lookup(history);
-	if (maybeState && (Delta::Active()
+	const auto core = Delta::UsesCoreBackend(&history->session());
+	if (maybeState && (core
 		? maybeState->sentReadTill == tillId
 		: maybeState->sentReadTill >= tillId)) {
 		DEBUG_LOG(("Reading: readInboxTill finish 3 with %1."
 			).arg(maybeState->sentReadTill.bare));
 		return;
-	} else if (maybeState && (Delta::Active()
+	} else if (maybeState && (core
 		? maybeState->willReadTill == tillId
 		: maybeState->willReadTill >= tillId)) {
 		DEBUG_LOG(("Reading: readInboxTill finish 4 with %1 and force %2."
@@ -473,9 +475,10 @@ void Histories::sendDialogRequests() {
 		_dialogRequests.emplace(history, std::move(callbacks));
 	}
 
-	const auto generation = Delta::AccountGeneration();
+	const auto core = Delta::UsesCoreBackend(&session());
+	const auto generation = core ? Delta::AccountGeneration() : 0;
 	const auto finalize = [=] {
-		if (generation != Delta::AccountGeneration()) return;
+		if (core && generation != Delta::AccountGeneration()) return;
 		for (const auto &history : histories) {
 			const auto state = lookup(history);
 			if (!state || !state->postponedRequestEntry) {
@@ -512,7 +515,9 @@ void Histories::dialogEntryApplied(not_null<History*> history) {
 	}
 	if (state && state->sentReadTill && state->sentReadDone) {
 		const auto till = base::take(state->sentReadTill);
-		if (!Delta::Active()) history->setInboxReadTill(till);
+		if (!Delta::UsesCoreBackend(&history->session())) {
+			history->setInboxReadTill(till);
+		}
 		checkEmptyState(history);
 	}
 }
@@ -746,7 +751,8 @@ void Histories::sendReadRequests() {
 }
 
 void Histories::sendReadRequest(not_null<History*> history, State &state) {
-	Expects(Delta::Active() || state.willReadTill > state.sentReadTill);
+	Expects(Delta::UsesCoreBackend(&history->session())
+		|| state.willReadTill > state.sentReadTill);
 
 	const auto tillId = state.sentReadTill = base::take(state.willReadTill);
 	state.willReadWhen = 0;
@@ -768,7 +774,9 @@ void Histories::sendReadRequest(not_null<History*> history, State &state) {
 					state->sentReadTill = 0;
 				}
 			} else {
-				Assert(Delta::Active() || !state->sentReadTill || state->sentReadTill > tillId);
+				Assert(Delta::UsesCoreBackend(&history->session())
+					|| !state->sentReadTill
+					|| state->sentReadTill > tillId);
 			}
 			history->validateMonoAndForumUnread(tillId);
 			sendReadRequests();
@@ -946,7 +954,7 @@ void Histories::deleteMessagesByDates(
 	TimeId minDate,
 	TimeId maxDate,
 	bool revoke) {
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&history->session())) {
 		if (history->latestSendingMessage()) {
 			for (const auto &window : session().windows()) {
 				window->showToast(
@@ -992,7 +1000,7 @@ void Histories::deleteMessagesByDates(
 }
 
 void Histories::deleteMessages(const MessageIdsList &ids, bool revoke) {
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&session())) {
 		for (const auto &id : ids) {
 			const auto item = _owner->message(id);
 			if (item && item->isSending()) {

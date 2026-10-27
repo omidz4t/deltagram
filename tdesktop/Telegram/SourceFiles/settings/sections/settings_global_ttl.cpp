@@ -7,7 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_global_ttl.h"
 
-#include "delta/delta_bridge.h"
+#include "delta/account_backend.h"
 
 #include "api/api_self_destruct.h"
 #include "apiwrap.h"
@@ -497,8 +497,8 @@ rpl::producer<QString> GlobalTTL::title() {
 }
 
 void GlobalTTL::setupContent() {
-	if (Delta::Active()) {
-		_state->show->showToast(u"Auto-delete controls are not available in Deltagram."_q);
+	if (Delta::UsesCoreBackend(&controller()->session())) {
+		_state->show->showToast(u"Auto-delete controls are not available for Chatmail profiles."_q);
 		return;
 	}
 	setFocusPolicy(Qt::StrongFocus);
@@ -558,9 +558,11 @@ const auto kMeta = BuildHelper({
 	.parentId = PrivacySecurityId(),
 	.title = &tr::lng_settings_ttl_title,
 	.icon = &st::menuIconTTL,
-	.available = [] { return !Delta::Active(); },
+	.available = [](not_null<::Main::Session*> session) {
+		return !Delta::UsesCoreBackend(session);
+	},
 }, [](SectionBuilder &builder) {
-	if (Delta::Active()) return;
+	if (Delta::UsesCoreBackend(builder.session())) return;
 	builder.add(nullptr, [] {
 		return SearchEntry{
 			.id = u"auto-delete/period"_q,

@@ -1,5 +1,1081 @@
 # Publication validation
 
+
+### Current native chooser and Telegram country catalog — 2026-10-27
+
+[Run 40468612014](https://github.com/omidz4t/deltagram/actions/runs/40468612014)
+at `227cfc4` passes all 24 CTest targets: 994 Qt checks, zero failures/skips.
+The downloaded archive digest and all five artifact-file hashes match. Provenance
+identifies merge `99be7f3`, parents `b713bff` and `227cfc4`; its tree matches local
+`227cfc4`. GUI SHA256:
+`9e521746ea175c9a283cbeed502fe2c2784afd479932d009fa05b8c7afc3fc3e`.
+The preceding retained-RPC correction also passes the complete run
+[40455308293](https://github.com/omidz4t/deltagram/actions/runs/40455308293)
+at `1fea603`: 24 targets, 994 checks, zero failures/skips, verified archive/file
+hashes and source-matching merge provenance. The `9714b03` CI lifetime failure
+is resolved by that implementation; full GUI setup/export teardown remains open.
+
+A fresh UID 65534 native GUI/store on a separate disposable display verifies the
+chooser at 818x642 and 380x480 with screen-reader mode enabled. The description
+now occupies 72px and all text is painted. At 380x480, the Telegram button is
+fully inside the window (global y456..498, window bottom532), with Chatmail above
+it and no overlapping copy. Both choices are visible. RTL, other interface
+scales, long localized copy and persist-error presentation remain untested.
+
+The fresh store has no country cache before backend selection. Explicit Telegram
+selection, through the same account's MTP rebuild, creates a 21,458-byte catalog
+with 232 visible countries. No `getting countries failed` error is logged.
+Start Messaging and Log in using phone number reach the donor phone-login screen;
+no phone number, code or password is entered and no QR token is captured. This
+checks native unauthenticated country lookup, not Telegram authorization/session
+persistence. No Core store/RPC is opened in this fresh Telegram-only replay.
+The earlier `ef176e9` Core-plus-preauth-Telegram restart proof remains separate.
+The test GUI quits normally; its own Xvfb is stopped. Evidence and bounded AT-SPI
+snapshots are under `data/integrity-live/chooser-native-227cfc4/` (ignored).
+
+This replay also exposed incorrect product copy on the donor welcome screen:
+"Welcome to the official Delta Chat app." The source now uses separate Deltagram
+language keys: "Sign in to Telegram" and "Use your Telegram account in Deltagram."
+It changes no authentication or transport behavior. Full/subset language
+generation and configured native syntax checks pass for `intro_start.cpp`.
+The updated copy still needs a new linked artifact/render check. No production
+or real Telegram account compatibility claim follows from these checks.
+
+
+### Mixed backend entry and compact chooser — 2026-10-27
+
+The complete artifact from [run 40438754289](https://github.com/omidz4t/deltagram/actions/runs/40438754289)
+was downloaded and all five published hashes verified. Its head is `ef176e9`,
+checkout `c145c1e`, and merge tree matches the local head tree at that revision.
+The GUI SHA256 is `a1f930b473e609122fc8ec659fabe3cccc477c4bc7d08cb85d84c7ec6c5923d4`.
+Its integrity log records 23 Qt suites, 962 passed, zero failures/skips. This is
+newer than the previously verified complete `bd1ea60` artifact, but predates
+`9714b03`/`1fea603` retained-RPC corrections and the source fixes below.
+
+An isolated UID 65534 native GUI with its own Xvfb/DBus and private disposable
+store shows the backend chooser before starting Core. Chatmail opens an offline
+imported fixture; Add Account opens a second chooser without replacing it.
+Core and Unspecified stages have zero GUI TCP sockets. Explicit Telegram
+selection opens the donor login flow and phone-number screen, with one established
+GUI connection to a built-in production Telegram DC on port 443. The Core child
+has zero TCP sockets. No phone number, code or password was entered, and no QR
+token was captured. This establishes unauthenticated transport/entry only.
+
+Normal quit and cold restart retain backend sidecars `[Core, Telegram]` and reopen
+the Core fixture. Before/after snapshots match: eight non-device chats, one draft,
+nine blob hashes; snapshot SHA256
+`a49512b769bd9d1f61dae6bf6b2d73a7a75dfc650c2e14c8ddced95d06a2d160`.
+The GUI sent no add_account/configure/init_transports. Two start_io calls were
+suppressed by the fixture proxy, so this is not live mail delivery proof. The
+source archive remains byte-identical. Both test GUI instances exited normally
+and the test-owned display/processes were stopped; existing desktop/store data
+were untouched. Evidence: `data/integrity-live/mixed-native-ef176/` (ignored).
+
+This artifact reproduces clipped chooser description text and a hidden Telegram
+button at 380x480 with screen-reader mode. The source now gives chooser labels a
+300px wrap style, reflows on label-height changes, and fits both buttons plus
+errors to available height. Donor intro styles are unchanged. Style generation
+and configured native syntax checking pass; corrected native rendering, error
+copy, RTL and interface-scale replay remain pending.
+
+Country catalog binding previously issued a request through Unspecified/Core MTP;
+its asynchronous unsupported failure destroyed the observer before explicit
+Telegram selection. The constructor now binds its sender only to Telegram MTP
+instances, retaining observation across same-account MTP rebuild and backend
+choice. An extracted exact-constructor recorder uses real rpl, account/MTP/domain
+doubles, Qt 6.11.2 and strict ASan/UBSan as UID 65534: baseline fails nine of 11
+assertions; corrected source passes all 11. Native syntax checking passes. This
+is reactive binding proof, not actual native catalog/cache success. Evidence:
+`data/integrity-live/countries-backend/` (ignored).
+
+Periodic Core DELTA_NOT_SUPPORTED background requests were also observed and
+remain unattributed. This country fix does not claim to resolve them. Authorized
+Telegram login/session recovery, mixed authenticated message-ID isolation and
+full current-source GUI regression remain open.
+
+### Core file backup export and private creation modes — 2026-10-27
+
+Advanced Settings now has an Export backup action for the owning Chatmail
+session. It exports only the selected Core profile into a new
+`chatmail-backup-XXXXXX` subfolder of the chosen destination. The optional
+backup passphrase must match a second masked field and is forwarded without
+trimming. Blank remains the Core null/unencrypted path. A failed attempt keeps
+the masked values so a retry cannot silently become unencrypted; success and
+closing the dialog clear/destroy them. Passphrases are not application settings.
+
+The UI states the actual Core format: the passphrase protects the database,
+not attachment files. A direct tar read of the disposable passphrase export
+retrieves all nine attachment payloads without its passphrase, with hashes
+matching the export source. The database header is not plain SQLite, and the
+previous wrong/correct-passphrase restore test verifies its access boundary.
+No whole-archive encryption is claimed or implemented by the client.
+
+The bridge API rejects non-owning sessions before creating a directory or
+accessing RPC. It captures the selected account ID, holds one export per RPC
+across profile changes, and drops stale UI completion through AccountScope,
+weak session/controller and box guards. Closing a dialog does not cancel a
+submitted export or release its reservation early. Profile reset closes the
+dialog. Only a typed null acknowledgement confirms success; errors/malformed
+replies do not auto-retry. Each attempt has a distinct directory and does not
+overwrite earlier output. On Unix, the directory helper refuses a newly
+created folder whose mode is not owner-private. Extended ACLs and unsupported
+filesystems are not established by these normal-filesystem checks.
+
+DeltaRpc's Unix child modifier now applies umask 0077 before exec while retaining
+Linux parent-death handling. It does not change the GUI process mask or chmod
+existing files. A real DeltaRpc/QProcess test reproduces two failures with the
+old code (new files 0666/0644 under parent masks 0000/0022). The corrected target
+passes five Qt 6.4.2 checks with zero failures/skips as UID/GID 65534, including
+0600 files, 0700 directories and an unchanged parent mask. This is POSIX mode
+validation, not Windows ACL or macOS runtime proof.
+
+The export helper target passes 22 checks as UID/GID 65534, including exact
+parameters, directory uniqueness/parent preservation, invalid input, malformed
+acknowledgements, cross-account serialization, and profile invalidation without
+early reservation release or stale UI delivery, pending ownership after UI/bridge
+loss, multiple RPC reservations, and idle registry cleanup. The full current Core integrity
+target passes 307 checks, zero failures/skips, with the pinned Core server.
+A separate unprivileged end-to-end driver links the actual DeltaRpc and export
+helper to that server: both plain and passphrase archives are 0600 in distinct
+0700 directories even while the parent mask is 0000. The protected archive
+restores with matching non-device message-ID lists, drafts and blob hashes.
+The source archive remains byte-identical; no mail-IO-starting RPC is called.
+
+Language/subset generation and native syntax/type checks pass for all four
+changed production translation units. Full application linking, new-dialog
+rendering/keyboard/cancel/error retry, background completion, live-IO export,
+profile/window teardown and release packaging remain pending. Private evidence
+and the standalone Core driver are under `data/integrity-live/backup-export/`.
+
+Normal quit/restart now checks all pending export reservations before the donor's
+1500ms delayed-exit path. Closing the export dialog or invalidating its profile
+scope does not remove the reservation held by the RPC callback. A blocked restart
+returns before arming restart/update flags; the user explicitly retries after the
+terminal reply. Export submission also refuses once shutdown has started, before
+creating an output directory. Existing donor upload/download/export prevention
+continues to run when no Core backup is pending. Startup/crash-recovery update
+restart setters are outside the running export path.
+
+An exact-source recorder with real Qt Core, the production reservation helper and
+minimal application/window/RPC doubles reproduces 11 baseline failures. The fixed
+methods pass all 16 assertions under ASan/UBSan: normal quit, normal/update restart,
+owner loss, terminal release, donor upload prevention, donor restart intent, and
+submission after shutdown. This is method-level evidence, not a native Application
+or GUI replay. The two affected production translation units pass native syntax/type
+checks after full/subset language generation. Normal close/quit/restart GUI replay
+remains pending. Force kill, OS shutdown, power loss, and a permanently unresponsive
+RPC are not recovered or cancelled by this guard. Private recorder evidence is
+under `data/integrity-live/backup-quit/`.
+
+### Qt 6.11 CI RPC-release correction — 2026-10-27
+
+[Run 40439784146](https://github.com/omidz4t/deltagram/actions/runs/40439784146)
+at `9714b03` links `bin/Telegram` and creates `deltagram.stripped`, then fails
+`callbackCannotDestroyRpcInsideReadHandler` on Qt 6.11.2. Twenty-three of the 24
+registered CTest targets pass; the failed run is not a validated release artifact.
+The original retained-RPC helper passed Qt 6.4.2 but scheduled QObject deferred
+deletion before invoking completion. A completion's nested event loop can then
+release the last owner before the read handler returns. The same case reproduced
+locally with the pinned Qt 6.11.2/GCC 16.2 toolchain; strict UBSan reports invalid
+dynamic-type member access in `onReadyRead`. The first local native attempt had
+an unwritable inherited Nix TMPDIR for UID 65534 and did not reach this case;
+rerunning with TMPDIR=/tmp produced the actual diagnostic.
+
+Retained RPC release now queues after completion and checks active dispatch depth.
+A release arriving during another response/error callback's nested loop parks its
+owner until the outermost RPC dispatch unwinds, then queues release again. The
+start/call/stop/read/finish/transport-failure paths participate. A buffered second
+reply and a buffered malformed-line event exercise subsequent non-owning callbacks.
+A control that only moves deferred deletion after the first callback still fails
+on that buffered second-reply case; it does not establish the required boundary.
+
+The corrected real-process suite passes 32 checks with ASan/UBSan and strict UBSan
+halt-on-error as UID/GID 65534 against pinned Qt 6.11.2. The suite includes the
+existing export/stop/nested-loop cases, twenty live-setup/readback cases, and two
+buffered reply/error cases. Every success checks eventual RPC release. The same
+32 strict sanitizer checks pass on system Qt 6.4.2/GCC 13.2.0. Pinned Qt 6.11.2
+also passes 307 Core integrity, 30 setup-action and five child-file privacy checks
+with zero failures/skips as UID/GID 65534. Both strict sanitizer drivers also pass
+against pinned Qt 6.11.2 and the actual pinned Core: export completes after owner
+loss, and wrong-passphrase import completes its readback before an explicit
+same-ID correct-passphrase retry. Checked IDs/drafts/blob hashes and source
+archives are preserved, stale UI does not run, and retained RPCs release. No
+mail-IO-starting method is used. Complete linked-app GUI teardown remains unverified. Private CI/control/fixed evidence is
+under `data/integrity-live/rpc-native-release/`.
+
+### Live profile-setup RPC ownership — 2026-10-27
+
+Live add-profile setup now builds its mutation request with
+`MakeOwnedProfileSetupRequest`. It uses the retained/deferred RPC handoff for
+name/avatar writes, import, second-device copy, and transport setup, including
+the `is_configured` readback after an error. The prior request captured its shared
+RPC in the first callback only. With the UI/Bridge owner gone, terminal callback
+cleanup could destroy that RPC inside `onReadyRead`; after an error the readback
+callback did not retain the request either. The first-run QObject-parented RPC
+path and Telegram intro are unchanged.
+
+A raw-call adapter preserving the old live-request ownership reproduces UBSan
+invalid dynamic-type member access in `DeltaRpc::onReadyRead`, both on successful
+import and on error/readback. Strict `halt_on_error` makes those negative controls
+fail immediately. This is not reported as an ASan heap-use-after-free: the
+observed diagnostic is member access while the object's dynamic type is QObject.
+
+The expanded permanent real-QProcess target passes 30 checks with ASan/UBSan,
+strict UBSan halt-on-error, UID/GID 65534 and Qt 6.4.2. Twenty new cases combine
+import, copy, classic creation and invitation setup with success, unconfigured
+readback, configured readback, malformed readback and child failure during
+readback. They release UI and external RPC ownership before the first reply,
+hold readback separately, assert the correct final lease/outcome and exact
+mutation/readback method sequence, drop stale UI, and verify eventual RPC release.
+The existing 30 setup-action checks and both registered CTest targets also pass.
+The process fixture simulates replies; it does not configure mail transports or
+perform SecureJoin/copy against another device.
+
+A separate strict sanitizer driver uses the real RPC/helper and pinned Core. It
+creates a disposable encrypted archive, submits a wrong-passphrase import, drops
+the UI-equivalent and external RPC owners, and observes Retryable after the real
+unconfigured readback. Reopening Core confirms that target remains unconfigured.
+An explicit correct-passphrase retry on the same ID also drops the owners and
+succeeds; checked non-device message IDs, drafts and blob hashes match. The
+checked source-profile snapshot and immutable input archive remain unchanged.
+No mail-IO-starting RPC is used, no stale UI runs, and both retained RPCs release;
+no unprivileged Core process remains afterward.
+
+Native `welcome.cpp` syntax/type validation passes. Full native onboarding
+window/session destruction, live transport setup, second-device transfer and
+first-run cancellation remain separate gates. Private evidence is under
+`data/integrity-live/setup-rpc-lifetime/`.
+
+### Export RPC lifetime after session teardown — 2026-10-27
+
+The export request closure held a shared RPC only until submission returned.
+The pending callback kept its export reservation but not the RPC itself. Releasing
+the session/Bridge's final RPC owner could therefore stop the child before export
+finished. Export now submits through `CallOwnedDeltaRpc`, which retains an
+unparented shared RPC through success or transport failure. Terminal completion
+now queues release only when no RPC dispatch is active, parking/rescheduling an
+owner if a subsequent callback opens a nested loop. The initial QObject deferred-
+deletion approach passed Qt 6.4.2 but failed Qt 6.11.2; the correction and negative
+controls above supersede that release mechanism.
+Null or QObject-parent-owned RPC inputs are rejected. Existing ordinary calls,
+explicit stop semantics, Core protocol/format and Telegram transport are unchanged.
+
+The permanent real-QProcess Qt target passes ten checks under ASan/UBSan as
+UID/GID 65534 with Qt 6.4.2. A pre-fix raw-call adapter against the old DeltaRpc
+implementation fails six of those cases. The cases cover owner loss before a
+success/error reply, child failure, malformed transport, no stale UI callback,
+reservation cleanup, a nested completion event loop, explicit stop, stopped/null
+RPCs and rejection of parent-owned objects. The fixed target verifies final weak
+owner and QObject release rather than merely retaining the process indefinitely.
+
+A second unprivileged sanitizer driver uses the actual DeltaRpc/export helper
+with the pinned Core server and immutable disposable backup. It imports offline,
+submits export, invalidates the UI scope and releases the session-equivalent RPC
+owner before processing the reply. Export finishes, stale UI is not called, and
+the retained RPC is released. Reopening Core confirms the original profile is
+unchanged; restoring the exported archive matches checked non-device message IDs,
+drafts and all blob hashes. Output remains 0600 under a 0700 folder; the input
+archive is byte-identical. No mail-IO-starting RPC is used, and no unprivileged
+Core process remains after completion.
+
+All three registered CTest targets (RPC lifetime, child-file privacy, export
+helper) pass as UID/GID 65534. Native `delta_rpc.cpp` and `delta_bridge.cpp`
+syntax/type checks pass. This is real RPC/process and offline Core evidence, not
+a full Bridge/session/window teardown GUI replay or live-IO export claim. It does
+not recover forced process termination or a permanently unresponsive server.
+Private evidence is under `data/integrity-live/rpc-export-lifetime/`.
+
+### Profile deletion during backup export — 2026-10-27
+
+The profile menu could issue `remove_account` for an exporting profile. Pinned
+Core's removal path closes that database and recursively removes its profile
+files; export's per-account ongoing lock does not guard account removal. The
+client now shares a per-RPC reservation between export and deletion. Deletion
+acquires before inventory lookup and holds through any switch away from the
+current profile and the terminal removal reply. Export refuses while a deletion
+is reserved, before creating its destination folder. A second deletion also
+refuses. This applies to every profile on that RPC, retaining the existing
+per-RPC export serialization boundary.
+
+Terminal success/error releases before the UI callback. Last-profile refusal,
+switch error, and discarded stale callbacks release ownership as well. Normal
+profile switching remains allowed during export: its captured target ID stays
+fixed, and invalidated UI completion stays dropped. Telegram account logout and
+account deletion paths are unchanged.
+
+The updated export-helper suite passes 22 checks as UID/GID 65534, zero
+failures/skips, with four new mutual-exclusion/ownership cases. An exact-source
+Bridge-method recorder reproduces eight baseline failures and passes all 20
+assertions under ASan/UBSan. Cases cover removal before/during export, zero
+output-directory creation on refusal, duplicate removal, current/inactive target
+IDs, inventory/switch/removal phases, terminal errors, last-profile refusal,
+expired owner/scope, and an explicit export after deletion completes. The recorder
+uses real Qt Core and production reservation/scope helpers with inventory,
+window/session and RPC recording doubles. Native `delta_bridge.cpp` syntax/type
+validation passes. This does not prove a native profile-menu or linked-app
+teardown replay; those remain open. No account was deleted in a live user store.
+Private evidence is under `data/integrity-live/backup-removal/`.
+
+### Deferred contact-open ownership — 2026-10-27
+
+`ContactListController::rowClicked` already copied the completion callback
+before posting it, because closing the contact list destroys its controller.
+The posted zero-delay timer did not retain either the list-lifetime check or
+the captured profile guard. A profile switch or list/window destruction after
+the Core reply but before timer dispatch could therefore invoke the old open
+callback. Checking only the RPC callback did not protect that second stage.
+
+The normal open path now captures the account guard at click time and checks it
+with the list's weak lifetime at both RPC completion and timer dispatch. The
+callback remains copied outside the controller, preserving the existing safe
+close-before-navigation behavior. Contact picking, member selection, identity
+mapping, RPC parameters and donor Telegram contact behavior are unchanged.
+
+An exact-source method recorder uses real Qt zero-delay timers and the
+production `AccountScope` with minimal list/controller/RPC recording doubles.
+The baseline fails four assertions; the corrected method passes all 19 under
+ASan/UBSan. Cases cover normal deferred opening, controller death, profile
+invalidation before timer execution, controller replacement, invalidation
+before the simulated RPC callback, and error presentation. Native `delta_boxes.cpp`
+syntax/type validation also passes. This does not instantiate the complete
+PeerListBox, exercise a mixed-account window, or prove native GUI close/switch
+behavior; that replay remains pending. Private evidence is under
+`data/integrity-live/contact-dispatch/`.
+
+### Encrypted backup import — 2026-10-27
+
+Restore now offers a masked optional backup-passphrase field after file
+selection. Blank input preserves the existing JSON-null unencrypted import;
+nonempty input is forwarded without trimming. The dialog explains that the
+backup passphrase is distinct from the local application passcode. The setup
+lease remains held through the prompt, Cancel/close releases it, and submission
+consumes the prompt before closing so the close hook cannot unlock an in-flight
+import. The originating onboarding widget/account is rechecked after close.
+The existing mutation acknowledgement/readback policy remains authoritative;
+there is no automatic retry after an error or lost reply.
+
+The setup-action target passes 30 Qt 6.4.2 checks as UID/GID 65534, zero
+failures/skips, including exact whitespace/Unicode passphrase forwarding,
+explicit same-ID retry after a wrong-passphrase error plus unconfigured
+readback, and empty input remaining JSON null. Existing exclusivity,
+cancellation, unknown-result and retry-open checks continue to pass.
+
+On disposable offline accounts, the SHA256-verified pinned Core server exports
+an encrypted archive with a generated passphrase that contains Unicode and
+leading/trailing whitespace. Missing and wrong passphrases are rejected and
+leave the same destination unconfigured. The exact passphrase then restores
+that same ID with matching non-device message-ID lists, drafts and blob hashes.
+The immutable source archive is unchanged, and no mail-IO-starting RPC was used.
+Generated passphrases are absent from the checked Core diagnostics and account
+metadata. They are not printed or recorded as evidence. This Core test and the
+injected C++ tests do not establish native dialog rendering, cancel/focus,
+clipboard behavior, wrong-passphrase UI retry, locked-profile recovery or
+Telegram compatibility. Native GUI replay remains a release gate.
+
+Language and subset generation pass, and the updated `welcome.cpp` passes
+the configured native compiler in syntax/type-only mode after adding the
+complete window-controller include. No object generation/linking is claimed.
+
+Private evidence: `data/integrity-live/backup-passphrase/qt-result.txt` and
+`core-result.json`, with the reproducible offline Core driver at
+`data/integrity-live/backup_passphrase_core_check.py`.
+
+### Interrupted offline database import — 2026-10-27
+
+The same SHA256-verified pinned Core server and immutable disposable source
+archive used by the extraction check also pass one SQL-write interruption.
+A copy of the archive has a 64 MiB `txt_raw` probe on a retained normal-message
+row, with no change to visible text, identity or message IDs. A full control
+import first preserves the reference message IDs, drafts and blob hashes and
+retains the probe. The first attempted control picked a device-notice row,
+which Core intentionally deletes; that fixture attempt stopped before fault
+injection and is not counted as a crash-recovery test.
+
+On a new destination, the owned subprocess was stopped with its 67,710,976-byte
+backup database fully extracted and its destination WAL grown from 2,401,992
+to 7,214,152 bytes. The main database was still 4,096 bytes and the import reply
+was pending. The stopped PID was confirmed before SIGKILL; its terminal exit
+was awaited before reopening the same disposable accounts directory.
+
+After restart, the destination remained unconfigured. Import retry on that
+same account ID succeeds. The other restored profile preserves its message-ID
+lists, draft records and blob hashes. Read-only follow-up inspection passes
+`PRAGMA integrity_check` on all four reference/control/recovered databases;
+every column of all 27 non-device message rows matches its appropriate control,
+and the 64 MiB probe hash matches exactly. The original archive is unchanged.
+No mail-IO-starting RPC was used, and no owned test process remains.
+
+This is a measured destination SQL-write checkpoint, not exhaustive crash-stage
+coverage, power-loss durability, a native onboarding/GUI teardown check, network
+isolation or Telegram validation. No Core/client patch was required by this
+result. Private scripts/evidence are
+`data/integrity-live/backup_sql_interruption.py`,
+`data/integrity-live/verify_sql_import_recovery.py`, and
+`data/integrity-live/backup-sql-interruption/*.json`; generated accounts remain
+under `/tmp/deltagram-live/sql-import-interruption-20261027-b`.
+
+### Interrupted offline backup extraction — 2026-10-27
+
+The pinned Core server from native artifact `bd1ea60` matches SHA256
+`89cbcddf509b197618b17dd3c1137a966b2fcc89f2a08d974156ac9d7374f70f`.
+A previously exported disposable archive remains byte-identical before and
+after the check. A test copy adds one 64 MiB synthetic leading blob; successful
+control import establishes that the augmented archive remains importable.
+
+An owned Core subprocess was stopped while that first blob had 155,648 bytes
+written, before backup database extraction. The import reply was still pending
+and `/proc` confirmed the process stopped. Only that PID was killed; its SIGKILL
+exit was awaited before starting a replacement on the same disposable storage.
+The destination remained unconfigured after restart. Importing the original
+archive into that same account succeeded. Another already-restored profile
+retained exactly its non-device-chat message-ID lists, draft records and blob
+hashes across termination, restart and retry. No mail-IO-starting RPC was called.
+
+This is one measured pre-database extraction checkpoint, not a SQL-import crash
+test, GUI close/recovery test, network-isolation proof or Telegram validation.
+Private reproducibility/evidence: `data/integrity-live/backup_import_interruption.py`
+and `data/integrity-live/backup-import-interruption/result.json`; generated
+accounts remain under `/tmp/deltagram-live/import-interruption-20261027-a`.
+
+### Blocked-contacts settings ownership — 2026-10-27
+
+The Core blocked-contacts section now includes its bridge declarations and
+checks session ownership before loading contacts. Replies and unblock buttons
+retain the originating account guard, generation and refresh revision. Profile
+reset clears rendered contacts without fetching through the old account during
+the reset callback. Non-owning refresh shows an unavailable state with no list
+request. Native profile-switch/unblock replay remains pending.
+
+Ten additional settings sections pass native syntax/type validation, including
+the corrected blocked-contacts file, premium, business, active sessions, search,
+notifications, storage, advanced and chat settings. The focused native set is
+now 52 distinct source files. This does not establish GUI or service behavior.
+
+### Held Telegram authorization during unresolved startup — 2026-10-27
+
+Unresolved/Core accounts no longer start queued or stale MTProto key deletion.
+Authorization serialization retains the stored self ID when session publication
+is held, and includes both held and already-running key-deletion queues.
+Explicitly Telegram accounts retain the donor destruction path. The encrypted
+account/auth format is unchanged.
+
+An exact-method recorder reproduces nine failing assertions before the fix and
+passes all 13 afterward under AddressSanitizer and UndefinedBehaviorSanitizer.
+It uses the production authorization serializer, stale-key method and raw key
+writer with synthetic key/account/MTP doubles; no real authorization, crypto
+session or server deletion is used. The backend/store target passes 44 tests
+and startup policy passes 13 as UID/GID 65534, zero failures/skips. The updated
+`main_account.cpp` passes native syntax/type validation. Native corrupted-tag
+restart, encrypted-storage writes and post-selection destruction remain pending.
+
+### Native syntax checks for account-lifecycle guards — 2026-10-27
+
+The current `main_domain.cpp`, `main_session.cpp` and
+`settings/sections/settings_information.cpp` pass the actual incremental native
+build's compiler commands with `-fsyntax-only`. Object and dependency output
+flags are removed; Ninja records and ccache are retained. These checks use the
+configured Nix/Qt headers and generated sources, including the new Core
+container/passcode and Telegram app-config guards. All three compiler exits
+are zero with empty diagnostic logs. This is syntax/type validation, not
+object generation, linking, encrypted-storage replay or GUI proof.
+
+The same native checks also pass `main_account.cpp`, `storage_account.cpp`,
+`mainwindow.cpp`, `backend_choice.cpp`, `mtp_instance.cpp` and MTProto
+`session.cpp`. The first main-window attempt found a raw `Main::Account*`
+passed to `windowFor(SeparateId)`. The existing-Core chooser route now supplies
+the donor `not_null` account wrapper; the corrected file and the remaining
+authentication/transport files pass. No login or real connection is exercised
+by these compiler invocations.
+
+The restored conference implementation, call-entry gates, language/provider
+routing, language box, settings builder/main page, main/filter menus, app badge,
+main widget and session navigation also pass, bringing the focused native
+syntax/type set to 22 distinct source files. Initial menu/navigation checks
+found a second raw-account window lookup, an unsupported FlatLabel click API,
+a missing complete Domain include, a shadowed session accessor and private
+base-field access. The fixes use typed window IDs, the pinned donor label
+handler, the Domain header and public session accessors. No menu interactions,
+conference calls, native language switching or badge behavior are established
+by compilation alone.
+
+History/composer, dialog search, message/reply/element rendering and data-session
+sources also pass, bringing this focused set to 28 files. Initial checks found
+an unmatched parenthesis in the send-button disable expression and a captured
+controller pointer called as a function in the QR callback. The Core readiness
+condition is now a named boolean combined with the existing slow-mode rule;
+the QR callback passes its captured controller directly. These checks do not
+prove sending, search behavior, author painting or mixed-ID isolation at runtime.
+
+### Passcode retention before Core session startup — 2026-10-27
+
+Automatic empty-account passcode cleanup now requires a single, logged-out
+Telegram account. Core containers and unresolved accounts retain their local
+passcode and system-unlock preference while session startup is pending or has
+failed. The zero-account guard remains before the active-account dereference.
+
+The account-policy target passes 19 QtCore tests as UID/GID 65534, zero failures
+or skips. A separate recorder compiles the complete production
+`Domain::removePasscodeIfEmpty` method with account/storage/application doubles:
+the previous method fails ten assertions for unopened Core/unresolved accounts;
+the corrected method passes all 90 assertions under AddressSanitizer and
+UndefinedBehaviorSanitizer. This verifies recorded passcode writes, unlocks,
+preferences and return values across backend/session/count combinations, not
+native encrypted-storage or lock-screen startup. Those native checks remain
+pending.
+
+### Telegram app-configuration ownership — 2026-10-27
+
+`Session::appConfigRefreshed` now clears Telegram freeze/appeal, premium-purchase
+and edited-date state for Core and unresolved accounts before reading Telegram
+app configuration. Telegram keeps its donor configuration path. An exact-method
+recorder reproduced eight failing assertions before the guard; afterward all
+15 assertions pass in both ordinary and `OS_MAC_STORE` policy builds under
+AddressSanitizer and UndefinedBehaviorSanitizer. The recorder uses configuration
+and session doubles, not a native `Main::Session` or a macOS application.
+Native cached-configuration migration and frozen-composer UI replay remain
+pending.
+
+### Core container cleanup policy — 2026-10-27
+
+Donor redundant-account cleanup now retains a Core-tagged container when its
+session has not opened. Previously, switching to another account could remove
+that container from the live domain and the next saved account list. Telegram
+and unresolved abandoned login slots retain the donor cleanup rules. The
+settings Add Account availability check now uses the same reuse predicate as
+`Domain::addActivated`, so a session-less Core container cannot be advertised
+as a reusable Telegram slot.
+
+The updated production policy helpers pass 17 QtCore tests on Qt 6.4.2 / GNU
+13.3 as UID/GID 65534, with zero failures/skips. Native `Domain` cleanup,
+account switching and persisted restart remain unverified by these helper
+tests. No account-map, authorization or backend-sidecar format changes.
+
+### Mixed-backend identity, conference dependency and release guards — 2026-10-27
+
+Local source integration `9215659` includes per-account backend selection,
+Telegram transport and donor conference restoration, and Core ownership gates.
+It is not a native or Telegram-login pass. Session identity/prediction helpers
+pass 15 checks, zero failures/skips, including Core with missing or unexpected
+stored donor self data, Telegram user ID `1_000_000`, and unchanged Telegram
+production/test identifiers. Native storage loading and mixed callbacks remain
+pending. Core's old unprefixed account-order entries are intentionally not
+aliased onto a real Telegram user; that can reset the Core row's old order.
+
+The exact donor tdlib `51743dfd01dff6179e2d8f7095729caa4e2222e9` builds as
+tde2e 1.8.49. The full application configures with it and the actual
+`td_tde2e` wrapper compiles against its exported CMake package. Restored
+conference call sources have not yet compiled or run. The existing incremental
+release and ccache trees are retained while native Bridge compilation runs.
+
+Release tooling passes 17 build/API-mode checks and 53 offline release checks
+on Linux. Mode changes retain Ninja records, production builds require explicit
+inputs, and missing/invalid cached mode forces configuration. Staging checks
+binary SHA256, API mode, version file and CMake mode before replacing output;
+publication checks production provenance and the CI source commit. Empty or
+multiline version files and changed/missing version assets are refused. Python
+lint/import checks, shell syntax, and workflow parsing without duplicate keys
+pass. The workflow keeps production API inputs out of PR validation builds.
+No production credentials have been requested or used, and real Actions
+publication has not run. The macOS host test attempt lacks `flock`; it is not
+reported as a passing Linux build-tool test.
+
+### Native complete-message access — 2026-10-27
+
+[Native run 40387188858](https://github.com/omidz4t/deltagram/actions/runs/40387188858)
+succeeds at head `bd1ea60cec099602243c14a21c45a378fb319b06`, merge
+`0807ae50182fae36adcaf64dd037688a79e2abe2`, base
+`b713bff697ad3450bf842da5f24f83b64a9d68e6`. All five artifact hashes match,
+and the bundled test log records 827 passes, zero failures/skips. This compiles
+the complete-message UI and language code generation. It predates the newer
+mixed-backend routing, identity, entitlement and conference changes.
+
+The disposable offline HTML fixture now has a visible Show full message footer.
+Opening history makes zero `get_message_html` calls. One explicit click makes
+one call and renders the HTML-only marker, heading and table; all are selectable
+and copyable. The HTTP link opens a confirmation prompt, which is cancelled.
+A separate synthetic reply containing a long body and image/frame/script
+references to a local HTTP listener displays its first marker and scrolls to
+its final marker with zero listener requests. The first synthetic attempt did
+not open the viewer and is not counted; the second begins from a verified
+history view. Local-file denial remains covered by the renderer tests, not by
+this HTTP-listener observation.
+
+Holding the real HTML reply for 15 seconds and closing Loading after 1.53 seconds
+does not reopen the dialog when the reply arrives. The saved backup draft and
+offline IO policy are preserved. The initial real-body case issues zero send
+or chat-create requests. Private evidence is under
+`/tmp/deltagram-live/backup-search-pager-a19/full-bd1-*`. Profile-switch
+cancellation, mixed Core/Telegram runtime, and real long-mail delivery remain
+separate gates.
+
+### Backend integration checks and native encryption replay — 2026-10-27
+
+A frozen source snapshot of the updated backend metadata, namespace allocation,
+and startup policies passes 44 backend/storage checks and 12 startup checks on
+Qt 6.4.2 / GNU 13.3, as unprivileged UID/GID 65534, with no failures or skips.
+The initial compile found a missing test-fixture `sidecarBytes` accessor; the
+accessor was added before the final build. Sparse namespace allocation beyond
+index 5 preserves occupied map/auth/metadata sentinels. These tests do not run
+native `Storage::Domain::startModern` or `Main::Account` reconstruction.
+The unread aggregation helper separately passes eight checks, zero failures
+or skips; its native menu and badge consumers remain untested.
+
+[Native run 40376361341](https://github.com/omidz4t/deltagram/actions/runs/40376361341)
+succeeded at head `f9c9f6f3fe43f379273e43eb8648f2a453a20ea2`, merge
+`5b56b223e155dcbd83338cab5c10ead29bd093c4`, base
+`b713bff697ad3450bf842da5f24f83b64a9d68e6`. All five artifact checksums match;
+the bundled Qt test log records 751 passes, zero failures/skips. This artifact
+includes the encryption presentation and onboarding layout fixes, but predates
+the backend identity, full-message viewer, and subsequent routing changes.
+
+On that binary, the disposable group Encryption info dialog displays the Core
+header and final fingerprint line. Selecting the body and copying it produces
+the exact 170-character Core plaintext. Full-window default OCR missed most of
+the dialog; cropped, enlarged OCR and visual inspection establish the visible
+lines instead. With the encryption reply held for 15 seconds, closing Loading
+after 1.65 seconds returns to Group Info and the late reply does not reopen the
+dialog. The original fault policy is restored. No fingerprint/address contents
+are included in the result JSON. Private results are
+`/tmp/deltagram-live/native-f9-encryption-result.json` and
+`/tmp/deltagram-live/native-f9-encryption-cancel-result.json`.
+Long-body scrolling, profile-switch cancellation, and mixed-backend native
+behavior remain separate gates. Telegram transport is still under integration;
+these Core checks do not establish real Telegram compatibility.
+
+A separate fresh disposable onboarding root verifies the same binary's avatar
+layout. Personal copy sits below the avatar at 818×642, and the avatar center
+opens the image picker. Team copy, name field, Next and privacy link remain
+visible without overlap at 818×642, 818×480 and 380×480. The upper avatar edge
+also opens the picker in the compact team form. This phase allocates one empty
+local account but makes zero `set_config`, `init_transports`,
+`add_or_update_transport`, or `start_io` requests. No profile is provisioned.
+RTL and other interface scales remain untested. Private evidence is
+`/tmp/deltagram-live/backup-avatar-layout-f9/native-result.json`.
+
+The production-used domain account-limit policy separately passes 15 QtCore
+checks, zero failures/skips. It restores donor 3/6 account capacity while
+excluding Core/Unspecified from Telegram premium/test entitlement. Its initial
+build exposed identifiers named `slots` colliding with Qt's keyword macro;
+those identifiers were renamed before the final build. Native account creation
+and persisted mixed-account restart remain pending.
+
+The working-tree transport restoration now uses the immutable MTP instance
+backend. Exact extracted production methods pass five dispatch checks and eight
+startup/resume checks against recording doubles. Telegram performs one callback
+store and signed registration, including the deferred dependency path. Core and
+Unspecified avoid DC lookup/connection workers, and resume returns safely when
+no private worker exists. Config/CDN/HTTP-time/DNS entry points are backend-gated
+in source, but are not executed by these doubles. No sockets or login are used.
+The extracted method hashes and results are under the ignored
+`data/integrity-live/telegram_transport_harness/restored/` tree. Native compile,
+real test-DC authentication and mixed-session runtime remain pending.
+
+Three focused integrity slots for per-message author names, adjacent-author
+grouping, and existing edit eligibility pass (five QtTest entries including
+setup/cleanup), zero failures/skips. These execute production metadata helpers;
+native HistoryView painting, quote selection, attachment grouping and contact
+click identity are still untested.
+The same frozen source then passes the complete integrity target: 307 checks,
+zero failures/skips, using the pinned Core RPC server and disposable temporary
+databases as UID/GID 65534. This does not compile the native account/UI routing.
+
+The production-used Telegram entitlement helpers pass 11 QtCore checks, zero
+failures/skips. Telegram premium follows the donor user flag, and purchasing
+follows server policy with the donor blocked-by-default and Mac Store behavior.
+Core/Unspecified flags cannot grant Telegram entitlement. Native Main::Session
+consumers and server app-config updates remain untested. Publication audit of
+the current tree checks 13,270 files with zero blocking findings; this checks
+publication hygiene, not backend isolation or protocol behavior.
+
+### Backend identity and complete-message source validation — 2026-10-26
+
+`c6f3abc` adds explicit per-account backend identity and a separate versioned,
+atomic metadata store. The donor encrypted map and MTP authorization serializers
+retain their existing format. An exact Git-index snapshot builds on Qt 6.4.2 /
+GNU 13.3 and passes 34 QtCore checks as unprivileged UID/GID 65534, with zero
+failures/skips. Tests cover migration evidence, corrupt/unsupported metadata,
+failed persistence, independent identities, private file permissions, and
+unchanged sentinel map/auth bytes. They do not instantiate native
+`Storage::Account` or prove migration of a real Telegram session. Running the
+same permission-denial fixture as container root produces one failure because
+root can write through the read-only directory; that run is not reported as a
+passing suite.
+
+`bd1ea60` adds explicit full-message controls and an on-demand Core HTML reader,
+with owning-session checks before cache/RPC access and account-generation /
+cancellation guards. Its exact staged helper and renderer each pass 21 checks,
+zero failures/skips. The renderer forces bounded raster decoders, denies remote
+and local-file resources and automatic navigation, and preserves valid
+image-only messages. The previously failing image-only case is retained. Raw
+subject is used only as a plain viewer title. Native compilation of the UI
+translation units, language code generation, footer geometry, and real Core
+full-message GUI replay remain pending.
+
+Separate probes extract the current production transport methods verbatim into
+recording doubles. Core dispatch remains inert; all three Telegram dispatch
+cases fail because the global intercept still handles them. Five of eight
+startup/resume cases fail, covering absent Telegram connections and attempts to
+queue against a null private connection. These probes open no sockets and do
+not authenticate. They establish the regression baseline for transport
+restoration, not Telegram support.
+
+Settings and message/data routing edits are under integration. Backend choice,
+donor login, transport restoration, and mixed-session runtime proof remain
+required. No personal Telegram account, credentials, or authorization files
+have been used for these checks. The draft PR is not production-ready.
+
+### Real Telegram requirement and multi-profile startup replay — 2026-10-26
+
+The user explicitly requires real Telegram accounts alongside Core. Current
+`MTP::Instance::Private::sendRequest` unconditionally intercepts requests through
+Delta; `MTP::Session::start` returns before constructing its connection worker.
+These global cuts do not provide Telegram account compatibility. A per-account/
+session backend integration is active, including auth/storage and global Core-cache/UI
+hooks. Removing those returns alone is not sufficient isolation. No personal
+Telegram account/session or credentials are used in this audit.
+
+Separately, verified Core-native `a19d9e2` passes four-profile cold-start faults.
+A string-valued selected ID renders Retry with no guessed selection, opening or
+allocation. After clearing that fault, rejected selection renders Open Profile
+and does not start IO. A rejected config read after successful IO startup also
+retains Open Profile. Clearing faults and retrying recovers into original profile
+3 with IDs `[1,2,3,4]` unchanged. The complete sequence has zero add/import/
+configure/config/send writes. Baseline drafts, history, requests and device
+visibility remain preserved; fault policy is restored. Private evidence is
+`/tmp/deltagram-live/native-a19-multi-startup/native-result.json`. This proves
+Core recovery only, not the newly required Telegram backend.
+
+The email subject audit also corrects the earlier presentation finding: Core
+already prepends important classic/list subjects to `text` and deliberately
+omits generated chat subjects from bubbles. Raw `subject` is appropriate for
+the full-message title, not an additional bubble prefix. Per-message sender
+override remains a separate missing presentation path; it must retain the real
+sender contact identity rather than renaming global contact data.
+
+### Full-message access gap and Core search boundary — 2026-10-26
+
+An isolated offline Core fixture retains a shorter plain representation and a
+full HTML body with an extra detail marker and table. Its message reports
+`hasHtml: true`; `get_message_html` returns the complete fixture. Core search
+finds the plain marker and does not find the HTML-only marker. That matches
+Core's documented search over its stored text, not a Qt result-list failure.
+No client HTML indexing is added.
+
+On verified `a19d9e2`, the plain marker is searchable and its hit opens the
+matching Saved Message with the saved draft preserved. The bubble and context
+menu offer no full-message control; the GUI makes no `get_message_html` request.
+Message info also lacks the extra HTML-only content. Native HTML-only search
+shows No Results, matching Core. The GUI probe makes no send/create/accept/block
+operation. Startup IO acknowledgements are stubbed without dispatch in this
+offline copy. Private evidence is under
+`/tmp/deltagram-live/backup-search-pager-a19/html-message/`.
+
+Source review confirms this is an access defect: Core sets `hasHtml` when
+simplification can omit content, including long-text truncation and MIME
+remainders, and expects a Show full message control. Current Qt code only uses
+the flag to refuse editing. An on-demand Core-backed viewer and controls are
+under scoped implementation. Complete body access, resource/link restrictions,
+account/cancellation handling and native rendering must pass before this gap
+is closed. The offline fixture is stopped before restoring the main profiles.
+
+### Native search account cancellation and load-more recovery — 2026-10-26
+
+Verified `a19d9e2` switches from disposable profile 2 to 3 at 1.82 seconds while
+the old search error is held for 15 seconds. After that old reply arrives, the
+destination retains its normal chat list and empty search field, without old
+hits, Loading or Failed/Retry returning. Earlier manual/menu attempts did not
+land within the hold and are not counted as cancellation proof. Main profile
+selection and all baseline data are restored. Private evidence is
+`/tmp/deltagram-live/native-a19-search-account-cancel-timed/`.
+
+Load-more uses a separate offline restored copy with 61 new local Saved Messages,
+leaving the main history untouched. Startup IO acknowledgements are stubbed
+without dispatch; search and message fetches use actual Core. Page one fetches
+50 messages. Rejecting the remaining 11 preserves those first rows and shows
+Failed/Retry below them; further scrolling does not automatically retry. After
+clearing that fault, one Retry fetches 11 messages without another ID query.
+The remaining rows through `00` render, original rows from `60` remain, the
+total stays 61 and failure chrome clears. There are 72 message fetches across
+the successful first page, rejected second page and explicit retry. The saved
+backup draft is preserved; the GUI phase issues no send/create/accept/block/
+config writes. Private evidence is
+`/tmp/deltagram-live/backup-search-pager-a19/native-result.json`. This is paging
+and failure-state proof, not mail delivery. The fixture is stopped before the
+main disposable GUI is restored.
+
+### Native startup and group-sidebar corrections — 2026-10-26
+
+[Native `a19d9e2`](https://github.com/omidz4t/deltagram/actions/runs/40354448605)
+compiles and passes **742 checks**, zero failures/skips. All five artifact
+hashes match. Provenance identifies merge
+`cbbfc2ec5a36fdbe5f5779f58a471f4451b18e43`, head
+`a19d9e2973847d27dd02b649bca2f16b4a663719`, and base
+`b713bff697ad3450bf842da5f24f83b64a9d68e6`; independently read merge parents
+match. It includes startup and sidebar corrections, but predates the newer
+encryption dialog and onboarding layout.
+
+Cold-start replay uses the single configured disposable restore destination.
+With discovery delayed eight seconds, early Next/Enter/Space remain in Loading.
+A rejected selected-account read shows Retry without selecting/opening or
+allocating a profile. Clearing that rejection and retrying reaches Open Profile
+after deliberately rejected opening. Unfocused Enter and Space each retry
+selection/opening. The destination remains the single configured selected ID 1,
+its backup draft survives, and the audit contains zero add/import/configure
+writes. Mail IO is rejected before dispatch. Private evidence is under
+`/tmp/deltagram-live/backup-lock-122/startup-a19/`. Multi-account malformed
+selection and post-setup Profile-page keyboard cases remain separate gates.
+
+The original encrypted group's sidebar now settles with its correct name and
+two members: two FullChat reads over 10.56 seconds, compared with 3,813 on the
+older binary. Closing produces zero reads during a three-second idle window;
+reopening produces two in ten seconds. Switching to another group updates the
+name/member list with three reads in ten seconds. Resizing from 1112 to 820 and
+back restores Group Info with two reads and no Loading loop. The initial-open
+audit contains no create/accept/block/send/config writes. Original profiles' drafts, history/request
+state and normal device visibility still match their baselines. Fault policy
+is restored. Private evidence is `/tmp/deltagram-live/native-a19-sidebar/`.
+
+Source `6abce56` moves onboarding description copy below the avatar, caps the
+title beside the photo and stacks the name/status/buttons below growing copy.
+Available title width uses logical coordinates in RTL. Source audit has zero
+blocking findings and whitespace checks pass. Native compilation and center-click,
+compact/team/RTL layout replay remain required for this newer source.
+
+### Native initial search error and stale-query cancellation — 2026-10-26
+
+Verified `122a3ec` shows Failed / Retry when `search_messages` is rejected,
+with no message-page fetch and no No Results claim. Clearing the rejection and
+pressing Enter on the same query issues one new ID request and fetches its two
+hits once; both rows display Device messages. A separate query-change check
+holds the old query's error for 15 seconds, then starts the successful query.
+After the old error arrives, the newer two results remain and Failed / Retry
+does not return. Audits contain no create/accept/block/send writes. Fault policy
+is restored after each check. Private evidence is under
+`/tmp/deltagram-live/native122-search-id-failure/` and
+`/tmp/deltagram-live/native122-search-query-cancel/`. Load-more failure and
+account-switch cancellation remain separate native gates.
+
+### Native setup-avatar ownership and layout finding — 2026-10-26
+
+Verified native `122a3ec` selects and crops a synthetic red PNG in a separate
+unconfigured onboarding destination. Delayed config dispatch keeps the submitted
+`selfavatar` callback pending for 10.1 seconds: the unique staging file remains
+present with owner-only read/write access until Core copies it. After terminal
+callback completion, the staging file is gone and Core's separate blob remains
+readable and red. Provisioning is rejected before dispatch; the destination
+remains unconfigured and no mail IO starts. The first verifier incorrectly
+looked directly in `/tmp`; a second explicit attempt uses the GUI's actual
+private Nix temporary directory. This is two deliberate submissions, not an
+automatic retry. Private evidence is
+`/tmp/deltagram-live/backup-avatar-122/native-result.json`.
+
+That replay also proves a profile-page layout defect: the description overlaps
+the avatar button. Two clicks at its covered center do nothing; its uncovered
+top opens the picker. The selected avatar still renders red and copies correctly.
+The geometry correction is under scoped implementation. Native center-click,
+compact/long-copy layout and widget-teardown ownership remain pending; the
+passing file-lifetime check does not establish those behaviors.
+
+### Native restore recovery, media and delivery — 2026-10-26
+
+[Native `122a3ec`](https://github.com/omidz4t/deltagram/actions/runs/40348261095)
+passes compilation and **735 checks**, zero failures/skips. All five artifact
+hashes match; provenance identifies merge
+`ddc697938d88f0e665d808df5ee7429cb6499046`, head
+`122a3ec8b5f1f806b8cb6392522b41493c021b3e`, and base
+`b713bff697ad3450bf842da5f24f83b64a9d68e6`. The merge parents match.
+This binary includes setup serialization/recovery and avatar staging, but
+predates the cold-start, sidebar and encryption-dialog corrections.
+
+In a separate disposable destination, cancelling the backup picker sends no
+import and leaves the same fresh account available. One plain import uses a
+null passphrase, preserves the saved draft and configures that single account.
+Rejecting `start_io` before dispatch leaves Open Profile available; an explicit
+retry targets the same ID without another import, account allocation or
+provisioning. Late progress does not replace the terminal error. The attempted
+in-flight click occurred after import completed, so it does not prove the
+rendered setup lock. Cold-start failure recovery is a separate pending gate.
+
+After removing the opening rejection, that restored profile opens successfully.
+A restored photo renders from its new destination blob directory; all 985,178
+bytes match the stopped source copy. One explicit GUI probe sends through Core
+and reaches OutDelivered. After stopping the restored client and restarting the
+main disposable client, the recipient group contains that exact probe once.
+The original source profile stays stopped; no concurrent copy of that identity
+runs. In the reverse direction, one new GUI probe from the recipient reaches
+OutDelivered; reopening the restored client receives it exactly once. Its
+history renders the full body with the correct group and sender. The restored
+client is stopped before returning to the main test profiles. The restored
+saved draft and all four main profiles' baseline drafts,
+history, request states and normal device-chat visibility remain intact. Mail
+IO is enabled only for this explicit delivery phase. Private evidence is under
+`/tmp/deltagram-live/backup-gui-122/`. This does not prove protected-backup GUI
+support, in-flight lock/teardown or avatar
+selection in the native onboarding surface.
+
+An additional fresh destination closes the timed-action gap above. The proxy
+holds import dispatch for 30 seconds. Within 0.99 seconds of submission, while
+Core confirms the destination is still unconfigured, Create, alternate setup
+and Escape are attempted. The onboarding remains open and reports setup already
+in progress. The audit contains one import and one destination allocation,
+with zero config/provisioning/copy operations. That same import completes once,
+preserves the backup draft, and reaches Open Profile after the deliberately
+rejected opening. No mail IO starts in this check. Private evidence is under
+`/tmp/deltagram-live/backup-lock-122/`. This verifies those in-flight actions;
+cross-window contention and widget destruction remain separate native gates.
+
+### Native local-language restart round trip — 2026-10-26
+
+On verified `2908654`, a local custom `.strings` file that omits the new restart
+key shows the app-neutral fallback once: “The app will restart to change the
+language.” Confirming restarts into the custom fixture; selecting English
+restarts into English. Capture utilities do not run during either restart.
+The old English-switch process exits normally with code zero; its remaining
+zombie process entry caused a `kill -0` wait timeout, not an application crash.
+Baseline data remains preserved. Private evidence is
+`/tmp/deltagram-live/language-native290/native-result.json`. This controlled
+round trip does not attribute the earlier capture-associated abort.
+
+### Native profile mutation replay and encryption presentation — 2026-10-26
+
+On checksum-verified `2908654`, Edit name resolves the intended Core contact,
+shows Core key-contact/encryption-availability flags and permits an empty private
+alias. A temporary alias updates the profile and chat list; clearing it restores
+the recorded empty baseline. Each explicit action issues one name write. No
+chat creation, acceptance, blocking, deletion or send occurs during that replay.
+
+A new synthetic contact/chat with only a local draft isolates deletion from
+the original conversations. A rejected contact-only delete submits once, shows
+an error and preserves the contact list and draft. After cancel/reopen and a new
+confirmation, one contact delete removes the fixture from all three relevant
+Core lists while preserving its existing chat/draft. Core still permits reading
+the hidden contact, as expected. A rejected checked chat-delete submits once,
+keeps that chat/draft, and does not proceed to contact deletion. After another
+explicit confirmation with the checkbox checked, one chat delete plus one
+contact delete removes only that fixture and unselects its exact active chat.
+Normal quit, verified process shutdown and restart retain the deletion without
+repeating either write. All four original profiles, their baseline drafts,
+history/request state, the original private contact name and device-chat
+visibility are preserved. No fixture message was sent. The initial fixture
+verifier wrongly assumed the default contact list includes address contacts;
+read-only reconciliation found this one in flags 4, without a second create.
+Private evidence is under `/tmp/deltagram-live/native290-profile-actions/`.
+The replayed name/delete UI bodies are unchanged in the newer source.
+
+The encryption correction builds the final selectable, height-limited dialog
+from complete plaintext with the donor box-label style. A separate cancellable
+Loading box retains immediate feedback. Controller/account guards and an
+explicit flag set at `boxClosing` prevent presenting after cancellation, including
+the close-hook interval before widget destruction. Empty/whitespace replies are
+unreadable rather than blank Verified information. Nonempty multiline text is
+preserved. All eleven focused suites pass **751 checks**, zero failures/skips,
+serially; the tested helper header and test source match the checkout. Source audit has
+zero blocking findings. These checks do not compile the changed QtWidgets code
+or prove complete real/synthetic text rendering, scrolling, cancellation or
+profile-switch behavior; the new native replay remains required.
+
+### Group sidebar signal correction — 2026-10-26
+
+The native sidebar request loop is traced to repeated unchanged write-access
+values. FullChat reads bump `ChannelRevision`; the write-access producer emits
+the same boolean again; the third-column subscriber recreates Group Info and
+starts another read. The source now filters identical booleans within that
+producer and identical `(chat key, canWrite)` values after switching producers.
+Chat changes and real permission changes still reach the existing handler.
+Core permission observation and the unresolved-group restore tick are unchanged.
+Whitespace checks pass. The prior 742 focused checks do not cover this widget
+subscription; native compilation and sidebar open/reopen/restore replay remain
+required before calling the loop fixed at runtime.
+
+### Integrated native group replay and startup correction — 2026-10-26
+
+[Native `2908654`](https://github.com/omidz4t/deltagram/actions/runs/40338239128)
+passes compilation and **700 checks**, zero failures/skips. All five artifact
+hashes match. Provenance identifies head `2908654`, merge
+`4ca80d34a8da6a865c8381df6a95f1d91ab7ef28`, and base
+`b713bff697ad3450bf842da5f24f83b64a9d68e6`; the merge parents match those
+head/base revisions. The standard GitHub downloader succeeded after the older
+range downloader failed. This PR run does not verify portable packages.
+
+Disposable native replay opens Group Info for the existing encrypted group,
+shows the correct two members and omits donor contact controls. Member inspection
+shows the intended contact profile without Mute. With RPC auditing enabled, the
+inspection issues Core reads and no create/accept/block/send writes. Explicit
+Message resolves contact 10 to existing chat 12, restores its original composer
+draft and makes no create/accept/block/send call. Baseline history, drafts,
+request state and device-chat visibility remain preserved.
+
+Two native gates remain failed/unverified. The group Encryption info action
+requests the correct Core method, whose nonempty result was confirmed separately.
+OCR detected only the title, but a later synthetic rendering fixture proved that
+OCR misses visible body text, so this does not prove a blank real dialog. Visual
+inspection of that explicitly synthetic three-line fixture confirms that its
+final line is clipped. The override is cleared; complete body presentation is
+under correction/review. Toggling the third-column Group Info leaves Loading visible and produces
+3,813 FullChat reads in a ten-second audit window. Closing the sidebar stops
+that replay; the reactive feedback path is under correction. No account mutation
+was used for either probe. Private evidence is under
+`/tmp/deltagram-live/native290-fixture/` in the isolated test container.
+
+The configured-startup correction now uses a production startup state for
+discovery, explicit retry, known-profile opening and deliberate live Add Profile.
+Creation stays blocked during unresolved/failed discovery; known-profile retries
+select that same ID before opening. Next and keyboard activation share one
+handler. Seven new focused checks pass, and all eleven Qt suites pass **742
+checks**, zero failures/skips, serially. Source audit checks 13,247 files with
+zero blocking findings. Native compilation and rendered startup retry/failure
+injection for this newer correction remain pending; `2908654` predates it.
+
+Archived-search replay also passes on `2908654`. The disposable device chat is
+archived once, the GUI quits normally and its processes are verified stopped,
+then the same binary restarts without the chat in its ordinary list. Rejecting
+BasicChat metadata makes the search show Failed / Retry, rather than No Results
+or placeholder names. After clearing the rejection, one explicit Retry reuses
+the result IDs and fetches the two message hits once. Both rows display Device
+messages. Opening a hit retains that header and Mute-only controls, with no
+composer. The audit records no create/accept/block/send calls. The chat is
+restored to Normal visibility; original drafts, history and request states
+match their baseline. Private evidence is
+`/tmp/deltagram-live/native290-device-search/native-result.json`. This does not
+cover initial-ID failures, load-more failures, account-switch cancellation or
+HTML search.
+
+### Setup-avatar isolation — 2026-10-26
+
+Profile creation stages each selected avatar in a distinct owner-private
+temporary file. The pending Core `selfavatar` callback retains the file owner
+until Core finishes copying it, including when the onboarding widget closes.
+This replaces the shared temporary filename that concurrent setups could
+overwrite. Qt's non-movable temporary file is held through `unique_ptr`.
+
+All ten focused Qt suites pass **735 checks**, with zero failures or skips,
+serially. The eight avatar checks cover distinct bytes/paths, private access,
+callback retention and cleanup. The tested avatar header and test source match
+the checkout. An actual helper/DeltaRpc/pinned-Core check uses two temporary
+offline accounts: each retains its distinct red/blue image after callback
+completion removes the staging file, and Core's copies remain readable. No
+mail IO starts. Source audit checks 13,245 files with zero blocking findings.
+Native onboarding compilation and GUI avatar-selection/teardown replay remain
+pending; the helper tests do not establish those UI behaviors.
+
+### Configured-profile cold-start recovery — 2026-10-26
+
+The isolated restored-backup profile was reopened on the verified `cacc5ce`
+GUI with `start_io` rejected before dispatch. Core still reports its single
+configured account, but the welcome surface shows Add Profile / Create New
+Profile and the opening error, without a retry-open action. Create was not
+clicked; no import or provisioning was submitted. This cold-start route is
+separate from the post-import Completed-state recovery correction. Its current
+source path is under scoped review.
+
+Private evidence is `backup-gui-fixture/startup-recovery-evidence.json` and
+`startup-recovery.png` in the test container. The isolated client was quit
+normally and verified stopped before restoring the main disposable client.
+Readback then confirms the original drafts, requests, group history and normal
+device-chat visibility remain intact. The version regressions (2), release-build
+regression (1), Python script regressions (24), and shell syntax checks also
+pass on `450c8de`; these do not prove native startup recovery.
+
 ## Client integrity checks — 2026-10-24
 
 Heavy native builds run remotely, one at a time with four compiler jobs. No
@@ -49,8 +1125,55 @@ rejected writes, lost acknowledgements, unreadable state, stale confirmations,
 profile switches at each RPC boundary, and isolated real-Core profiles across
 restart. The real-Core case confirms block/list/unblock and preserved drafts;
 it also caught and fixed handling of the nullable chat lookup for hidden chats.
-The source audit checked 13,223 files with no blocking findings. Native/package
-validation and disposable GUI compatibility replay for this change are pending.
+The source audit checked 13,223 files with no blocking findings.
+[Native/portable/package validation at `06ff824`](https://github.com/mamaru-a/deltagram/actions/runs/40239506691)
+passed all 259 checks with no skips. The GUI and Core checksums were verified
+before replay. A rejected blocked-list request displays an error rather than a
+false empty list. The first rejected block reached one write and a state
+readback, then the native GUI crashed. On restart, Core confirmed the contact
+was still unblocked, the chat remained listed, all baseline message IDs were
+present and both drafts were unchanged.
+
+Source review found that the contact-selection callback can destroy its own
+picker while executing. The existing ordinary contact-opening path already
+copies and defers its callback; selection now does the same, with picker and
+profile lifetime guards. A traced repeat retained the data but did not refresh
+the list after completion. A second traced replay with allocator poisoning
+reproduced a double-free while destroying the settings refresh callback retained by `ConfirmContactBlocking`.
+Matching checksum-verified symbols resolved the callback destruction through
+`Bridge::setContactBlocked` and `DeltaRpc::handleLine`.
+
+[Validation at `44a91b5`](https://github.com/mamaru-a/deltagram/actions/runs/40242501856)
+passed native compilation, all 259 checks, portable runtime checks and package
+verification. Disposable replay on the checksum-verified GUI then passed:
+
+- A rejected block submits once, shows failure, refreshes the blocked list and
+  keeps the GUI alive. Core preserves the unblocked state, existing history and
+  both drafts.
+- A committed block with a lost acknowledgement is confirmed by readback. The
+  contact appears in the blocked list, its chat row disappears and the active
+  conversation closes without deleting its composer draft. The audit records
+  one block attempt in the original profile.
+- An incoming probe from official Desktop 2.62.0 is stored by Core as state 16
+  while blocked, with no fresh count or visible conversation. Blocked state,
+  the hidden row and both drafts survive normal quit/restart.
+- Unblocking with a lost acknowledgement is confirmed by readback. The chat
+  row returns and the blocked list becomes empty. A new reference-client probe
+  is fresh (state 10), with a blue unread badge. Opening the conversation clears
+  unread state, displays each probe once and restores the original composer.
+- Switching to the alternate profile during a delayed contact preflight
+  invalidates the request chain. The audit observes the old profile's read but
+  no block/unblock write after the switch. Both profile drafts remain intact.
+- After restoring the onboarding profile and normal quit/restart, Core retains
+  the unblocked state, all baseline message IDs, both probes, no fresh messages
+  and both drafts. Fault policies are cleared and one project GUI/proxy/Core
+  ownership chain is verified.
+
+These checks cover the direct-contact settings flow. Group-member profile
+navigation, broader donor entry points and the remaining compatibility gates
+still require their own evidence. PR #1 was merged externally at `ea5bec5`;
+[draft PR #2](https://github.com/omidz4t/deltagram/pull/2) carries the callback
+correction and its evidence.
 
 ### Unsupported passkey controls — 2026-10-26
 
@@ -59,8 +1182,7 @@ Passkey and Passkeys. These controls use Telegram authentication APIs and have
 no Core implementation. Core profiles now omit both registrations and the
 privacy-panel button; legacy passkey links return to Privacy and Security.
 Direct creation-box entry is guarded. Opening privacy settings also no longer
-starts the unused Telegram auto-delete reload. Rendered verification and native
-compilation of this follow-up are pending.
+starts the unused Telegram auto-delete reload.
 
 The same baseline GUI exposes “Disconnect all websites”, “If inactive for” and
 “Terminate all other sessions” when searching for “terminate”. Core profiles
@@ -69,7 +1191,916 @@ Telegram auto-delete sections from search. Their constructors stop before
 loading donor data. Standard settings navigation checks section availability
 (including parent sections), so a saved URL to an unavailable section returns
 to the supported main panel. Core blocked contacts, local passcode and device
-preferences remain registered. Rendered search/link replay is pending.
+preferences remain registered.
+
+[Validation at `ea5bec5`](https://github.com/mamaru-a/deltagram/actions/runs/40241348390)
+passed native compilation, all 259 checks, portable runtime checks and package
+verification. On its checksum-verified GUI, “passkey” and “terminate” searches
+show No Results. A legacy passkey-creation link opens Privacy and Security with
+Local passcode and Blocked users still present. Legacy website-disconnection,
+session-termination, folder-creation and global auto-delete links open the
+supported Settings panel; all four rendered captures are byte-identical. The
+single-instance URL checks retained one project GUI/Core owner. After the
+instrumented crash replay and normal restart on this artifact, Core confirms
+the original unblocked contact, chat-list entry, message IDs and both drafts.
+The contact-picker fix is a later change and remains separately unverified.
+
+### Additional Core entry-point review — 2026-10-26
+
+The follow-up source review found Telegram cloud-password/login-email factories
+outside the settings registry and CodeBlock handlers that could run before
+standard settings navigation. Core profiles now reject those factories and
+redirect the affected cloud-password, login-email, privacy, gifts, peer-color,
+my-profile and call-list entry points to supported panels. The Main settings
+folder button is omitted as well as its section/search registration. Local
+passcode factories retain their existing behavior.
+
+The review also found remaining `IsSystemUser(int)` conversions and profile /
+contact-status blocking actions using donor APIs. System-user membership now
+keeps full-width peer IDs; direct-chat narrowing is range-checked before Core
+requests. Profile, peer-menu and contact-status blocking share the Core-backed
+predicate and operation. Reserved contact IDs are excluded. Device-chat type
+membership survives absence from the normal chat list, which excludes archived
+chats; absence is not interpreted as deletion or a type change. Deferred picker
+selection clears its busy state only while its controller remains alive.
+
+The serial focused Qt target passed **260 checks**, with no failures or skips,
+including the sender-ID / Core-ID numeric boundary case. The source audit
+checked 13,223 files with no blocking findings. This focused target does not
+compile the complete native UI. Full native compilation and rendered replay of
+these additional changes are pending. Required cases include cloud-password /
+login-email links, local passcode, the profile and contact-status blocking
+controls, group-member profiles, and archived device-chat protections.
+
+Two upstream builds were already active when this work was ready. Cancellation
+of the PR-triggered duplicate was refused with HTTP 403 because `mamaru-a`
+lacks upstream admin rights. After the main build completed, the follow-up was
+pushed to the same PR branch; its build queued behind the existing PR run under
+the unchanged concurrency lock. No heavy local build was started.
+
+### Group-sender Message routing — 2026-10-26
+
+A disposable two-member group exchanged one message in each direction with
+official Desktop 2.62.0. On the checksum-verified `44a91b5` GUI, clicking the
+incoming sender name and then **Message** requested Core history and drafts
+for chat `10`; Core's contact lookup identified the intended direct conversation
+as chat `12`. The audit recorded only method names and numeric account/chat IDs.
+No message was sent through the wrong conversation. Returning to the direct
+conversation preserved its draft, the alternate-profile draft and prior history.
+
+The source correction resolves sender contacts through Core before opening
+history, rejects unmapped sender identities and prevents out-of-range peer IDs
+from narrowing into Core chat IDs at the request parser. Sender profiles omit
+the chat-level mute control. History metadata also refreshes device-chat
+classification for chats absent from the normal list. Matching positive numeric
+chat IDs are required before metadata changes classification or cached full-chat
+information; unknown types preserve prior Direct/Group membership. History still
+loads when metadata fails.
+
+Native PR validation at `e669e85` passes 262 checks. Its checksum- and
+provenance-verified GUI now passes the previously failing route: incoming sender
+name opens the profile without an accept, block, send or create-chat call. The
+profile omits the chat-level mute control. Message performs one Core contact
+resolution and loads direct chat `12`, with no history/draft dispatch to chat
+`10`. The original composer is visibly restored; no message is sent. Core
+readback confirms prior history, both drafts and all four prepared request
+fixtures remain unchanged. Evidence is
+`/tmp/deltagram-live/request-fixture/e669-sender-message-verified.json` and
+`e669-after-message-preservation.json`; rendered captures are
+`/tmp/e669-sender-profile.png` and `/tmp/e669-sender-message.png` in the container.
+A stopped-state checkpoint was taken before replacing the disposable GUI, and
+one GUI/proxy/Core ownership chain is verified afterward. This revision predates
+the later settings, permission and request-UI changes; those still need their
+own native compilation and replay.
+
+An archived device chat can still briefly offer a composer before metadata
+arrives, and the bridge send paths do not independently check device membership.
+Core rejects sending to device chats, but this client-side permission gap remains
+open. Core-blocked contact state is not synchronized to the donor's
+`UserData::isBlocked()` flag. Core's `Chat::why_cant_send` does not reject blocked
+contacts, so copying the donor restriction would impose a policy Core does not
+provide. Official Desktop 2.62.0's
+[`Composer`](https://github.com/deltachat/deltachat-desktop/blob/v2.62.0/packages/frontend/src/components/composer/Composer.tsx#L569)
+uses contact-request actions and `canSend` to decide whether to render its input.
+The next permission slice must follow that authoritative field rather than the
+Telegram blocked-state flag. These questions are separate from the routing
+correction.
+
+Read-only disposable Core checks confirm `canSend: false` for device chat `11`
+and `true` for Saved Messages `10`, the direct contact chat `12` and group `13`.
+No outgoing request was made by this permission probe.
+
+The final serial focused Qt target passed **262 checks**, with no failures or
+skips, including numeric sender boundaries and matching-ID / known-type metadata
+policy. The source audit checked 13,225 files with no blocking findings. The
+Linux scripts suite passed 24 cases, including five behavioral artifact-staging
+cases; ruff, isort, actionlint and shell syntax checks passed. The release-script
+regression passed in Linux; its host macOS attempt exited before its assertions.
+These checks do not compile the complete native UI or prove the corrected
+sender-profile routing in the GUI.
+
+The group's first-message notice is a historical Core info message, not a live
+promotion banner. Readback confirms `isUnpromoted: false` and `canSend: true`
+after delivery; message `284` retains the notice with `isInfo: true`. Core's
+`ChatId::add_start_info_message` stores this message during group creation.
+Its continued presence is not evidence of a promotion-state defect.
+
+### Unpublished PR validation artifacts — 2026-10-26
+
+PR builds now stage the stripped GUI, Core, version and integrity-test log with
+checksums and machine-readable provenance. PR artifacts record both the head
+revision and the merge checkout revision; the artifact name uses the latter.
+Manual unpublished runs retain their symbol map. The upload remains limited to
+successful unpublished builds, with three-day retention. Publication permissions,
+action pins, cache policy and the serial PR concurrency lock are unchanged.
+Offline staging checks cover file sets, checksums, provenance, stale symbol
+cleanup and missing inputs. Real PR artifact verification now passes for
+[run `40251516509`](https://github.com/omidz4t/deltagram/actions/runs/40251516509):
+head `e669e85`, merge checkout `b3626bb`, base `b713bff`. All five payload
+checksums pass; the manifest contains GUI, Core, version, test log and provenance,
+with no symbol map. Provenance matches the run/repository and GitHub's merge
+parents. The workflow and staging-helper blobs are identical to the current
+ones. Its native log passes 262 checks. This older GUI reports 0.2.1 and predates
+the settings/permission/request-UI changes; it cannot validate the latest head.
+
+### Native settings compile correction — 2026-10-26
+
+[Native run `40288544930`](https://github.com/omidz4t/deltagram/actions/runs/40288544930)
+at `7e6bf1e` fails in `deep_links_settings.cpp` before the smoke-test step.
+Inside `Core::DeepLinks`, unqualified `Settings::Type` resolves to
+`Core::Settings`, producing the first missing-type error and the subsequent
+conversion-to-int diagnostics. The redirect signature now uses global
+`::Settings::Type`. The two public deep-link section fields use the same
+qualification, removing their dependency on include order.
+
+A syntax-only compile of the actual header after a `Core::Settings` forward
+declaration reproduces both field errors before the correction and passes after
+it. The source audit checks 13,228 files with zero blocking findings. This does
+not compile the complete settings translation unit or later UI objects; a new
+native run must prove those. No release cache or Ninja record was removed, and
+no additional heavy local build was started.
+
+The corrected `14878ed` native run
+[`40293239947`](https://github.com/omidz4t/deltagram/actions/runs/40293239947)
+passes the complete GUI compilation plus 305 integrity and 82 request-action
+checks, with no failures or skips. All five validation payload checksums pass.
+Provenance matches head `14878ed`, merge checkout `2c067bf`, base `b713bff` and
+GitHub's merge parents. The downloaded GUI reports 0.2.1. This proves the newer
+settings, permission, request UI and language code compile; it predates the
+subsequent contact-open correction.
+
+### Native permission refusal — 2026-10-26
+
+On the verified `14878ed` GUI, Device messages displays Mute without a composer
+or request actions. For an ordinary sendable chat, a fault-injected FullChat
+claims `canSend:true` for a different ID. The composer retains its original
+draft, but Send displays the availability-unknown error, performs a fresh
+metadata read and makes no `send_msg`/`misc_send_draft` call. Core readback
+confirms both profile drafts and prior message IDs are unchanged. The fault is
+cleared afterward. Evidence is
+`/tmp/deltagram-live/request-fixture/native-wrong-permission-evidence.json`;
+captures `/tmp/14878-device-chat.png` and
+`/tmp/14878-wrong-permission-refused.png` show the rendered results. This does
+not cover every attachment/notification send surface or archived-device timing.
+
+### Additional settings audit and baseline — 2026-10-26
+
+Read-only source review found more CodeBlocks that bypass section availability,
+including proxy settings and Telegram identity/catalog controls. On the
+checksum-verified `44a91b5` disposable GUI, `tg://settings/data/proxy` opens a
+Proxy settings dialog with IPv6, system/custom proxy controls and explanatory
+Telegram text. The dialog was closed without changing a setting. One project
+GUI/proxy/Core ownership chain and the existing drafts/history remain intact.
+
+`tg://settings/language` opens the English fallback picker, including Telegram
+translation controls. It does not reproduce a missing-picker failure. Source
+inspection confirms `requestLanguageList()` inserts the default language before
+attempting the unsupported catalog request. Local custom-language import and
+the built-in/custom wallpaper gallery also have local implementations; the
+cleanup must preserve them. Those changes were still pending at this baseline.
+
+### Native settings replay — 2026-10-26
+
+On the verified `14878ed` GUI, single-instance URL dispatch reaches the following
+rendered destinations without starting another GUI/Core:
+
+- `privacy/2sv` and `login_email`: Privacy and Security, containing Local
+  passcode and Blocked users, without the Telegram cloud-password/email flow.
+- `calls/all` and `calls/start-call`: local Speakers and Camera preferences.
+- `data/proxy`: Advanced, with Relays and local storage/download preferences.
+- `folders`, `premium` and `faq`: Main Settings. The Main list omits Folders;
+  settings Search opens and the FAQ query has no results.
+- `experimental`: Experimental settings remains available; searching IPv6 has
+  no matching control.
+- `language`: the picker opens immediately with English and local `.strings`
+  import, without translation controls in this environment.
+- `data/storage`: Local storage opens. Its Telegram-cloud retention promise is
+  incorrect for Core and is under separate review; Clear all was not pressed.
+
+Local passcode Create, Check and Change work through the Core settings allowlist.
+The disposable passcode was changed; the old code was visibly rejected and the
+new one opened management. Disable restored Off. A normal restart retains Off,
+the request-action states, prior history and both profile drafts. Temporary
+codes stayed in private files, were never printed, and were deleted after
+disabling the passcode. No cache limit, relay, language or media preference was
+changed. Captures are `/tmp/14878-settings-*.png` and
+`/tmp/14878-local-passcode-*.png` in the test container, with URL/PID records in
+`/tmp/deltagram-live/settings-fixture/`. Preservation checks are
+`native-request-actions-native-settings-before-restart.json` and
+`native-request-actions-native-settings-after-restart.json` in the request
+fixture directory. This does not validate every settings/search route, physical
+devices, custom-language import or wallpaper/theme persistence.
+
+The same `14878ed` GUI opens Chat Settings → Create new theme → the local color
+editor. Its primary action is Export theme and opens a local save dialog.
+Export produces a valid 344,626-byte ZIP containing `colors.tdesktop-theme` and
+`background.jpg`; CRC checks pass and the palette contains `windowBg`. The
+archive SHA256 is
+`b69aa76d621c066e7712aae53cf82ad9a5e170460d491892ca2d746abed397d5`.
+No palette color or wallpaper was edited. The editor disables auto-night mode;
+the original System setting was restored after closing it. Core readback
+confirms prior drafts/history and recorded request-action states are preserved.
+The private archive and member hashes are in
+`/tmp/deltagram-live/settings-fixture/native-local-theme.tdesktop-theme` and
+`native-local-theme.evidence.json`. Captures `/tmp/14878-theme-*.png` show the
+menu, editor, save dialog and restored setting. Theme import remains untested.
+
+During follow-up fixture arrival, a native popup displayed an Unknown title
+with the encryption-info notice. Sanitized Core metadata identifies ChatE2ee
+info messages separately from ordinary text; the current fresh-message list
+does not include those info rows. This is a separate notification/service-event
+finding under source review, not a passing presentation check. Private captures
+and `notification-fixture/info-popup-{fresh,candidates}.json` retain the evidence.
+
+Source review confirms the bridge feeds both `IncomingMsg` and `MsgsChanged`
+through `addIncoming`. Its non-fresh branch uses `NewMessageType::Unread`, so
+the noticed ChatE2ee info row can create a popup before the dialog name is
+loaded. `Unknown` is the client's empty-name fallback. Core emits that local
+notice as `MsgsChanged`, not `IncomingMsg`; it is not in the fresh-message list.
+The correction keeps these updates in the transcript without a popup and
+resolves a Core name before notifying incoming user messages. Only an
+`IncomingMsg` with matching message/chat IDs, boolean `isInfo: false` and fresh
+state 10 takes the Unread path. Drafts and malformed/mismatched messages are
+skipped. Mute and name lookup failures preserve the transcript without a popup;
+a legitimate Core name of `Unknown` remains valid. Existing photo/document
+updates call the donor's public content-update method before processing as
+Existing, so media refresh does not acquire notification side effects.
+
+Serial focused tests pass **305 integrity, 82 request-action, 64 contact-open
+and 59 notification checks**, with no failures or skips. An isolated QtCore
+harness extracts the exact current `Bridge::addIncoming` method and passes
+18 runtime cases covering event classification, name/mute reads, account
+invalidation, preview/event ordering and existing media updates. The earlier
+round-25 method fails the existing-media regression under the same current
+headers. The final case also requires exactly one public media update. RPC,
+MTP/session/media and notification scheduling are stubbed: these results do not
+prove donor `mainView`, native media replacement or rendered popup behavior.
+Private logs are `/tmp/incoming-round28-focused-tests.log` on the host and
+`/tmp/incoming-bridge-{old,new}/results.json` in the test container. Full native
+compilation and notification/media GUI replay remain pending.
+
+### Pending-contact opening and lost-ack group decline — 2026-10-26
+
+[Native validation at `4b5e093`](https://github.com/omidz4t/deltagram/actions/runs/40302056479)
+passes compilation and **451 checks** (305 integrity, 82 request-action and
+64 contact-open), without failures or skips. All five artifact payload hashes,
+head `4b5e093`, merge checkout `66fa52e` and base `b713bff` match provenance and
+GitHub merge parents. This binary predates the storage-copy and notification
+corrections.
+
+In the alternate disposable profile, pending Group `14` → sender profile →
+Message opens existing pending Single `13` with Block/Accept controls and no
+composer. The audit records one `get_chat_id_by_contact_id` for contact `13`,
+followed by history/draft reads for chat `13`; no create, accept, block or send
+occurs. Both requests remain pending and the original drafts/history survive.
+Private evidence is `request-followup-fixture/native-open-request-message-open-evidence.json`;
+captures `/tmp/4b5-request-sender-profile-top.png` and
+`/tmp/4b5-message-request-loaded.png` show the route.
+
+A separate confirmed Delete of Group `14` submits one `block_chat`. The
+test proxy records Core's successful null acknowledgement, then replaces it
+with a lost-ack error for the GUI. Core subsequently reports the group unreadable
+and absent from the list; the GUI reports that the change could not be verified
+and makes no second write. It does not infer acknowledgement from a generic
+read error. The remaining Single request stays pending, the sender stays
+unblocked, and original drafts/history are unchanged. Selecting that Single
+shows its original Block/Accept overlay. Fault policy is cleared. Evidence is
+`request-followup-fixture/native-lost-group-delete-evidence.json`, with captures
+`/tmp/4b5-lost-group-{confirm,after,settled}.png`.
+
+Contacts → the accepted direct conversation also opens correctly: one lookup
+for alternate-profile contact `11` loads chat `12`, without create, accept,
+block or send calls. Both original drafts/history remain unchanged. Evidence
+is `request-followup-fixture/native-accepted-contact-open-evidence.json` and
+`/tmp/4b5-accepted-open.png`. The Saved Messages menu opens chat `10` and
+visibly restores the alternate draft (`/tmp/4b5-saved-messages-open.png`).
+Contacts intentionally filters out the self row, so that menu check does not
+exercise `OpenCoreContactChat`'s self-contact branch. New/blocked contact-open
+routes and broader native compatibility gates remain open.
+
+The same binary exposes a separate group-profile gap. Core identifies primary
+chat `13` as Group with members `1` and `10`, but its header opens the donor
+contact profile: Edit contact and Delete contact are present and no member list
+is available. Neither action was activated; the audit records no mutation.
+`request-followup-fixture/native-group-header-finding.json` and
+`/tmp/4b5-group-profile{,-more}.png` retain the evidence. This needs a Core group
+information/member path rather than a contact-profile success claim. The
+onboarding profile was restored and its previous request-action states,
+original drafts/history still match their recorded preservation baseline.
+
+The initial dedicated group-info helper snapshot compiles as its own QtCore
+target with `-j1` and passes **31 checks**, with no failures or skips. These
+cover matching Group metadata, member identity boundaries, read-only member
+inspection and account invalidation. CMake registers the separate target;
+the complete group UI and later profile/encryption integration are still under
+implementation. This helper result does not establish native group rendering
+or member-profile behavior. The private log is
+`/tmp/round30-group-info-tests.log` in the test container.
+
+The first search-name metadata helper snapshot compiles separately and passes
+**34 checks**, without failures or skips. Search integration must also propagate
+metadata failures through the primary `Delta::LoadSearchResults`/dialogs callback
+and the legacy search adapter; silently shortening a result vector would falsely
+look like a complete search. That integration is still in progress. Its private
+log is `/tmp/round32-search-chat-metadata-tests.log`.
+
+The initial Core profile-action helper snapshot passes **76 checks**, but a
+separate adversarial probe demonstrates two uncovered deletion defects:
+malformed acknowledgement plus failed contact read is reported as success, while
+a valid acknowledgement with a hidden-but-readable contact is reported unknown.
+An isolated offline real-Core check confirms normal deletion with an existing
+chat hides the contact from `get_contacts` while `get_contact` remains readable;
+the chat is preserved. No live mailbox or mail IO is involved. Corrections to
+mutation acknowledgement/readback and actual UI wiring are required before
+committing these profile changes. Private evidence is
+`/tmp/core-profile-delete-contract.json`, `/tmp/core-profile-actions-probe` and
+`/tmp/round31-core-profile-actions-tests.log`. Passing these initial injected
+tests is not treated as proof of correct deletion or full native profile UI.
+
+The corrected profile helper snapshot passes **95 checks**, with no failures
+or skips. The original probe now rejects malformed acknowledgement plus unreadable
+state and accepts a normal hidden-contact deletion; rename also supports clearing
+the private alias and readback after lost acknowledgement. UI contact deletion
+uses this shared helper. Further adversarial review exposes two remaining edges:
+the completed deletion retains its request through a callback ownership cycle,
+and checked “also delete chat” treats a null lookup as no chat. An isolated offline
+Core fixture proves null also means a hidden blocked chat, which survives contact
+deletion. Those corrections are in progress; this snapshot is not committed as
+validated profile behavior. Logs are `/tmp/round35-core-profile-actions-tests.log`
+and `/tmp/core-profile-hidden-chat-contract.json`.
+
+### Integrated group, profile and search corrections — 2026-10-26
+
+The source batch now supplies a dedicated Core Group Info surface with matching
+Group metadata, member count, description, read-only contact inspection and Core
+encryption information. Member profiles use full-width sender identities; Message
+retains the explicit contact-chat opener. Header, third-column toggle, restore
+and resize routes select the group surface; unknown real Core peers are classified
+before presenting a contact profile. Third-column group widgets do not adapt
+themselves into a layer or navigate the main history backward.
+
+Core profile contact actions resolve exact contacts rather than treating chat
+or synthetic sender IDs as contact IDs. Edit name changes the private alias,
+including clearing it; it does not claim to add a contact by changing a name.
+Encryption text and contact flags come from Core, without Telegram verification
+badges. Contact deletion verifies key/address lists because a hidden contact may
+remain readable. Optional chat deletion validates the reviewed Single chat and
+peer before one write, retains separate chat/contact outcomes, and refuses an
+ambiguous null lookup when no reviewed chat ID is available. Lost acknowledgements
+are not retried. Completed/cancelled requests release their callback state.
+
+The original adversarial probe now reports all expected outcomes: malformed
+delete acknowledgement is not success, acknowledged hidden-contact deletion
+succeeds, checkbox null lookup is not success, and completed request state is
+not retained. A separate driver connects the actual helper and `DeltaRpc` to a
+temporary offline Core account: ambiguous lookup and wrong-peer review issue no
+mutation; the exact reviewed blocked chat and contact are deleted once each;
+an unrelated chat and its draft remain intact. No live mailbox or mail IO is used.
+Evidence is `/tmp/round38-core-profile-real-check.json` and
+`/tmp/core-profile-actions-probe` in the test container.
+
+Search hydrates matching BasicChat names before building results for unlisted
+chats. Missing metadata or malformed hits fail the page instead of silently
+shortening a complete result set. Visible Failed/Retry state distinguishes errors
+from a successful empty search, retains earlier hits and retries the same page
+without advancing its offset. The widget now uses the tested `CoreSearchPager`
+directly; account/query generation guards reject stale outcomes. An isolated
+QtCore harness extracts the exact `loadSearchHits` and `SearchHitMessage` source
+and passes **21 runtime cases**, including name hydration, whole-page failure,
+cached-name recovery, ordering and account invalidation. RPC, message construction
+and session boundaries are stubbed; native failure injection remains pending.
+Private results are `/tmp/search-bridge-current/results.json`.
+
+Serial focused checks pass **700 checks**: 305 integrity, 82 request-action,
+64 contact-open, 59 notification, 31 group-info, 35 search metadata, 111 profile
+actions and 13 search-failure checks, with no failures or skips. Snapshot source
+files match the tested helpers. The source audit checks 13,241 files with zero
+blocking findings; whitespace checks pass. These checks do not compile every UI
+translation unit or prove final rendered behavior. Native compilation, language
+code generation, group/sidebar/profile/search fault replay and remaining
+compatibility/package gates are still required. Native run `40315236704` at
+`cacc5ce` completed successfully but predates this source batch. Its artifact
+and notification GUI replay are verified separately below.
+
+[Integrated native run `40328676156`](https://github.com/omidz4t/deltagram/actions/runs/40328676156)
+at `5f86956` stops in `delta_boxes.cpp`: the Group Info member callbacks pass
+`UserData` into `showPeerInfo`, but the translation unit only has its forward
+declaration. The correction includes `data/data_user.h`, making the public
+`PeerData` inheritance available to the existing `not_null` conversion. Member
+IDs and navigation calls are unchanged. The run compiled the new search widgets,
+history top bar and Core profile-action UI before this failure; it did not reach
+the full smoke-test stage or prove the remaining native translation units.
+The corrected complete native build remains required.
+
+### Native incoming notifications — 2026-10-26
+
+[Native run `40315236704`](https://github.com/omidz4t/deltagram/actions/runs/40315236704)
+passes compilation and **510 checks** with no failures or skips: 305 integrity,
+82 request-action, 64 contact-open and 59 notification checks. All five downloaded
+payload checksums match. Provenance and merge parents identify PR head
+`cacc5cef21a0435bdc5144d269b68954de0914bd`, checkout
+`5a86af5885e3bc38205e90da57049b6be04b4b43` and base
+`b713bff697ad3450bf842da5f24f83b64a9d68e6`.
+
+After normal shutdown, verified process exit and a fresh private checkpoint, the
+disposable GUI runs that artifact. A new group from the disposable request sender
+produces a popup with its Core group name and actual user text. Core's preceding
+`ChatE2ee` notice is state 13 and remains in the transcript; the captured arrival
+sequence shows no extra encryption or empty-name popup. An incoming synthetic
+photo renders with its caption. After navigating to another conversation, a new
+message in the test group still produces a named popup. GUI Mute suppresses the
+next popup while retaining the message in history; Core omits it from fresh
+messages. GUI Unmute restores the prior state.
+
+The GUI audit contains no send/create/accept/block/delete operation during these
+receiving probes; the isolated sender submits each fixture once. Original drafts,
+baseline message IDs, accepted/blocked/deleted request states, the remaining
+alternate-profile request and the restored device-chat visibility are preserved.
+Fault policies are cleared, and one project GUI/proxy/Core chain remains running.
+Private captures and numeric evidence are under
+`/tmp/deltagram-live/cacc-notification-fixture/` in the disposable test container.
+
+A further one-shot probe temporarily limits automatic downloads on the disposable
+account. A larger image arrives as a Text placeholder with Core download state
+Available. The GUI's Download action upgrades that existing item in the open
+history to Image/Done, retaining the caption and showing no extra popup in the
+download capture. The delivered 985,178 bytes match the sender's Core image by
+SHA-256. The viewer opens the downloaded photo, navigates to the previous blue
+photo and back, and closes to the conversation. The prior download limit is
+restored, and the original drafts/history/request checks still pass.
+
+The preparation observer initially times out because Core appends size metadata
+to the placeholder caption. Read-only reconciliation identifies the already-sent
+message; no send is repeated. Private partial-download evidence records this
+observer limitation separately from the verified GUI/Core result.
+
+This verifies the captured notification/name/mute flow, photo rendering and one
+real Existing-message placeholder upgrade. It does not prove every document type,
+donor scheduling state or the newer group/profile/search source batch.
+
+The same generated photo is then used for a viewer-deletion replay. Go To Message
+returns to its conversation, and View all photos lists both test photos. Under
+Xvfb the windowed viewer stays above the opened Photos layer until the viewer is
+closed. A rejected viewer Delete submits once, displays the rejection and retains
+the photo in Core history and the grid. After removing the fault, a new explicit
+Delete confirmation submits once and removes only that photo; the grid retains
+the other image. Normal quit, verified shutdown and restart preserve that deletion
+without another delete request. The original drafts, unrelated message IDs,
+request states and restored device visibility remain unchanged.
+Private evidence is under `cacc-notification-fixture/viewer-delete/`; deletion is
+intentional fixture cleanup, not loss of an original account message.
+
+### Offline backup restore contracts — 2026-10-26
+
+The checksum-verified pinned Core binary exports and imports both unencrypted
+and passphrase-protected backups in temporary account trees. The source is an
+offline copy of the stopped disposable sender, with relative account paths
+checked before opening it. No mail IO or provisioning is started. All original
+source files are fingerprinted before and after and remain unchanged; temporary
+backup files and copied profiles are removed at completion. Passphrases are
+generated in process and are not included in evidence or chat.
+
+Eight non-device chats and 23 message IDs, plus a known saved draft, survive each
+successful restore. Core deliberately deletes/resets device-local messages on
+import, so those notices are not treated as portable history. A missing
+passphrase rejects the encrypted archive and leaves the destination unconfigured;
+the correct passphrase then restores into that same destination. An invalid
+archive is rejected, and a later explicit valid import into the unconfigured
+destination succeeds. Import into an already configured destination is rejected
+and preserves its history/draft.
+
+The first test incorrectly expected device-local message IDs to survive import;
+the verifier was corrected against Core's explicit device-message reset, then
+rerun with new temporary trees. This is an offline Core contract check, not GUI
+restore proof. The current onboarding restore call supplies no passphrase, and
+its protected-backup and repeated-submit UI behavior still require correction or
+validation. Private evidence is
+`/tmp/deltagram-live/backup-restore-offline-evidence.json` in the test container.
+
+An isolated GUI replay on `cacc5ce` confirms an onboarding recovery defect. A
+plain backup exported from an offline disposable copy imports once into a new
+GUI data directory. The proxy rejects `start_io`, so no mailbox IO starts. Core
+confirms the restored account is configured and its saved draft is intact, but
+the welcome screen has no retry-open action. Choosing Restore again correctly
+refuses the configured destination without a second import. The Create control
+also remains enabled during import, and a queued progress event replaces the
+opening error with `100%`. No provisioning is attempted. This test does not
+prove concurrent overwrite; the missing setup lock and recovery/status behavior
+are under source correction. Evidence and the stopped isolated GUI profile are
+under `/tmp/deltagram-live/backup-gui-fixture/`, separate from the four main
+disposable profiles.
+
+The source correction shares an exclusive setup lease per RPC/account across
+onboarding windows and uses it for create, import, invitation, classic-relay and
+second-device setup. Submitted writes retain ownership through their terminal
+callback, including live-widget teardown. Results capture the submitted account
+ID. A typed import/copy acknowledgement completes setup; an error reads
+`is_configured` once: configured permits opening only, fresh permits a later
+explicit retry on that same ID, and unreadable state blocks new mutation.
+Completed setup exposes Open Profile after an opening failure, rather than
+importing or provisioning again. Progress rendering uses the same held-lease
+state and exact event context ID, so late/completed or foreign-account progress
+cannot overwrite terminal status. Plain import still passes a null passphrase;
+passphrase-protected GUI restore remains unsupported, as in the pinned reference
+onboarding.
+
+The actual new QtCore target passes **27 checks**, and all nine focused suites
+pass **727 checks**, zero failures/skips, serially. All 41 tested helper/source
+files match the checkout. The source audit checks 13,243 files with zero blocking
+findings; whitespace checks pass. The first header/test compile caught a Qt
+`slots` macro collision; the production member is now named `entries`, without
+changing test-target keyword settings.
+
+An additional driver connects the production setup helper and `DeltaRpc` to the
+actual pinned Core in temporary accounts. Normal import preserves the saved
+draft. Replacing a committed import acknowledgement with an error yields Open
+Only after exactly one import and one configured-state read, without claiming
+verified restoration or retrying the import. Invalid import leaves the account
+fresh, and a later explicit valid import into that same ID succeeds. Completed
+setup refuses another import/create lease. No mail IO starts. Private results are
+`/tmp/profile-setup-final-core-result.json` and
+`/tmp/profile-setup-final-tests.log`. These helper/Core checks do not prove the
+QtWidgets lock, rendered Open Profile action, or native failed-open recovery;
+that replay and compilation of the new onboarding UI remain required.
+
+### Archived device history from search — 2026-10-26
+
+On the verified `4b5e093` binary, the disposable device chat `3:11` was archived
+once through Core and confirmed absent from the ordinary chat list. After normal
+quit, verified process shutdown and restart, global search for its existing
+account-transfer notice finds two messages. Opening a result loads the device
+history with a Mute-only bottom bar, no composer and no Accept control. Core
+still reports `isDeviceChat: true` and `canSend: false`; the audit observes
+matching BasicChat and FullChat reads with no send/create/accept/block/delete
+operation. This verifies the archived-before-startup device read-only path,
+not every transient UI frame or outgoing attachment surface.
+
+The same check reveals an archived-search naming defect: both result rows and
+the opened header display `Unknown` while matching Core metadata names the
+chat `Device messages`. `loadSearchHits` builds peers from `_names` without
+hydrating metadata for unlisted chats. The notification-only name fix does not
+cover this search path. A separate metadata-hydration correction is pending.
+
+The original Normal visibility was restored with one explicit Core write.
+Original drafts, message IDs and the remaining pending alternate request match
+their baseline; original primary request-action states remain intact. Fault
+policy is cleared. Private evidence is
+`/tmp/deltagram-live/archived-device-fixture/{before,native-open-evidence,restore-attempt}.json`;
+captures `/tmp/4b5-archived-{start,search-settled,device-loaded}.png` show the
+normal-list absence, results and read-only history. The valid pre-test checkpoint
+was copied only after verified process shutdown. An earlier copy started before
+shutdown settled and is retained with an `-unverified` suffix; it is not used as
+recovery or validation evidence.
+
+### Local-storage cache wording — 2026-10-26
+
+Native settings replay exposed a false claim that all media remains in the
+Telegram cloud and can be downloaded again. Source tracing confirms this
+screen clears `session.data().cache()`, `cacheBigFile()` and unused emoji cache
+files. The first two are donor `tdata/user_*/cache` and `media_cache`; their
+cleaner removes old versions under those cache bases. It does not call Core
+JSON-RPC or traverse Core's account blob directory. Size/age limits likewise
+apply to these donor caches, not total Core account storage.
+
+The Core-specific copy now says this cache uses the displayed space and that
+clearing it does not delete original message files. Tooltip and limit text also
+refer to cache files; donor copy is retained outside Core mode. No cloud
+retention or re-download guarantee is made. The source audit checks 13,230 files
+with no blocking findings and the diff is whitespace-clean. New language keys
+and rendered copy await native compilation/replay. Limit sliders remain
+untested; the later Clear all replay is recorded below.
+
+A stopped-state checkpoint precedes the disposable `14878ed` Clear all replay.
+The GUI completes clearing and donor cache files shrink from 18,788,724 bytes
+to 272 bytes. All 56 fingerprinted Core blob files, totaling 10,965,850 bytes,
+remain byte-identical immediately afterward and after normal quit/restart.
+Core readback also preserves both drafts, original direct/group message IDs
+and request states, including the fresh alternate-profile requests.
+
+After restart, in-chat search locates existing photo `103`; its blue image
+renders in the transcript and opens in the native media viewer. Normal loading
+rebuilds donor caches to 20,849,640 bytes while all 56 original Core files still
+match their hashes. Private manifests are
+`/tmp/deltagram-live/cache-retention-fixture/{before,after,restart,media}.json`;
+captures `/tmp/14878-cache-*.png` show clearing and subsequent image rendering.
+This validates the populated Images/Clear all path on that revision. Selective
+clearing, other populated cache tags, slider enforcement and the new rendered
+wording remain separate gates.
+
+[Native validation at `a64895c`](https://github.com/omidz4t/deltagram/actions/runs/40306519833)
+passes compilation and all **451 checks**, without failures or skips. Its five
+payload hashes and provenance match head `a64895c`, merge checkout `cb8cb904`,
+base `b713bff` and GitHub merge parents. After a stopped-state checkpoint,
+the verified GUI renders all four new Core strings: “This cache uses <0.1% of
+your device storage,” original-message-file retention text, “App cache” in the
+usage tooltip, and the limits explanation referring to unused cache files.
+The URI opens in the existing GUI process, with one GUI/proxy/Core owner.
+No clearing or slider change is performed during this copy replay. Original
+drafts/history, recorded request-action states, the pending alternate Single
+request and restored device visibility remain intact. Captures are
+`/tmp/a648-storage-{copy,tooltip,limits}.png`; the settings URI/PID record is
+`settings-fixture/native-a648-storage-copy.json`. Selective clearing and actual
+limit enforcement remain unverified. This binary predates the notification fix.
+
+### Core send-permission boundary — 2026-10-26
+
+`22bfd8f` adds an account/chat-scoped FullChat permission observer and gates the
+bridge's outgoing text, media, prepared/queued sends, forwarding, donor send and
+notification reply paths on Core's `canSend`. Missing/error/malformed metadata
+does not authorize a send. Draft persistence, history loading and cleanup remain
+separate. A notification reply is persisted first, then its original intent
+waits for permission; a denial or failed read leaves a saved Pending reply.
+Attempted/ambiguous sends are not retried automatically.
+
+The first isolated compile caught Qt's `slots` macro colliding with a variable.
+After a snapshot-only rename, a tiny C++ reproducer confirmed stale allow after
+newer denial, old read completing a replacement waiter, and malformed envelope
+authorization. The corrected helper compiles without that rename and all three
+reproducer flags are zero. The expanded suite then exposed two regressions in
+existing lost-storage-ack and unreadable-storage explicit retry cases. Computing
+the save result before moving its error string fixes the argument-evaluation
+ordering bug. The final serial focused Qt target passed **295 checks**, with no
+failures or skips, including those unchanged recovery cases.
+
+This target does not compile the complete native UI. Native compilation and
+rendered permission replay remain pending.
+
+A follow-up isolated snapshot removes raw permission application from other
+FullChat callers: those callers can request a tracked observer refresh, but
+cannot publish `canSend` from their own response. Returning to a cached chat
+refreshes its permission, closing history clears the focus, and contact changes
+refresh only the focused chat and active waiters. Callback publication no longer
+retains a slot reference across reentrant callbacks. Unknown permission and an
+explicit denial have separate user messages.
+
+That snapshot passed **300 integrity checks** and the separately wired
+**70 contact-request action checks**, with no failures or skips, using serial
+`-j1` builds. One new reentrancy test initially destroyed its replacement account
+scope before delivering the reply; retaining that scope fixes the test while
+preserving stale-account rejection. Logs are in the disposable test container at
+`/tmp/round13-recovery-tests.log` and the snapshot build's `LastTest.log`.
+These results precede the ongoing request-UI/helper revisions and do not validate
+those later edits. The source audit checked 13,228 files with no blocking findings.
+
+### Supported settings surface follow-up — 2026-10-26
+
+The follow-up removes the remaining Telegram-only proxy/DC controls, identity
+and paid-message links, sticker/emoji and cloud-theme catalogs, sensitive-content
+and archive-account policy controls, FAQ suggestions and unused settings reloads.
+Unknown settings factories now default to unavailable on Core; local passcode
+Create/Check/Change, Search, LocalStorage and Experimental remain explicitly
+available. Experimental omits the MTProto IPv6 option. Main QR opens Core's invite.
+
+Local wallpaper gallery/file selection, font and scale, passcode, media devices,
+relays, connectivity, second-device setup, name/bio/avatar, theme editing and
+export, current language, English and custom `.strings` import remain. The theme
+editor's primary Core button now exports locally instead of offering cloud
+publishing. Translation uses a configured custom URL or an available platform
+engine; Core has no MTProto fallback. Without either backend, translation controls
+are omitted and direct requests return an unavailable result. Platform-engine
+availability is cached for Core; a newly installed engine needs an app restart.
+
+On verified native `a64895c`, a local three-key `.strings` fixture imports through
+the language picker. After the confirmed restart, its language name, picker
+title and OK label render from the fixture. A controlled repeat without capture
+during restart passes both custom import/restart and the switch back to English,
+each with one new GUI/proxy/Core chain. English is selected afterward; original
+drafts/history, recorded request states and restored device visibility match
+their baseline. Private evidence is
+`settings-fixture/native-custom-language-evidence.json`; captures are
+`/tmp/a648-language-{custom-persisted,controlled-custom,controlled-english}.png`.
+
+The first English restart terminated with SIGABRT while capture/xdotool utilities
+were blocked across window destruction. After verifying process termination,
+stopping the blocked test utilities and relaunching once, English and data were
+preserved. The controlled repeat above did not reproduce the abort. Its cause
+remains unattributed; this is not a source crash fix or refutation, and final
+native replay must repeat the controlled switch. Captures are now time-bounded
+and run only after the ownership chain is ready.
+
+The custom-import confirmation also repeats donor “Telegram will restart” text.
+The Core-only source correction uses a new app-neutral language key, preserves
+current/target custom translations when different and avoids duplicate identical
+fallback text. Donor behavior and the local English-switch implementation are
+unchanged. New language code generation/native rendering remain pending.
+
+These settings changes are committed at `eafbca5`. Source audit and diff checks
+pass, but the focused Qt target does not compile these UI translation units.
+Native compilation and rendered replay remain required. Source review of the
+reported rich-message translation path found that `switchTranslation` sets its
+rich-request flag only for a provider supporting message IDs. Core's URL,
+platform and unavailable providers all return false for that capability; the
+MTProto provider is donor-only. The reported path therefore has no demonstrated
+Core reachability through this tracker.
+
+A small Qt harness compiled the current Linux translation provider source with
+local platform stubs and a disposable Crow executable. Normal output completed
+once with translated text; forcing process-start failure completed zero times.
+This reproduces the missing `FailedToStart` completion without a mailbox or
+full native build. The final source correction then passed six isolated harness
+cases: normal output, forced start failure, nonzero exit with output, crash,
+missing executable, and provider destruction from its completion callback.
+Each completed once; only the two successful-output cases returned text. A
+seventh case destroys the provider before process completion and confirms no
+callback is delivered after teardown. The
+harness uses the actual provider source with local platform stubs, so full native
+compilation and real Crow integration remain separate gates.
+
+A separate startup-lifetime source audit found no reachable retained MTProto
+translation provider on the checked paths. Primary-window setup initially opens
+empty history, so it does not construct `HistoryInner` or a tracker before the
+Bridge is attached. Profile switching retains the Bridge; secondary-window
+restore is queued after attachment. Session teardown removes the UI before the
+Bridge lifetime ends. The synchronous session-publication interval exists, but
+these call paths do not construct a provider in it. No additional startup mode
+flag or speculative guard was added. This is source evidence, separate from
+native startup/restore replay.
+
+### Contact-request action gap — 2026-10-26
+
+Source review at `22bfd8f` confirms there is no explicit `accept_chat` action in
+the Qt bridge. Core includes incoming requests in the chat list but reports
+`isContactRequest: true` and `canSend: false`. Official Desktop presents explicit
+Accept and Block/Delete actions; a send-permission lock alone does not provide
+that request flow. Group decline uses Core `block_chat`, which deletes the group
+chat and therefore requires an explicit deletion confirmation. Native request
+action replay remains open.
+
+A profile's explicit Message action is separate: official Desktop 2.62.0
+[`ViewProfile`](https://github.com/deltachat/deltachat-desktop/blob/v2.62.0/packages/frontend/src/components/dialogs/ViewProfile/index.tsx#L118)
+uses `createChatByContactId` to start the conversation, matching the canonical
+sender-routing correction. A plain incoming sender-name click uses
+`Element::fromLink` → `showPeerInfo` in this client. It must not be described as
+the `PeerData::createOpenLink` path without checking the actual caller.
+
+A fresh disposable profile, **Deltagram integrity request sender**, on the pinned
+Core 2.63.0-dev sent one direct probe and one group probe to the existing
+disposable onboarding profile. Its isolated Core process stopped after delivery.
+The recipient reports a Single request (chat `14`, message `294`) and a Group
+request (chat `15`, message `296`), both with `isContactRequest: true` and
+`canSend: false`. Neither request was accepted. Each creation/send intent was
+journaled before its single RPC, without mutation retries. Existing direct-chat
+message IDs, both composer drafts and the selected profile are unchanged.
+Private fixture evidence is `/tmp/deltagram-live/request-fixture/ready.json` in
+the test container. These fixtures prepare native action replay; Core delivery
+alone does not validate the missing UI.
+
+Opening each fixture on the checksum-verified `44a91b5` GUI renders its history
+and a composer, with no Accept or Block/Delete controls. No text was entered or
+sent. Returning to the original direct conversation and reading Core again
+confirms both requests remain requests with `canSend: false`, no request draft
+was created, and the original drafts/history are unchanged. Private rendered
+captures are `/tmp/request-single-baseline-44a.png` and
+`/tmp/request-group-baseline-44a.png`; readback is
+`/tmp/deltagram-live/request-fixture/baseline-gui-inspection.json` in the container.
+
+Separate decline fixtures are also ready: another Group request (chat `16`)
+from the request sender, and a Single request (chat `17`) from a second fresh
+profile, **Deltagram integrity decline sender**. Core confirms all four fixtures
+remain requests with sending disabled. Existing drafts, message IDs and the
+selected profile are unchanged. Both isolated sender processes exited after
+delivery. Single creation and send attempts were journaled without mutation
+retries; evidence is `/tmp/deltagram-live/request-decline-fixture/ready.json`.
+This leaves separate fixtures for Accept and destructive decline replay.
+
+A later isolated request/permission snapshot passed **305 integrity checks**.
+Its separate action suite passed **82 checks** after correcting a new fixture's
+scope-generation assumption: `invalidate()` expires old guards and starts a new
+generation, rather than permanently disabling new reads. The narrow shared-tree
+test correction is now applied; rebuilding both current focused test files
+serially passes the same 305 and 82 checks. Compiling the snapshot
+parser against reduced FullChat payloads from all four live requests also passes;
+this reads metadata only and does not accept, block or delete a request. These
+checks do not compile the native widget changes. Logs are
+`/tmp/request-review-tests.log` and `/tmp/request-review-recovery-tests.log` in
+the disposable test container.
+
+The native source now adds an Accept and Block/Delete overlay driven by the
+tracked FullChat request flag, separately from send permission. Actions use
+`accept_chat` or `block_chat`, with per-account/chat busy guards and account/UI
+lifetime checks. Group decline confirms deletion without blocking members;
+acknowledged deletion is distinguished from uncertain readback. The helper no
+longer retains a self-referencing peer-verification callback. OpenContact and
+the explicit profile Message behavior are preserved. CMake registers the separate
+request-action QtTest executable alongside the integrity suite. Full native
+compilation and action replay are still pending.
+
+The follow-up confirms every visible non-Single decline with the conversation
+name. Group copy explains deletion without blocking members; mailing-list and
+incoming-broadcast copy explains blocking and hiding. Single Block remains a
+single action, and outgoing broadcasts have no decline control. Confirmation
+callbacks recheck the account, history, peer and current type before dispatch.
+Verified Accept retains its busy state through a tracked refresh and waiter,
+without publishing helper JSON into permissions. Stale-account checks precede
+busy-map mutation.
+
+An isolated harness compiled the actual `finishContactRequest` method with the
+real permission observer and stubbed UI/timer dependencies. The preceding method
+fails the busy-state check; the new method passes delayed pre-mutation read,
+post-accept metadata error and accepted-but-read-only cases. It emits reads only
+and completes once after fresh metadata, reporting availability separately from
+acceptance. Logs are `/tmp/deltagram-accept-handoff-review/*-results.log` in the
+test container. The unchanged helpers retain their 305/82 focused results; this
+harness does not compile the full Bridge or native widgets. The source audit
+again checked 13,228 files with zero blocking findings. Native CMake already
+regenerates language code when `lang.strings` changes; new named strings await
+that native build and rendered replay.
+
+The verified `14878ed` GUI now renders the Single Accept/Block and Group
+Accept/Delete overlays on real disposable incoming requests, without a composer.
+Opening a request performs no accept, block, create-chat or send mutation.
+Rejected Accept leaves the request intact. Two clicks with a delayed Single
+Accept acknowledgement produce one `accept_chat` call; the accepted chat shows
+its composer. A Group Accept with a lost acknowledgement also makes one write,
+then reconciles by readback without retry. Core events can expose the accepted
+composer before the delayed mutation acknowledgement returns.
+
+Single decline rejection preserves the request and displays an error. A later
+lost-ack decline issues one `block_chat`, confirms contact blocking by readback,
+hides the conversation and unselects it. Group Delete shows the conversation
+name and explains that members are not blocked. Cancel makes no mutation;
+rejection preserves the request. Confirmed deletion without injected failure
+issues one `block_chat`, removes the conversation from Core's list and the
+settled GUI, and unselects it. The group sender remains unblocked. The read-only
+checker records unreadability/list absence separately from acknowledgement;
+a generic FullChat error is not treated as proof of a successful lost-ack
+group deletion.
+
+Every action preserves prior direct-chat history, both profile drafts and the
+other fixtures' then-current states. Evidence is in
+`/tmp/deltagram-live/request-fixture/native-*-action-evidence.json`, with
+`native-request-inspection-evidence.json` and `native-group-cancel-evidence.json`.
+Private captures `/tmp/14878-request-*.png` and `/tmp/14878-decline-*.png` in the
+test container show the rendered controls, confirmation and rejection. These
+cases do not cover mailing lists, broadcasts or the newer contact-open helper.
+
+After a normal quit/restart, one GUI/proxy/Core chain is running and the recorded
+state matches: chats `14`/`15` stay accepted and sendable, Single `17` stays
+blocked/hidden, and Group `16` stays unreadable/unlisted. The original group's
+members/history and both profile drafts remain intact. Fault policy is cleared.
+The comparison is recorded in `native-request-actions-before-restart.json` and
+`native-request-actions-after-restart.json` in the same private fixture directory.
+
+### Opening an existing contact request — 2026-10-26
+
+Source review found that explicit profile Message and contact-picker Chat
+called `create_chat_by_contact_id` even when a Single request already existed.
+Core clears that request through creation, bypassing the explicit Accept action.
+Chat-list inspection and bubble sender-name inspection do not use this path.
+
+The contact-open helper now looks up the conversation first. A matching Single
+chat opens without a write, retaining its request flag. Lookup/metadata failures
+do not fall back to creation. A null lookup checks the contact's blocked state
+before one creation attempt and validates the returned FullChat. Saved Messages
+has a separate self-talk validation path; other reserved contacts are refused.
+Account switches drop callbacks, and displayed errors contain local text only.
+
+The standalone Qt target compiles serially and passes 64 checks, covering
+request/accepted opens without mutation, blocked and malformed results, one-shot
+creation, self-talk and account-scope cancellation. The actual parser also
+accepts four reduced live FullChat payloads: an accepted conversation, two
+pending requests and Saved Messages. These checks read the disposable Core only;
+the requests remain pending. Logs are `/tmp/open-contact-tests.log` and
+`/tmp/open-contact-live-payloads.json` in the test container. Full Bridge/native
+GUI validation remains pending.
+
+Core lookup returns null for both absent and hidden blocked chats. A hidden
+blocked chat whose contact is unblocked cannot be distinguished by this API.
+Creation also is not atomic with lookup: an incoming request can arrive between
+the reads and the write. The helper never retries a creation, but these Core API
+limits remain unresolved; this change does not establish atomic request safety.
+
+Fresh follow-up requests are prepared in **Deltagram integrity alternate**:
+Single chat `13` and Group chat `14`, both `isContactRequest:true` and
+`canSend:false`, from **Deltagram integrity request sender**. They are reserved
+for contact-open and lost-ack Group Delete replay. A separate follow-up Group
+arrived in the primary profile as chat `18`; Core reports it already non-request
+and sendable, so it is not used as a request fixture. No client Accept was
+issued. Original drafts/message IDs in both profiles remain unchanged, and the
+separate sender Core exited. Private `request-followup-fixture/reconciled.json`
+and `preservation.json` record the observed states. The creation script stopped
+at its request-only assertion for that primary Group; its intent/ack journals
+must not be replayed or retried.
 
 ### Sender and chat identity lookups — 2026-10-26
 
@@ -78,7 +2109,28 @@ narrowed to an unrelated chat ID during type/status lookup. The blocking action
 now resolves known sender contacts before checking chat-only system IDs, and
 the group/direct/channel/subtitle caches retain full-width peer IDs. Source
 inspection confirms these lookups no longer truncate sender identities; native
-compilation and group-member profile replay remain pending.
+compilation and group-member profile replay were initially pending.
+
+The checksum- and provenance-verified `e669e85` GUI now passes the group-member
+profile **Contact blocking** action against the disposable reference contact.
+A rejected block leaves the contact unblocked and shows a rejection toast.
+Lost-ack block and unblock each issue one contact mutation, then confirm the
+result by Core readback without retrying. The direct conversation disappears
+while blocked and returns after unblock; reopening the action shows the fresh
+Unblock confirmation. The audit records no create-chat, send, accept or
+chat-block mutation during these actions.
+
+After a normal quit and restart, exactly one GUI/proxy/Core chain is running.
+Core confirms the contact remains unblocked and the direct chat is listed.
+Both profile drafts, prior message IDs, group membership/history and all four
+incoming-request fixtures remain unchanged. Fault policy is cleared. Private
+evidence is `/tmp/deltagram-live/blocking-fixture/` (the
+`e669-profile-lostblock-profile-evidence.json`,
+`e669-profile-lostunblock-profile-evidence.json` and
+`e669-profile-restarted.json` files), with request preservation recorded in
+`/tmp/deltagram-live/request-fixture/e669-profile-restarted-preservation.json`.
+This older artifact does not validate the later permission/request UI or the
+contact-status entry point.
 
 ### Notification reply recovery — 2026-10-26
 
@@ -1985,3 +4037,36 @@ monospace, and Times New Roman to the intended bundled families. The actual Apps
 window loaded and was resized through four sizes on an X11 virtual display,
 without EGL/GBM failures or an unresponsive web process. This virtual-display
 check does not reproduce every desktop compositor's flicker behavior.
+
+### Forgotten local passcode with Chatmail data (2026-10-27)
+
+User-selected policy: preserve profiles. Forgotten-passcode recovery must not
+log out/reset local storage when Chatmail profiles are present or the locked
+account types cannot be confirmed. The UI explains use of the passcode,
+previously enabled system unlock, or an existing Chatmail backup restored in a
+fresh installation. This does not add a passcode bypass, system-unlock setup,
+backup export from a locked profile, or database encryption.
+
+The actual `Domain::resetWithForgottenPasscode` entry rechecks the policy before
+any account logout or `startFromScratch`; the confirmation UI also checks it.
+The cold-start account list can still be encrypted. Read-only evidence therefore
+uses app-owned backend metadata, occupied account namespaces, and the same Core
+accounts-path resolver as onboarding. Core data, saved folder selection,
+corrupt/unreadable metadata, and untagged legacy accounts preserve the lock.
+Positively identified Telegram-only storage retains the donor reset path.
+Legacy Telegram storage lacking backend metadata is conservatively unknown
+until it can be unlocked/classified. Ordinary logout without a local lock or
+passcode retains its previous behavior.
+
+Focused Qt 6.4.2 checks run as UID 65534: seven QtTest cases including lifecycle
+hooks, zero failures/skips. They cover loaded/mixed/unknown accounts, cold
+Telegram metadata, saved Core folder selection, untagged legacy namespaces,
+corrupt metadata, hidden/unreadable Core storage, and unchanged authorization
+and profile sentinels. An exact-source reset-method recorder passes nine
+scenarios under ASan/UBSan: protected outcomes perform zero logout/reset calls;
+Telegram outcomes retain cold initialization or loaded account logout. The
+recorder uses account/storage doubles and does not prove native persistence.
+Language and subset generation succeeded. All four changed production C++
+files pass syntax/type checks with the configured native Qt/Nix compiler; these
+checks produce no objects and do not prove linking or GUI behavior.
+Full linked-binary locked-start/system-unlock/backup GUI replay remains pending.

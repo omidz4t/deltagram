@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "media/view/media_view_overlay_widget.h"
 
 #include "apiwrap.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "api/api_attached_stickers.h"
 #include "api/api_peer_photo.h"
@@ -3971,7 +3972,10 @@ void OverlayWidget::handleSharedMediaUpdate(SharedMediaWithLastSlice &&update) {
 }
 
 std::optional<OverlayWidget::UserPhotosKey> OverlayWidget::userPhotosKey() const {
-	if (!Delta::Active() && !_message && _user && _photo) {
+	if (_user
+		&& _photo
+		&& !_message
+		&& Delta::UsesTelegramBackend(&_user->session())) {
 		return UserPhotosKey{ peerToUser(_user->id), _photo->id };
 	}
 	return std::nullopt;

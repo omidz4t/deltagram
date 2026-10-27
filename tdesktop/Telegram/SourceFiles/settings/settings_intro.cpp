@@ -208,6 +208,7 @@ private:
 	object_ptr<TopBar> _topBar = { nullptr };
 
 	object_ptr<Ui::FadeShadow> _topShadow;
+	const not_null<Window::Controller*> _window;
 
 };
 
@@ -217,7 +218,8 @@ IntroWidget::IntroWidget(
 : RpWidget(parent)
 , _wrap(this)
 , _scroll(Ui::CreateChild<Ui::ScrollArea>(_wrap.data()))
-, _topShadow(this) {
+, _topShadow(this)
+, _window(window) {
 	_wrap->setAttribute(Qt::WA_OpaquePaintEvent);
 	_wrap->paintRequest(
 	) | rpl::on_next([=](QRect clip) {
@@ -369,8 +371,8 @@ void IntroWidget::resizeEvent(QResizeEvent *e) {
 }
 
 void IntroWidget::keyPressEvent(QKeyEvent *e) {
-	crl::on_main(this, [text = e->text()]{
-		CodesFeedString(nullptr, text);
+	crl::on_main(this, [this, text = e->text()] {
+		CodesFeedString(nullptr, text, &_window->account());
 	});
 	return RpWidget::keyPressEvent(e);
 }

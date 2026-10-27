@@ -283,7 +283,9 @@ void Widget::createLanguageLink() {
 			object_ptr<Ui::LinkButton>(this, text));
 		_changeLanguage->hide(anim::type::instant);
 		_changeLanguage->entity()->setClickedCallback([=] {
-			Lang::CurrentCloudManager().switchToLanguage(languageId);
+			Lang::CurrentCloudManager().switchToLanguage(
+				languageId,
+				_account);
 		});
 		_changeLanguage->toggle(
 			!_resetAccount && !_terms && _nextShown,

@@ -62,7 +62,6 @@ include(cmake/external/qt/package.cmake)
 set(desktop_app_skip_libs
     glibmm
     variant
-    tde2e
 )
 
 add_subdirectory(cmake)

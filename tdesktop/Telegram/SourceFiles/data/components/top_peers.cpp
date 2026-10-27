@@ -13,6 +13,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_peer.h"
 #include "data/data_session.h"
 #include "data/data_user.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "main/main_session.h"
 #include "mtproto/mtproto_config.h"
@@ -144,7 +145,7 @@ void TopPeers::remove(not_null<PeerData*> peer) {
 		updated();
 	}
 
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(_session)) {
 		return;
 	}
 	_requestId = _session->api().request(MTPcontacts_ResetTopPeerRating(
@@ -210,7 +211,7 @@ void TopPeers::toggleDisabled(bool disabled) {
 		updated();
 	}
 
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(_session)) {
 		return;
 	}
 	_session->api().request(MTPcontacts_ToggleTopPeers(
@@ -234,7 +235,7 @@ void TopPeers::resetForAccountChange() {
 }
 
 void TopPeers::request() {
-	if (Delta::Active() || _requestId) {
+	if (Delta::UsesCoreBackend(_session) || _requestId) {
 		return;
 	}
 

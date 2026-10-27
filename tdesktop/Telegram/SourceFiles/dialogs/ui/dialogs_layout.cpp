@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "dialogs/ui/dialogs_layout.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "base/options.h"
@@ -841,10 +842,13 @@ void PaintRow(
 					context.selected);
 			}
 		} else if (item && !item->isEmpty() && item->needCheck()) {
-			const auto delivery = Delta::Active()
+			const auto session = &item->history()->session();
+			const auto owns = Delta::UsesCoreBackend(session)
+				&& Delta::OwnsSession(session);
+			const auto delivery = owns
 				? Delta::MessageDelivery(item->id.bare)
 				: std::nullopt;
-			sendFailed = Delta::Active() && (delivery
+			sendFailed = owns && (delivery
 				? *delivery == Delta::DeliveryState::Failed : item->hasFailed());
 			if (sendFailed) return nullptr;
 			const auto pending = delivery && *delivery == Delta::DeliveryState::Pending;
@@ -1104,7 +1108,10 @@ const style::icon *ChatTypeIcon(not_null<PeerData*> peer) {
 const style::icon *ChatTypeIcon(
 		not_null<PeerData*> peer,
 		const PaintContext &context) {
-	if (peer->isUser() && Delta::IsChannel(peerToUser(peer->id).bare)) {
+	if (peer->isUser()
+		&& Delta::UsesCoreBackend(&peer->session())
+		&& Delta::OwnsSession(&peer->session())
+		&& Delta::IsChannel(peerToUser(peer->id).bare)) {
 		return &ThreeStateIcon(st::dialogsChannelIcon, context.active, context.selected);
 	}
 	if (const auto user = peer->asUser()) {

@@ -8,12 +8,25 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "settings/settings_builder.h"
 
 #include "apiwrap.h"
+#include "delta/account_backend.h"
 #include "lang/lang_keys.h"
 #include "api/api_user_privacy.h"
 #include "boxes/edit_privacy_box.h"
 #include "main/main_session.h"
+#include "settings/cloud_password/settings_cloud_password_email.h"
+#include "settings/cloud_password/settings_cloud_password_email_confirm.h"
+#include "settings/cloud_password/settings_cloud_password_hint.h"
+#include "settings/cloud_password/settings_cloud_password_input.h"
+#include "settings/cloud_password/settings_cloud_password_login_email.h"
+#include "settings/cloud_password/settings_cloud_password_login_email_confirm.h"
+#include "settings/cloud_password/settings_cloud_password_manage.h"
+#include "settings/cloud_password/settings_cloud_password_start.h"
 #include "settings/settings_common.h"
+#include "settings/sections/settings_local_passcode.h"
+#include "settings/sections/settings_local_storage.h"
 #include "settings/sections/settings_privacy_security.h"
+#include "settings/settings_experimental.h"
+#include "settings/settings_search.h"
 #include "ui/vertical_list.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/checkbox.h"
@@ -36,6 +49,27 @@ namespace {
 	return result;
 }
 
+[[nodiscard]] bool CloudPasswordOrLoginEmailSection(Type sectionId) {
+	return sectionId == ::Settings::CloudPasswordStartId()
+		|| sectionId == ::Settings::CloudPasswordInputId()
+		|| sectionId == ::Settings::CloudPasswordSuggestionInputId()
+		|| sectionId == ::Settings::CloudPasswordHintId()
+		|| sectionId == ::Settings::CloudPasswordEmailId()
+		|| sectionId == ::Settings::CloudPasswordEmailConfirmId()
+		|| sectionId == ::Settings::CloudPasswordManageId()
+		|| sectionId == ::Settings::CloudLoginEmailId()
+		|| sectionId == ::Settings::CloudLoginEmailConfirmId();
+}
+
+[[nodiscard]] bool CoreUnregisteredAllowlisted(Type sectionId) {
+	return sectionId == ::Settings::LocalPasscodeCreateId()
+		|| sectionId == ::Settings::LocalPasscodeCheckId()
+		|| sectionId == ::Settings::LocalPasscodeChangeId()
+		|| sectionId == ::Settings::Search::Id()
+		|| sectionId == ::Settings::LocalStorageId()
+		|| sectionId == ::Settings::Experimental::Id();
+}
+
 } // namespace
 
 BuildHelper::BuildHelper(
@@ -46,7 +80,7 @@ BuildHelper::BuildHelper(
 		not_null<Window::SessionController*> controller,
 		Fn<void(Type)> showOther,
 		rpl::producer<> showFinished) {
-	if (_meta.available && !_meta.available()) {
+	if (_meta.available && !_meta.available(&controller->session())) {
 		return;
 	}
 	auto &lifetime = container->lifetime();
@@ -102,7 +136,7 @@ std::vector<SearchEntry> SearchRegistry::collectAll(
 		not_null<Main::Session*> session) const {
 	auto result = std::vector<SearchEntry>();
 	for (const auto &[sectionId, meta] : _sections) {
-		if (!sectionAvailable(sectionId)) {
+		if (!sectionAvailable(sectionId, session)) {
 			continue;
 		}
 		if (meta->parentId) {
@@ -114,7 +148,7 @@ std::vector<SearchEntry> SearchRegistry::collectAll(
 		}
 	}
 	for (const auto &entry : _indexers) {
-		if (!sectionAvailable(entry.sectionId)) continue;
+		if (!sectionAvailable(entry.sectionId, session)) continue;
 		auto entries = entry.indexer(session);
 		result.insert(result.end(), entries.begin(), entries.end());
 	}
@@ -126,12 +160,24 @@ QString SearchRegistry::sectionTitle(Type sectionId) const {
 	return (it != _sections.end()) ? (*it->second->title)(tr::now) : QString();
 }
 
-bool SearchRegistry::sectionAvailable(Type sectionId) const {
+bool SearchRegistry::sectionAvailable(
+		Type sectionId,
+		not_null<Main::Session*> session) const {
+	if (Delta::UsesCoreBackend(session)
+		&& CloudPasswordOrLoginEmailSection(sectionId)) {
+		return false;
+	}
+	if (Delta::UsesCoreBackend(session)
+		&& CoreUnregisteredAllowlisted(sectionId)) {
+		return true;
+	}
 	while (sectionId) {
 		const auto i = _sections.find(sectionId);
-		if (i == _sections.end()) return true;
+		if (i == _sections.end()) {
+			return !Delta::UsesCoreBackend(session);
+		}
 		const auto meta = i->second;
-		if (meta->available && !meta->available()) return false;
+		if (meta->available && !meta->available(session)) return false;
 		sectionId = meta->parentId;
 	}
 	return true;
@@ -155,7 +201,7 @@ QString SearchRegistry::sectionPath(Type sectionId, bool parentsOnly) const {
 
 std::vector<SearchEntry> BuildHelper::index(
 		not_null<Main::Session*> session) const {
-	if (_meta.available && !_meta.available()) {
+	if (_meta.available && !_meta.available(session)) {
 		return {};
 	}
 	auto entries = std::vector<SearchEntry>();

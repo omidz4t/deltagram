@@ -13,6 +13,7 @@ namespace Settings {
 
 Type LocalPasscodeCreateId();
 Type LocalPasscodeCheckId();
+Type LocalPasscodeChangeId();
 Type LocalPasscodeManageId();
 
 } // namespace Settings

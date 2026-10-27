@@ -14,8 +14,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_peer.h"
 #include "data/data_session.h"
 #include "history/history_item.h"
+#include "lang/lang_backend.h"
 #include "lang/translate_mtproto_provider.h"
 #include "lang/translate_url_provider.h"
+#include "main/main_account.h"
+#include "main/main_session.h"
 #include "platform/platform_translate_provider.h"
 
 namespace {
@@ -27,22 +30,87 @@ base::options::option<QString> OptionTranslateUrlTemplate({
 		" Supports %q text, %f source language and %t target language.",
 });
 
+[[nodiscard]] QString TranslateUrlTemplate() {
+	return OptionTranslateUrlTemplate.value();
+}
+
+[[nodiscard]] bool TranslateUrlTemplateValid(const QString &urlTemplate) {
+	return !urlTemplate.isEmpty() && urlTemplate.contains(u"%q"_q);
+}
+
+[[nodiscard]] bool CachedPlatformTranslateAvailable() {
+	static const auto available = Platform::IsTranslateProviderAvailable();
+	return available;
+}
+
+class UnavailableTranslateProvider final : public Ui::TranslateProvider {
+public:
+	[[nodiscard]] bool supportsMessageId() const override {
+		return false;
+	}
+
+	void request(
+			Ui::TranslateProviderRequest,
+			LanguageId,
+			Fn<void(Ui::TranslateProviderResult)> done) override {
+		done(Ui::TranslateProviderResult{
+			.error = Ui::TranslateProviderError::Unknown,
+		});
+	}
+
+};
+
 } // namespace
 
 namespace Ui {
 
+bool IsTranslateBackendAvailable(Main::Account *account) {
+	return Lang::TranslateBackendAvailable(
+		account
+			? account->backend()
+			: Main::AccountBackend::Unspecified,
+		TranslateUrlTemplateValid(TranslateUrlTemplate()),
+		CachedPlatformTranslateAvailable());
+}
+
+bool IsTranslateBackendAvailable(not_null<Main::Account*> account) {
+	return IsTranslateBackendAvailable(account.get());
+}
+
+bool IsTranslateBackendAvailable(not_null<Main::Session*> session) {
+	return IsTranslateBackendAvailable(&session->account());
+}
+
 std::unique_ptr<TranslateProvider> CreateTranslateProvider(
 		not_null<Main::Session*> session) {
-	const auto urlTemplate = OptionTranslateUrlTemplate.value();
-	if (!urlTemplate.isEmpty()
-		&& urlTemplate.contains(u"%q"_q)) {
+	const auto urlTemplate = TranslateUrlTemplate();
+	const auto backend = session->account().backend();
+	const auto kind = Lang::PlanTranslateProvider({
+		.backend = backend,
+		.urlTemplateValid = TranslateUrlTemplateValid(urlTemplate),
+		.platformAvailable = (backend == Main::AccountBackend::Telegram)
+			? Platform::IsTranslateProviderAvailable()
+			: CachedPlatformTranslateAvailable(),
+		.usePlatformTranslation
+			= Core::App().settings().usePlatformTranslation(),
+	});
+	switch (kind) {
+	case Lang::TranslateProviderKind::Url:
 		return CreateUrlTranslateProvider(urlTemplate);
+	case Lang::TranslateProviderKind::Platform:
+		if (auto provider = Platform::CreateTranslateProvider()) {
+			return provider;
+		}
+		if (backend == Main::AccountBackend::Telegram) {
+			return CreateMTProtoTranslateProvider(session);
+		}
+		return std::make_unique<UnavailableTranslateProvider>();
+	case Lang::TranslateProviderKind::Mtproto:
+		return CreateMTProtoTranslateProvider(session);
+	case Lang::TranslateProviderKind::Unavailable:
+		return std::make_unique<UnavailableTranslateProvider>();
 	}
-	if (Core::App().settings().usePlatformTranslation()
-		&& Platform::IsTranslateProviderAvailable()) {
-		return Platform::CreateTranslateProvider();
-	}
-	return CreateMTProtoTranslateProvider(session);
+	return std::make_unique<UnavailableTranslateProvider>();
 }
 
 TranslateProviderRequest PrepareTranslateProviderRequest(

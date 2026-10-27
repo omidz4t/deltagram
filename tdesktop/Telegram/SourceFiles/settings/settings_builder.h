@@ -86,7 +86,7 @@ struct SectionMeta {
 	Type parentId;
 	not_null<const tr::phrase<>*> title;
 	not_null<const style::icon*> icon;
-	Fn<bool()> available;
+	Fn<bool(not_null<::Main::Session*>)> available;
 };
 
 class SearchRegistry {
@@ -101,7 +101,9 @@ public:
 		not_null<::Main::Session*> session) const;
 
 	[[nodiscard]] QString sectionTitle(Type sectionId) const;
-	[[nodiscard]] bool sectionAvailable(Type sectionId) const;
+	[[nodiscard]] bool sectionAvailable(
+		Type sectionId,
+		not_null<::Main::Session*> session) const;
 	[[nodiscard]] QString sectionPath(
 		Type sectionId,
 		bool parentsOnly = false) const;

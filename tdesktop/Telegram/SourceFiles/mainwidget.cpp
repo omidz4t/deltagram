@@ -51,6 +51,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "chat_helpers/tabbed_selector.h" // TabbedSelector::refreshStickers
 #include "chat_helpers/message_field.h"
 #include "info/info_memento.h"
+#include "delta/account_backend.h"
+#include "delta/delta_boxes.h"
+#include "delta/delta_bridge.h"
 #include "apiwrap.h"
 #include "dialogs/dialogs_widget.h"
 #include "history/history_widget.h"
@@ -406,15 +409,43 @@ MainWidget::MainWidget(
 
 				peer, Data::TabbedPanelSendRestrictions())
 			: rpl::single(false);
+		// ChannelWriteAccess re-emits on every ChannelRevision even when
+		// the boolean is unchanged. GroupInfo get_full bumps that revision;
+		// recreating the third column would request again and loop.
 		return std::move(
 			canWrite
+		) | rpl::distinct_until_changed(
 		) | rpl::map([=](bool can) {
 			return std::make_tuple(key, can);
 		});
 	}) | rpl::flatten_latest(
+	) | rpl::distinct_until_changed(
 	) | rpl::on_next([this](Dialogs::Key key, bool canWrite) {
 		updateThirdColumnToCurrentChat(key, canWrite);
 	}, lifetime());
+
+	if (Delta::UsesCoreBackend(&_controller->session())) {
+		Delta::ChannelStatusValue(1) | rpl::on_next([=](const QString &) {
+			if (!Delta::OwnsSession(&_controller->session())
+					|| !isThreeColumn()
+					|| !Core::App().settings().thirdSectionInfoEnabled()
+					|| _thirdSection) {
+				return;
+			}
+			const auto peer = _controller->activeChatCurrent().peer();
+			if (!peer) {
+				return;
+			}
+			if (auto group = Delta::GroupInfoMementoForPeer(peer)) {
+				_controller->showSection(
+					std::move(group),
+					Window::SectionShow(
+						Window::SectionShow::Way::ClearStack,
+						anim::type::instant,
+						anim::activation::background).withThirdColumn());
+			}
+		}, lifetime());
+	}
 
 	QCoreApplication::instance()->installEventFilter(this);
 
@@ -2702,16 +2733,31 @@ void MainWidget::updateControlsGeometry() {
 							params);
 					}
 				} else if (Core::App().settings().thirdSectionInfoEnabled()) {
-					_controller->showSection(
-						(thread->asTopic()
-							? std::make_shared<Info::Memento>(
-								thread->asTopic())
-							: thread->asSublist()
-							? std::make_shared<Info::Memento>(
-								thread->asSublist())
-							: Info::Memento::Default(
-								thread->asHistory()->peer)),
-						params.withThirdColumn());
+					std::shared_ptr<Window::SectionMemento> memento;
+					if (thread->asTopic()) {
+						memento = std::make_shared<Info::Memento>(
+							thread->asTopic());
+					} else if (thread->asSublist()) {
+						memento = std::make_shared<Info::Memento>(
+							thread->asSublist());
+					} else if (const auto peer = thread->asHistory()->peer) {
+						const auto owns = Delta::UsesCoreBackend(
+								&_controller->session())
+							&& Delta::OwnsSession(&_controller->session());
+						if (owns) {
+							memento = Delta::GroupInfoMementoForPeer(peer);
+						}
+						if (!memento
+								&& !(owns
+									&& Delta::UnresolvedCoreGroupPeer(peer))) {
+							memento = Info::Memento::Default(peer);
+						}
+					}
+					if (memento) {
+						_controller->showSection(
+							std::move(memento),
+							params.withThirdColumn());
+					}
 				}
 			}
 		}
@@ -2976,6 +3022,15 @@ auto MainWidget::thirdSectionForCurrentMainSection(
 		; sublist && sublist->parentChat()) {
 		return std::make_shared<Info::Memento>(sublist);
 	} else if (const auto peer = key.peer()) {
+		if (Delta::UsesCoreBackend(&_controller->session())
+				&& Delta::OwnsSession(&_controller->session())) {
+			if (auto group = Delta::GroupInfoMementoForPeer(peer)) {
+				return group;
+			}
+			if (Delta::UnresolvedCoreGroupPeer(peer)) {
+				return nullptr;
+			}
+		}
 		return Info::Memento::Default(peer);
 	} else if (const auto sublist = key.sublist()) {
 		return Info::Memento::Default(sublist->owningHistory()->peer);
@@ -3010,9 +3065,11 @@ void MainWidget::updateThirdColumnToCurrentChat(
 			Core::App().saveSettingsDelayed();
 		}
 
-		_controller->showSection(
-			thirdSectionForCurrentMainSection(key),
-			params.withThirdColumn());
+		if (auto memento = thirdSectionForCurrentMainSection(key)) {
+			_controller->showSection(
+				std::move(memento),
+				params.withThirdColumn());
+		}
 	};
 	auto switchTabbedFast = [&](not_null<Data::Thread*> thread) {
 		saveOldThirdSection();

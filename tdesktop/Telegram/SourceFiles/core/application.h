@@ -331,6 +331,7 @@ public:
 	void localPasscodeChanged();
 
 	[[nodiscard]] bool preventsQuit(QuitReason reason);
+	[[nodiscard]] bool backupPreventsQuit();
 
 	[[nodiscard]] crl::time lastNonIdleTime() const;
 	void updateNonIdle();

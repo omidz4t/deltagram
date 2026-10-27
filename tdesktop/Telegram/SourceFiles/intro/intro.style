@@ -45,6 +45,14 @@ introCoverDescription: FlatLabel(defaultFlatLabel) {
 	}
 }
 introCoverDescriptionTop: 174px;
+
+// Backend selection copy must wrap within the intro button column.
+deltaAccountChoiceTitle: FlatLabel(introCoverTitle) {
+	minWidth: 300px;
+}
+deltaAccountChoiceDescription: FlatLabel(introCoverDescription) {
+	minWidth: 300px;
+}
 introTitle: FlatLabel(defaultFlatLabel) {
 	textFg: introTitleFg;
 	style: TextStyle(defaultTextStyle) {

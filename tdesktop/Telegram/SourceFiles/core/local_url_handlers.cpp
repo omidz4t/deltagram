@@ -348,7 +348,9 @@ bool SetLanguage(
 		ShowLanguagesBox(controller);
 	} else {
 		const auto languageId = match->captured(2);
-		Lang::CurrentCloudManager().switchWithWarning(languageId);
+		Lang::CurrentCloudManager().switchWithWarning(
+			languageId,
+			controller ? &controller->session().account() : nullptr);
 	}
 	if (controller) {
 		controller->window().activate();

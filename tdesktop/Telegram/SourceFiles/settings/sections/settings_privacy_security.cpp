@@ -7,7 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_privacy_security.h"
 
-#include "delta/delta_bridge.h"
+#include "delta/account_backend.h"
 
 #include "settings/settings_common_session.h"
 
@@ -554,7 +554,69 @@ void BuildSecuritySection(
 		.keywords = { u"security"_q, u"password"_q, u"passcode"_q },
 	});
 
-	if (!Delta::Active()) {
+	if (Delta::UsesTelegramBackend(session)) {
+		using State = Core::CloudPasswordState;
+		enum class PasswordState {
+			Loading,
+			On,
+			Off,
+			Unconfirmed,
+		};
+		auto passwordState = rpl::single(
+			PasswordState::Loading
+		) | rpl::then(session->api().cloudPassword().state(
+		) | rpl::map([](const State &state) {
+			return (!state.unconfirmedPattern.isEmpty())
+				? PasswordState::Unconfirmed
+				: state.hasPassword
+				? PasswordState::On
+				: PasswordState::Off;
+		})) | rpl::distinct_until_changed();
+		auto cloudLabel = rpl::duplicate(
+			passwordState
+		) | rpl::map([=](PasswordState state) {
+			return (state == PasswordState::Loading)
+				? tr::lng_profile_loading(tr::now)
+				: (state == PasswordState::On)
+				? tr::lng_settings_cloud_password_on(tr::now)
+				: tr::lng_settings_cloud_password_off(tr::now);
+		});
+		builder.addButton({
+			.id = u"security/cloud_password"_q,
+			.title = tr::lng_settings_cloud_password_start_title(),
+			.icon = { &st::menuIconPermissions },
+			.label = std::move(cloudLabel),
+			.onClick = [=] {
+				const auto current = session->api().cloudPassword().stateCurrent();
+				if (!current) {
+					return;
+				} else if (!current->unconfirmedPattern.isEmpty()) {
+					showOther(CloudPasswordEmailConfirmId());
+				} else if (current->hasPassword) {
+					showOther(CloudPasswordInputId());
+				} else {
+					showOther(CloudPasswordStartId());
+				}
+			},
+			.keywords = { u"password"_q, u"cloud"_q, u"2fa"_q },
+		});
+		builder.add([controller, session](const WidgetContext &ctx) {
+			const auto reloadOnActivation = [=](Qt::ApplicationState state) {
+				if (state == Qt::ApplicationActive) {
+					session->api().cloudPassword().reload();
+				}
+			};
+			QObject::connect(
+				static_cast<QGuiApplication*>(QCoreApplication::instance()),
+				&QGuiApplication::applicationStateChanged,
+				ctx.container,
+				reloadOnActivation);
+			session->api().cloudPassword().reload();
+			return SectionBuilder::WidgetToAdd{};
+		});
+	}
+
+	if (Delta::UsesTelegramBackend(session)) {
 		auto ttlLabel = rpl::combine(
 			session->api().selfDestruct().periodDefaultHistoryTTL(),
 			tr::lng_settings_ttl_after_off()
@@ -574,7 +636,7 @@ void BuildSecuritySection(
 		});
 	}
 
-	if (!Delta::Active()) {
+	if (Delta::UsesTelegramBackend(session)) {
 		builder.add([session, updateTrigger = rpl::duplicate(updateTrigger)](const WidgetContext &ctx) mutable {
 			std::move(updateTrigger) | rpl::on_next([=] {
 				session->api().selfDestruct().reload();
@@ -611,7 +673,7 @@ void BuildSecuritySection(
 		.keywords = { u"passcode"_q, u"lock"_q, u"pin"_q },
 	});
 
-	if (!Delta::Active() && session->passkeys().possible()) {
+	if (Delta::UsesTelegramBackend(session) && session->passkeys().possible()) {
 		auto passkeysLabel = rpl::combine(
 			tr::lng_profile_loading(),
 			(rpl::single(rpl::empty_value())
@@ -662,7 +724,7 @@ void BuildSecuritySection(
 		});
 	}
 
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(session)) {
 		builder.addButton({
 			.id = u"security/blocked"_q,
 			.title = tr::lng_settings_blocked_users(),
@@ -670,6 +732,9 @@ void BuildSecuritySection(
 			.onClick = [=] { showOther(BlockedPeersId()); },
 			.keywords = { u"blocked"_q, u"ban"_q },
 		});
+		return;
+	}
+	if (!Delta::UsesTelegramBackend(session)) {
 		return;
 	}
 
@@ -699,6 +764,52 @@ void BuildSecuritySection(
 			session->api().blockedPeers().reload();
 		}, ctx.container->lifetime());
 		return SectionBuilder::WidgetToAdd{};
+	});
+
+	using namespace rpl::mappers;
+	builder.add([session, updateTrigger = rpl::duplicate(updateTrigger)](const WidgetContext &ctx) mutable {
+		std::move(updateTrigger) | rpl::on_next([=] {
+			session->api().websites().reload();
+		}, ctx.container->lifetime());
+		return SectionBuilder::WidgetToAdd{};
+	});
+	auto websiteCount = session->api().websites().totalValue();
+	auto websiteCountText = rpl::duplicate(
+		websiteCount
+	) | rpl::filter(_1 > 0) | rpl::map([](int count) {
+		return QString::number(count);
+	});
+	builder.addButton({
+		.id = u"security/websites"_q,
+		.title = tr::lng_settings_logged_in(),
+		.icon = { &st::menuIconIpAddress },
+		.label = std::move(websiteCountText),
+		.onClick = [=] {
+			showOther(WebsitesId());
+		},
+		.keywords = { u"websites"_q, u"login"_q, u"sessions"_q },
+		.shown = rpl::duplicate(websiteCount) | rpl::map(_1 > 0),
+	});
+
+	builder.add([session, updateTrigger = rpl::duplicate(updateTrigger)](const WidgetContext &ctx) mutable {
+		std::move(updateTrigger) | rpl::on_next([=] {
+			session->api().authorizations().reload();
+		}, ctx.container->lifetime());
+		return SectionBuilder::WidgetToAdd{};
+	});
+	auto sessionCount = session->api().authorizations().totalValue(
+	) | rpl::map([](int count) {
+		return count ? QString::number(count) : QString();
+	});
+	builder.addButton({
+		.id = u"security/sessions"_q,
+		.title = tr::lng_settings_show_sessions(),
+		.icon = { &st::menuIconDevices },
+		.label = std::move(sessionCount),
+		.onClick = [=] {
+			showOther(SessionsId());
+		},
+		.keywords = { u"sessions"_q, u"devices"_q, u"active"_q },
 	});
 
 

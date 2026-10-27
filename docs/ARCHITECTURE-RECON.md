@@ -1,5 +1,19 @@
 # Architecture reconnaissance
 
+## Current scope (2026-10-26)
+
+The reconstruction below is a historical Core migration snapshot, not the
+current product scope. Real Telegram accounts are also required. Keep the
+donor Telegram backend and isolate Core integration by owning account/session.
+In particular, a live Core bridge cannot redirect Telegram transport or apply
+Core data to a Telegram item with the same numeric message or peer id.
+
+The current integration work adds durable backend identity before MTP instance
+startup, restores donor authentication and transport only for explicitly
+Telegram accounts, and replaces process-global UI routing with session-aware
+routing. Existing global transport cuts remain until the required isolation is
+in place. No mixed-backend runtime or release claim follows from this document.
+
 Source of truth: this checkout, October 2026. `tdesktop/cmake` and the other
 submodules in `tdesktop/.gitmodules` are empty, so the app does not configure
 yet. The C++ sources that are present are enough to map the coupling.

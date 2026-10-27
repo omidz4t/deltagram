@@ -7,7 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_credits.h"
 
-#include "delta/delta_bridge.h"
+#include "delta/account_backend.h"
 
 #include "api/api_credits.h"
 #include "api/api_earn.h"
@@ -1052,7 +1052,9 @@ const auto kCreditsBuilderMeta = BuildHelper({
 	.parentId = MainId(),
 	.title = &tr::lng_credits_summary_title,
 	.icon = &st::menuIconPremium,
-	.available = [] { return !Delta::Active(); },
+	.available = [](not_null<::Main::Session*> session) {
+		return !Delta::UsesCoreBackend(session);
+	},
 }, [](SectionBuilder &builder) {
 	BuildCreditsButtons(builder, false, nullptr, nullptr, nullptr);
 });

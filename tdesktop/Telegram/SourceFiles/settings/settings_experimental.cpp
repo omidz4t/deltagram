@@ -30,6 +30,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/options.h"
 #include "boxes/moderate_messages_box.h"
 #include "core/application.h"
+#include "delta/account_backend.h"
 #include "core/launcher.h"
 #include "core/sandbox.h"
 #include "chat_helpers/tabbed_panel.h"
@@ -518,6 +519,11 @@ void SetupExperimental(
 				not_null<Ui::VerticalLayout*> inner,
 				std::vector<QString> &searchable) {
 			for (const auto name : category.options) {
+				if (Delta::UsesCoreBackend(&window->account())
+					&& (QLatin1String(name)
+						== QLatin1String(MTP::details::kOptionPreferIPv6))) {
+					continue;
+				}
 				searchable.push_back(addOption(inner, name));
 			}
 		});

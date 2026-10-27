@@ -9,10 +9,17 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Window {
 class SessionController;
+} // namespace Window
+
+namespace Main {
+class Account;
 } // namespace Main
 
 namespace Settings {
 
-void CodesFeedString(Window::SessionController *window, const QString &text);
+void CodesFeedString(
+	Window::SessionController *window,
+	const QString &text,
+	Main::Account *account = nullptr);
 
 } // namespace Settings

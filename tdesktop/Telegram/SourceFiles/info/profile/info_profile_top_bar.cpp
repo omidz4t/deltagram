@@ -44,6 +44,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_stories.h"
 #include "data/data_user.h"
 #include "data/stickers/data_custom_emoji.h"
+#include "delta/delta_bridge.h"
+#include "delta/media_identity.h"
 #include "editor/photo_editor_common.h"
 #include "editor/photo_editor_layer_widget.h"
 #include "editor/video/video_editor_layer.h"
@@ -1035,7 +1037,9 @@ void TopBar::setupActions(not_null<Window::SessionController*> controller) {
 		buttons.push_back(message);
 		_actions->add(message);
 	}
-	if (!peer->isSelf()) {
+	if (!peer->isSelf()
+		&& !(Delta::OwnsSession(&peer->session())
+			&& Delta::IsSenderUserId(peerToUser(peer->id).bare))) {
 		const auto notifications = Ui::CreateChild<TopBarActionButton>(
 			this,
 			tr::lng_profile_action_short_mute(tr::now),

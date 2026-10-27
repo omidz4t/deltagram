@@ -1,16 +1,39 @@
 #include "delta_rpc.h"
 
+#include <QCoreApplication>
 #include <QJsonDocument>
 #include <QTimer>
 
 #include <csignal>
 #include <cstdio>
 #include <utility>
+#if defined(Q_OS_UNIX)
+#include <sys/stat.h>
+#endif
 #if defined(__linux__)
 #include <sys/prctl.h>
 #endif
 
 using namespace Qt::StringLiterals;
+
+class DeltaRpc::DispatchGuard final {
+public:
+	explicit DispatchGuard(DeltaRpc *rpc) : _rpc(rpc) {
+		++_rpc->_activeDispatches;
+	}
+	~DispatchGuard() {
+		if (--_rpc->_activeDispatches) return;
+		auto owners = std::exchange(_rpc->_releaseWhenIdle, {});
+		for (auto &owner : owners) {
+			_rpc->deferOwnedRelease(std::move(owner));
+		}
+	}
+	DispatchGuard(const DispatchGuard &) = delete;
+	DispatchGuard &operator=(const DispatchGuard &) = delete;
+
+private:
+	DeltaRpc *_rpc;
+};
 
 DeltaRpc::DeltaRpc(QObject *parent)
 : QObject(parent)
@@ -18,9 +41,14 @@ DeltaRpc::DeltaRpc(QObject *parent)
 	connect(&_process, &QProcess::readyReadStandardOutput, this, [this] {
 		onReadyRead();
 	});
-#if defined(__linux__)
+#if defined(Q_OS_UNIX)
 	_process.setChildProcessModifier([] {
+		// Core creates account data, backup archives and temporary databases.
+		// Apply privacy to this child without changing the GUI process mask.
+		::umask(S_IRWXG | S_IRWXO);
+#if defined(__linux__)
 		prctl(PR_SET_PDEATHSIG, SIGKILL);
+#endif
 	});
 #endif
 	_startup = new QTimer(this);
@@ -61,6 +89,7 @@ DeltaRpc::~DeltaRpc() {
 }
 
 void DeltaRpc::start(const QString &program, const QString &accountsPath) {
+	const auto dispatch = DispatchGuard(this);
 	stop();
 	_stopping = false;
 	_failed = false;
@@ -89,6 +118,7 @@ void DeltaRpc::start(const QString &program, const QString &accountsPath) {
 }
 
 void DeltaRpc::stop() {
+	const auto dispatch = DispatchGuard(this);
 	_stopping = true;
 	_startup->stop();
 	failPending(u"rpc stopped"_s);
@@ -115,6 +145,7 @@ void DeltaRpc::call(
 		const QJsonArray &params,
 		Callback done,
 		int timeoutMs) {
+	const auto dispatch = DispatchGuard(this);
 	if (!running()) {
 		QJsonObject error{{u"message"_s, u"rpc server is not running"_s}};
 		if (done) {
@@ -161,6 +192,7 @@ void DeltaRpc::call(
 }
 
 void DeltaRpc::onReadyRead() {
+	const auto dispatch = DispatchGuard(this);
 	_buffer.append(_process.readAllStandardOutput());
 	if (_failed || _stopping) return;
 	while (true) {
@@ -209,6 +241,7 @@ void DeltaRpc::handleLine(const QByteArray &line) {
 }
 
 void DeltaRpc::onFinished(int exitCode, QProcess::ExitStatus status) {
+	const auto dispatch = DispatchGuard(this);
 	auto reason = (status == QProcess::CrashExit)
 		? u"rpc server crashed"_s
 		: u"rpc server exited (%1)"_s.arg(exitCode);
@@ -224,6 +257,7 @@ void DeltaRpc::onFinished(int exitCode, QProcess::ExitStatus status) {
 }
 
 void DeltaRpc::failTransport(const QString &reason) {
+	const auto dispatch = DispatchGuard(this);
 	if (_failed || _stopping) return;
 	_failed = true;
 	_startup->stop();
@@ -246,4 +280,35 @@ void DeltaRpc::failPending(const QString &reason) {
 			request.done(envelope);
 		}
 	}
+}
+
+void DeltaRpc::deferOwnedRelease(std::shared_ptr<DeltaRpc> rpc) {
+	QTimer::singleShot(0, QCoreApplication::instance(), [rpc = std::move(rpc)]() mutable {
+		if (rpc->_activeDispatches) {
+			// Another response/error callback may have entered a nested loop
+			// before this queued release. Requeue only after dispatch unwinds.
+			const auto raw = rpc.get();
+			raw->_releaseWhenIdle.push_back(std::move(rpc));
+		}
+	});
+}
+
+void CallOwnedDeltaRpc(
+		std::shared_ptr<DeltaRpc> rpc,
+		const QString &method,
+		const QJsonArray &params,
+		DeltaRpc::Callback done,
+		int timeoutMs) {
+	if (!rpc || rpc->parent() || !QCoreApplication::instance()) {
+		if (done) done(QJsonObject{{u"error"_s,
+			QJsonObject{{u"message"_s, u"RPC is not available."_s}}}});
+		return;
+	}
+	const auto raw = rpc.get();
+	raw->call(method, params,
+		[rpc = std::move(rpc), done = std::move(done)](QJsonObject reply) mutable {
+			if (done) done(std::move(reply));
+			const auto raw = rpc.get();
+			raw->deferOwnedRelease(std::move(rpc));
+		}, timeoutMs);
 }

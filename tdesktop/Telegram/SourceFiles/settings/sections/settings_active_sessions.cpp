@@ -6,7 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_active_sessions.h"
-#include "delta/delta_bridge.h"
+#include "delta/account_backend.h"
 
 #include "settings/settings_common_session.h"
 
@@ -1240,7 +1240,7 @@ void Sessions::showFinished() {
 }
 
 void Sessions::setupContent() {
-	if (Delta::Active()) return;
+	if (Delta::UsesCoreBackend(&controller()->session())) return;
 	const auto container = Ui::CreateChild<Ui::VerticalLayout>(this);
 
 	const SectionBuildMethod buildMethod = [](
@@ -1316,7 +1316,9 @@ const auto kMeta = BuildHelper({
 	.parentId = PrivacySecurityId(),
 	.title = &tr::lng_settings_sessions_title,
 	.icon = &st::menuIconDevices,
-	.available = [] { return !Delta::Active(); },
+	.available = [](not_null<::Main::Session*> session) {
+		return !Delta::UsesCoreBackend(session);
+	},
 }, [](SectionBuilder &builder) {
 	BuildSessionsSection(builder);
 });

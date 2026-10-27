@@ -49,6 +49,7 @@ class PopupMenu;
 class FlatLabel;
 class VerticalLayout;
 class RoundButton;
+class LinkButton;
 struct ScrollToRequest;
 namespace Controls {
 enum class QuickDialogAction;
@@ -195,6 +196,12 @@ public:
 	[[nodiscard]] bool hasFilteredResults() const;
 
 	void searchRequested(bool loading);
+	void showSearchFailure();
+	void clearSearchFailure();
+	void searchCancelled();
+	[[nodiscard]] bool searchHasFailure() const;
+	[[nodiscard]] bool searchIsLoading() const;
+	[[nodiscard]] rpl::producer<> searchRetryRequests() const;
 	void applySearchState(SearchState state);
 	[[nodiscard]] auto searchTagsChanges() const
 		-> rpl::producer<std::vector<Data::ReactionId>>;
@@ -586,6 +593,10 @@ private:
 	void clearSearchResults(bool alsoPeerSearchResults = true);
 	void clearPeerSearchResults();
 	void clearPreviewResults();
+	void createSearchFailureWidgets();
+	void resizeSearchFailure();
+	[[nodiscard]] int searchFailureTop() const;
+	[[nodiscard]] int searchFailureBlockHeight() const;
 	void updateSelectedRow(Key key = Key());
 	void trackResultsHistory(not_null<History*> history);
 
@@ -758,6 +769,10 @@ private:
 	object_ptr<Ui::RpWidget> _loadingAnimation = { nullptr };
 	object_ptr<SearchEmpty> _searchEmpty = { nullptr };
 	SearchState _searchEmptyState;
+	object_ptr<SearchEmpty> _searchFailedEmpty = { nullptr };
+	object_ptr<Ui::FlatLabel> _searchFailedLabel = { nullptr };
+	object_ptr<Ui::LinkButton> _searchRetry = { nullptr };
+	rpl::event_stream<> _searchRetryRequests;
 	object_ptr<Ui::FlatLabel> _empty = { nullptr };
 	object_ptr<Ui::VerticalLayout> _emptyList = { nullptr };
 	object_ptr<Ui::RoundButton> _emptyButton = { nullptr };
@@ -821,6 +836,7 @@ private:
 
 	bool _searchLoading = false;
 	bool _searchWaiting = false;
+	bool _searchFailed = false;
 
 	base::unique_qptr<Ui::PopupMenu> _menu;
 

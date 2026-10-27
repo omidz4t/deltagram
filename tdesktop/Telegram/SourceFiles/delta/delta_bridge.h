@@ -10,6 +10,7 @@ This file is part of Delta Tel, a Telegram Desktop based Delta Chat client.
 #include "delta/compose_batch.h"
 #include "delta/history_mutations.h"
 #include "delta/contact_blocking.h"
+#include "delta/full_message.h"
 #include "mtproto/core_types.h"
 #include "rpl/producer.h"
 
@@ -28,6 +29,7 @@ class HistoryItem;
 
 namespace Main {
 class Account;
+class Session;
 } // namespace Main
 
 namespace MTP {
@@ -70,7 +72,20 @@ void SendSavedReply(SavedReply reviewed, Fn<void(QString)> done);
 void DiscardSavedReply(SavedReply reviewed, Fn<void(QString)> done);
 [[nodiscard]] rpl::producer<int> ComposerChanges();
 [[nodiscard]] bool ComposerWritable(int userId);
+[[nodiscard]] std::optional<bool> ComposerSendKnown(int userId);
+[[nodiscard]] bool ComposerSendAllowed(int userId);
+[[nodiscard]] std::optional<bool> ComposerContactRequest(int userId);
+[[nodiscard]] bool ComposerDeclineIsBlock(int userId);
+[[nodiscard]] bool ComposerCanDeclineContactRequest(int userId);
+[[nodiscard]] bool ComposerDeclineNeedsDeletionConfirm(int userId);
+[[nodiscard]] bool ContactRequestBusy(int userId);
+void AcceptContactRequest(int userId, Fn<void(QString)> done);
+void DeclineContactRequest(int userId, bool confirmed, Fn<void(QString)> done);
+[[nodiscard]] QString ComposerSendUnavailable(int userId);
+void WatchComposerChat(int userId);
+void ObserveComposerChat(int userId);
 [[nodiscard]] bool PreparingSendPreventsQuit();
+[[nodiscard]] bool BackupExportInProgress();
 void SendComposerText(int userId, const QString &text, int quotedMessageId,
 	Fn<void(bool)> done);
 void SendComposerAttachment(int userId, ComposeDraft draft, Fn<void(bool)> done);
@@ -86,8 +101,20 @@ enum class DeliveryState { Pending, Failed, Sent, Read };
 [[nodiscard]] std::optional<DeliveryState> MessageDelivery(int messageId);
 [[nodiscard]] bool CanEditMessage(int messageId);
 void ApplyMessageData(not_null<HistoryItem*> item);
+[[nodiscard]] QString MessageAuthorOverride(not_null<HistoryItem*> item);
+[[nodiscard]] bool MessageShowsCoreAuthor(not_null<HistoryItem*> item);
+[[nodiscard]] QString QuoteAuthorName(
+	not_null<HistoryItem*> quoting,
+	HistoryItem *resolved);
 [[nodiscard]] bool CanDownloadMessage(int messageId);
 void DownloadMessage(int messageId);
+[[nodiscard]] bool OwnsSession(not_null<Main::Session*> session);
+[[nodiscard]] bool HasFullMessage(not_null<HistoryItem*> item);
+void LoadFullMessage(
+	not_null<Main::Session*> session,
+	int messageId,
+	const AccountScope &scope,
+	Fn<void(FullMessageResult)> done);
 [[nodiscard]] std::optional<int> ChannelViewCount(int messageId);
 void MessageInfo(int messageId, Fn<void(QString text, QString error)> done);
 void DeleteContact(int contactId, bool deleteChat, Fn<void(QString error)> done);
@@ -108,9 +135,12 @@ void AccountRequest(const QString &method, const QJsonArray &args,
 void JoinInviteChat(const QString &qr, Fn<void(int chatId, QString error)> done);
 [[nodiscard]] std::shared_ptr<DeltaRpc> SharedRpc();
 [[nodiscard]] QString SelfAddress();
-[[nodiscard]] bool IsSystemUser(int userId);
-[[nodiscard]] rpl::producer<int> Connectivity();
-void FetchConnectivityHtml(Fn<void(QString html)> done);
+[[nodiscard]] bool IsSystemUser(uint64 userId);
+[[nodiscard]] rpl::producer<int> Connectivity(
+	not_null<Main::Session*> session);
+void FetchConnectivityHtml(
+	not_null<Main::Session*> session,
+	Fn<void(QString html)> done);
 void FetchUrl(const QString &url, Fn<void(QByteArray body, QString error)> done);
 [[nodiscard]] QImage PhotoImage(uint64 photoId);
 
@@ -135,12 +165,19 @@ void FindMessageIds(
 	Fn<void(QVector<int> ids, QString error)> done);
 void LoadSearchResults(
 	const QVector<int> &ids,
-	Fn<void(QVector<MTPMessage>, QVector<MTPUser>)> done);
+	Fn<void(QVector<MTPMessage>, QVector<MTPUser>, QString error)> done);
 
 void LoadInviteQr(
 	Fn<void(QString name, QString text, QString svg, QString error)> done);
 
-void ListTransports(Fn<void(QJsonArray transports, QString error)> done);
+void ExportProfileBackup(
+	not_null<Main::Session*> session,
+	const QString &destination,
+	const QString &passphrase,
+	Fn<void(QString directory, QString error)> done);
+void ListTransports(
+	not_null<Main::Session*> session,
+	Fn<void(QJsonArray transports, QString error)> done);
 void UpdateTransport(const QJsonObject &transport, Fn<void(QString error)> done);
 void DeleteTransport(const QString &addr, Fn<void(QString error)> done);
 void AddTransportFromQr(const QString &qr, Fn<void(QString error)> done);
@@ -180,6 +217,12 @@ void ListContacts(
 	Fn<void(std::vector<ContactRow> contacts, QString error)> done,
 	bool addressOnly = false);
 void OpenContact(const ContactRow &contact, Fn<void(int, QString)> done);
+void InspectGroupMember(
+	int chatId,
+	int contactId,
+	Fn<void(ContactRow contact, uint64 userId, QString error)> done);
+// Mint kContactUserIdBase+contactId into SenderContacts. Self is refused.
+[[nodiscard]] bool RegisterContactForProfile(const ContactRow &contact);
 void ShareContact(int contactId, int peerUserId, Fn<void(QString)> done);
 
 void CreateGroup(

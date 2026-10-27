@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_reply.h"
 
+#include "delta/delta_bridge.h"
 #include "core/click_handler_types.h"
 #include "core/ui_integration.h"
 #include "data/stickers/data_custom_emoji.h"
@@ -612,11 +613,22 @@ QString Reply::senderName(
 bool Reply::isNameUpdated(
 		not_null<const Element*> view,
 		not_null<HistoryMessageReply*> data) const {
+	const auto quotingRevision = view->data()->backendAuthorRevision();
+	const auto resolved = data->resolvedMessage.get();
+	const auto resolvedRevision = resolved
+		? resolved->backendAuthorRevision()
+		: 0;
 	if (const auto from = sender(view, data)) {
-		if (_nameVersion < from->nameVersion()) {
+		if (_nameVersion < from->nameVersion()
+			|| _quoteAuthorRevision != quotingRevision
+			|| _resolvedAuthorRevision != resolvedRevision) {
 			updateName(view, data, from);
 			return true;
 		}
+	} else if (_quoteAuthorRevision != quotingRevision
+		|| _resolvedAuthorRevision != resolvedRevision) {
+		updateName(view, data);
+		return true;
 	}
 	return false;
 }
@@ -656,9 +668,15 @@ void Reply::updateName(
 	const auto shorten = !viaBotUsername.isEmpty()
 		|| groupNameAdded
 		|| originalNameAdded;
-	const auto name = sender
+	auto name = sender
 		? senderName(sender, shorten)
 		: senderName(view, data, shorten);
+	if (Delta::OwnsSession(&history->session())) {
+		const auto coreName = Delta::QuoteAuthorName(view->data(), message);
+		if (!coreName.isEmpty()) {
+			name = coreName;
+		}
+	}
 	const auto previewSkip = _hasPreview
 		? (st::messageQuoteStyle.outline
 			+ st::historyReplyPreviewMargin.left()
@@ -696,6 +714,10 @@ void Reply::updateName(
 	if (sender) {
 		_nameVersion = sender->nameVersion();
 	}
+	_quoteAuthorRevision = view->data()->backendAuthorRevision();
+	_resolvedAuthorRevision = message
+		? message->backendAuthorRevision()
+		: 0;
 	const auto nameMaxWidth = previewSkip
 		+ _name.maxWidth()
 		+ st::messageGiftIconSkip

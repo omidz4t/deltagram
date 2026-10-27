@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "delta/delta_bridge.h"
 #include "delta/delta_boxes.h"
+#include "delta/full_message_box.h"
 
 #include "api/api_polls.h"
 #include "chat_helpers/stickers_emoji_pack.h"
@@ -3391,7 +3392,10 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					[=] { copySelectedText(); },
 					&st::menuIconCopy);
 			}
-			if (item && !Ui::SkipTranslate(selectedText.rich)) {
+			if (item
+				&& !Ui::SkipTranslate(
+					selectedText.rich,
+					&item->history()->session())) {
 				const auto peer = item->history()->peer;
 				_menu->addAction(tr::lng_context_translate_selected({}), [=] {
 					_controller->show(Box(
@@ -3553,7 +3557,10 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					[=] { copySelectedText(); },
 					&st::menuIconCopy);
 			}
-			if (item && !Ui::SkipTranslate(selectedText.rich)) {
+			if (item
+				&& !Ui::SkipTranslate(
+					selectedText.rich,
+					&item->history()->session())) {
 				const auto peer = item->history()->peer;
 				_menu->addAction(tr::lng_context_translate_selected({}), [=] {
 					_controller->show(Box(
@@ -3679,7 +3686,9 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 								.append(item->originalText()))
 							: item->originalText();
 						if (!translate.text.isEmpty()
-							&& !Ui::SkipTranslate(translate)) {
+							&& !Ui::SkipTranslate(
+								translate,
+								&item->history()->session())) {
 							_menu->addAction(tr::lng_context_translate(tr::now), [=] {
 								_controller->show(Box(
 									Ui::TranslateBox,
@@ -3839,7 +3848,10 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 				}
 			}), &st::menuIconSend);
 	}
-	if (Delta::Active() && infoItem && infoItem->id.bare > 0 && isUponSelected <= 0) {
+	if (infoItem
+		&& infoItem->id.bare > 0
+		&& isUponSelected <= 0
+		&& Delta::OwnsSession(&infoItem->history()->session())) {
 		const auto infoId = infoItem->id.bare;
 		if (Delta::CanDownloadMessage(infoId)) {
 			const auto generation = Delta::AccountGeneration();
@@ -3850,6 +3862,20 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 		_menu->addAction(u"Info"_q, crl::guard(controller, [=] {
 			Delta::ShowMessageInfo(controller, infoId);
 		}), &st::menuIconInfo);
+	}
+	if (infoItem && isUponSelected <= 0 && Delta::HasFullMessage(infoItem)) {
+		const auto generation = Delta::AccountGeneration();
+		const auto current = Delta::CaptureAccountGuard();
+		const auto itemId = infoItem->fullId();
+		const auto sessionId = infoItem->history()->session().uniqueId();
+		_menu->addAction(tr::lng_full_message_show(tr::now), crl::guard(controller, [=] {
+			if (generation != Delta::AccountGeneration()) return;
+			if (current && !current()) return;
+			if (controller->session().uniqueId() != sessionId) return;
+			const auto item = controller->session().data().message(itemId);
+			if (!item || !Delta::HasFullMessage(item)) return;
+			Delta::ShowFullMessage(controller, item);
+		}), &st::menuIconExpand);
 	}
 	if (_dragStateItem) {
 		const auto view = viewByItem(_dragStateItem);

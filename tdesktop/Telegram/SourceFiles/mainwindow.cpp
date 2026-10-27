@@ -26,8 +26,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "export/export_manager.h"
 #include "inline_bots/bot_attach_web_view.h" // AttachWebView::cancel.
 #include "intro/intro_widget.h"
+#include "delta/backend_choice.h"
 #include "delta/delta_bridge.h"
 #include "delta/welcome.h"
+#include "lang/lang_keys.h"
+#include "main/backend_startup.h"
 #include "main/main_session.h"
 #include "main/main_account.h" // Account::sessionValue.
 #include "main/main_domain.h"
@@ -55,7 +58,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace {
 
 // Code for testing languages is F7-F6-F7-F8
-void FeedLangTestingKey(int key) {
+void FeedLangTestingKey(int key, Main::Account *initiating) {
 	static auto codeState = 0;
 	if ((codeState == 0 && key == Qt::Key_F7)
 		|| (codeState == 1 && key == Qt::Key_F6)
@@ -67,7 +70,7 @@ void FeedLangTestingKey(int key) {
 	}
 	if (codeState == 4) {
 		codeState = 0;
-		Lang::CurrentCloudManager().switchToTestLanguage();
+		Lang::CurrentCloudManager().switchToTestLanguage(initiating);
 	}
 }
 
@@ -157,6 +160,8 @@ void MainWindow::finishFirstShow() {
 		_intro->setInnerFocus();
 	} else if (!_passcodeLock && !_setupEmailLock && _onboarding) {
 		_onboarding->setInnerFocus();
+	} else if (!_passcodeLock && !_setupEmailLock && _backendChoice) {
+		_backendChoice->setInnerFocus();
 	}
 }
 
@@ -165,6 +170,8 @@ void MainWindow::clearWidgetsHook() {
 	_main.destroy();
 	_intro.destroy();
 	_onboarding.destroy();
+	_backendChoice.destroy();
+	_backendChoiceBusy = false;
 	if (!Core::App().passcodeLocked()) {
 		_passcodeLock.destroy();
 	}
@@ -184,7 +191,7 @@ void MainWindow::preventOrInvoke(Fn<void()> callback) {
 }
 
 void MainWindow::setupPasscodeLock() {
-	auto animated = (_main || _intro || _onboarding);
+	auto animated = (_main || _intro || _onboarding || _backendChoice);
 	auto oldContentCache = animated ? grabForSlideAnimation() : QPixmap();
 	_passcodeLock.create(bodyWidget(), &controller());
 	updateControlsGeometry();
@@ -199,6 +206,9 @@ void MainWindow::setupPasscodeLock() {
 	if (_onboarding) {
 		_onboarding->hide();
 	}
+	if (_backendChoice) {
+		_backendChoice->hide();
+	}
 	if (animated) {
 		_passcodeLock->showAnimated(std::move(oldContentCache));
 	} else {
@@ -211,7 +221,11 @@ void MainWindow::setupPasscodeLock() {
 }
 
 void MainWindow::setupSetupEmailLock() {
-	auto animated = (_main || _intro || _onboarding || _passcodeLock);
+	auto animated = (_main
+		|| _intro
+		|| _onboarding
+		|| _backendChoice
+		|| _passcodeLock);
 	auto oldContentCache = animated ? grabForSlideAnimation() : QPixmap();
 	_setupEmailLock.create(bodyWidget(), &controller());
 	updateControlsGeometry();
@@ -225,6 +239,9 @@ void MainWindow::setupSetupEmailLock() {
 	}
 	if (_onboarding) {
 		_onboarding->hide();
+	}
+	if (_backendChoice) {
+		_backendChoice->hide();
 	}
 	if (_passcodeLock) {
 		_passcodeLock->hide();
@@ -259,6 +276,10 @@ void MainWindow::clearSetupEmailLock() {
 		_onboarding->show();
 		updateControlsGeometry();
 		setInnerFocus();
+	} else if (_backendChoice) {
+		_backendChoice->show();
+		updateControlsGeometry();
+		setInnerFocus();
 	} else if (_main) {
 		_main->show();
 		updateControlsGeometry();
@@ -267,7 +288,7 @@ void MainWindow::clearSetupEmailLock() {
 }
 
 void MainWindow::clearPasscodeLock() {
-	Expects(_intro || _main || _onboarding);
+	Expects(_intro || _main || _onboarding || _backendChoice);
 
 	if (!_passcodeLock) {
 		return;
@@ -287,6 +308,10 @@ void MainWindow::clearPasscodeLock() {
 		_onboarding->show();
 		updateControlsGeometry();
 		setInnerFocus();
+	} else if (_backendChoice) {
+		_backendChoice->show();
+		updateControlsGeometry();
+		setInnerFocus();
 	} else if (_main) {
 		_main->show();
 		updateControlsGeometry();
@@ -299,28 +324,156 @@ void MainWindow::setupIntro(
 		Intro::EnterPoint point,
 		Main::Account *accountBeforeIntro,
 		QPixmap oldContentCache) {
-	Q_UNUSED(point);
-	Q_UNUSED(accountBeforeIntro);
-	Q_UNUSED(oldContentCache);
-
-	destroyLayer();
-	clearWidgets();
-	// Delta Chat welcome replaces the Telegram phone/QR intro.
-	// Intro::Widget stays uncreated so this window does not start MTProto login.
-	_onboarding.create(bodyWidget(), &controller(), &account());
-	if (_passcodeLock || _setupEmailLock) {
-		_onboarding->hide();
-	} else {
-		_onboarding->show();
-		updateControlsGeometry();
-		setInnerFocus();
+	const auto locked = (_passcodeLock || _setupEmailLock);
+	switch (account().backend()) {
+	case Main::AccountBackend::Telegram: {
+		const auto animated = (_main
+			|| _onboarding
+			|| _backendChoice
+			|| _passcodeLock
+			|| _setupEmailLock);
+		destroyLayer();
+		auto created = object_ptr<Intro::Widget>(
+			bodyWidget(),
+			&controller(),
+			&account(),
+			point,
+			accountBeforeIntro);
+		created->showSettingsRequested(
+		) | rpl::on_next([=] {
+			showSettings();
+		}, created->lifetime());
+		clearWidgets();
+		_intro = std::move(created);
+		DragArea::SetupProxyDropArea(_intro.data(), [](const QString &localUrl) {
+			Core::App().openLocalUrl(localUrl, {});
+		});
+		if (locked) {
+			_intro->hide();
+		} else {
+			_intro->show();
+			updateControlsGeometry();
+			if (animated) {
+				_intro->showAnimated(std::move(oldContentCache));
+			} else {
+				setInnerFocus();
+			}
+		}
+		fixOrder();
+		return;
 	}
-	fixOrder();
+	case Main::AccountBackend::Core: {
+		destroyLayer();
+		clearWidgets();
+		_onboarding.create(bodyWidget(), &controller(), &account());
+		if (locked) {
+			_onboarding->hide();
+		} else {
+			_onboarding->show();
+			updateControlsGeometry();
+			setInnerFocus();
+		}
+		fixOrder();
+		return;
+	}
+	case Main::AccountBackend::Unspecified: {
+		destroyLayer();
+		auto created = object_ptr<Delta::BackendChoice>(bodyWidget());
+		created->chosen(
+		) | rpl::on_next([=](Main::AccountBackend backend) {
+			crl::on_main(this, [=] { applyBackendChoice(backend); });
+		}, created->lifetime());
+		clearWidgets();
+		_backendChoice = std::move(created);
+		_backendChoiceBusy = false;
+		if (locked) {
+			_backendChoice->hide();
+		} else {
+			_backendChoice->show();
+			updateControlsGeometry();
+			setInnerFocus();
+		}
+		fixOrder();
+		return;
+	}
+	}
+}
+
+void MainWindow::applyBackendChoice(Main::AccountBackend backend) {
+	if (_backendChoiceBusy || !_backendChoice) {
+		return;
+	}
+	_backendChoiceBusy = true;
+	auto &account = this->account();
+	auto existingCore = (Main::Account*)nullptr;
+	for (const auto &[index, other] : account.domain().accounts()) {
+		if (other.get() != &account
+			&& other->backend() == Main::AccountBackend::Core) {
+			existingCore = other.get();
+			break;
+		}
+	}
+	const auto decision = Main::EvaluateAccountBackendChoice({
+		account.backend(),
+		backend,
+		true,
+		account.sessionExists(),
+		account.hasStoredMtpAuthorizationKeys(),
+		existingCore != nullptr,
+	});
+	if (decision.action == Main::AccountBackendChoiceAction::RouteToExistingCore
+		&& existingCore) {
+		_backendChoiceBusy = false;
+		account.domain().activate(existingCore);
+		if (existingCore->sessionExists()) {
+			if (const auto window = Core::App().windowFor(not_null(existingCore))) {
+				window->widget()->showDeltaAddProfile();
+			}
+		}
+		return;
+	}
+	if (decision.action != Main::AccountBackendChoiceAction::BindCurrent) {
+		_backendChoiceBusy = false;
+		_backendChoice->showError(
+			Delta::BackendChoiceErrorText(decision.bind));
+		return;
+	}
+	const auto result = account.rebuildMtpForBackend(backend);
+	if (!Main::AccountBackendChoiceActivates(decision.action, result)) {
+		_backendChoiceBusy = false;
+		if (_backendChoice) {
+			_backendChoice->showError(Delta::BackendChoiceErrorText(result));
+		}
+		return;
+	}
+	if (account.sessionExists()) {
+		return;
+	}
+	const auto point = Core::App().domain().maybeLastOrSomeAuthedAccount()
+		? Intro::EnterPoint::Qr
+		: Intro::EnterPoint::Start;
+	setupIntro(point, nullptr, grabForSlideAnimation());
 }
 
 void MainWindow::showDeltaAddProfile() {
+	if (account().backend() != Main::AccountBackend::Core) {
+		controller().show(Ui::MakeInformBox(
+			tr::lng_delta_account_core_required()));
+		return;
+	}
+	const auto owns = account().sessionExists()
+		&& Delta::OwnsSession(&account().session());
+	if (!owns) {
+		controller().show(Ui::MakeInformBox(
+			tr::lng_delta_account_core_busy()));
+		return;
+	}
 	const auto rpc = Delta::SharedRpc();
 	if (!rpc || _onboarding) {
+		if (!rpc) {
+			controller().show(Ui::MakeInformBox(
+				tr::lng_delta_account_start_failed()));
+		}
 		return;
 	}
 	ui_hideSettingsAndLayer(anim::type::instant);
@@ -348,6 +501,8 @@ void MainWindow::setupMain(
 	Expects(account().sessionExists());
 
 	const auto animated = _intro
+		|| _onboarding
+		|| _backendChoice
 		|| (_passcodeLock && !Core::App().passcodeLocked())
 		|| _setupEmailLock;
 	const auto weakAnimatedLayer = (_main
@@ -660,6 +815,8 @@ void MainWindow::setInnerFocus() {
 		_intro->setInnerFocus();
 	} else if (_onboarding) {
 		_onboarding->setInnerFocus();
+	} else if (_backendChoice) {
+		_backendChoice->setInnerFocus();
 	}
 }
 
@@ -669,7 +826,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *e) {
 		if (Logs::DebugEnabled()
 			&& object == windowHandle()) {
 			const auto key = static_cast<QKeyEvent*>(e)->key();
-			FeedLangTestingKey(key);
+			FeedLangTestingKey(key, &account());
 		}
 #ifdef _DEBUG
 		if (static_cast<QKeyEvent*>(e)->modifiers().testFlag(
@@ -799,6 +956,7 @@ void MainWindow::updateControlsGeometry() {
 	}
 	if (_intro) _intro->setGeometry(body);
 	if (_onboarding) _onboarding->setGeometry(body);
+	if (_backendChoice) _backendChoice->setGeometry(body);
 	if (_layer) _layer->setGeometry(body);
 	if (_mediaPreview) _mediaPreview->setGeometry(body);
 	if (_testingThemeWarning) _testingThemeWarning->setGeometry(body);

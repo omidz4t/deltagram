@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_user.h"
 
+#include "delta/account_backend.h"
 #include "api/api_credits.h"
 #include "api/api_global_privacy.h"
 #include "api/api_sensitive_content.h"
@@ -820,7 +821,11 @@ void UserData::setBirthday(const tl::conditional<MTPBirthday> &value) {
 }
 
 bool UserData::hasCalls() const {
-	return false;
+	if (!Delta::UsesTelegramBackend(&session())) {
+		return false;
+	}
+	return (callsStatus() != CallsStatus::Disabled)
+		&& (callsStatus() != CallsStatus::Unknown);
 }
 
 void UserData::setDisallowedGiftTypes(Api::DisallowedGiftTypes types) {

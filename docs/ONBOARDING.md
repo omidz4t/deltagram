@@ -1,5 +1,51 @@
 # Native Qt Delta Chat client, from Telegram Desktop
 
+## Current account requirements (2026-10-26)
+
+The product must support both Core profiles and real Telegram accounts in one
+application. The Core-only design below records the original migration plan;
+it does not authorize disabling the Telegram backend. Core accounts use
+Chatmail Core exclusively. Telegram accounts use the donor's authentication,
+MTProto transport, and account persistence.
+
+Backend identity must be persisted per `Main::Account` and available before
+transport or session UI starts. An unresolved account must not open a Telegram
+connection. Core bridge presence and the focused window cannot classify another
+account's requests, cached messages, settings, or UI. Existing Telegram
+authorization must survive migration. See `AGENTS.md` for the current boundary.
+
+The backend foundation is still under implementation. Telegram login and mixed
+account behavior are not yet validated. Core test or GUI results alone do not
+prove Telegram compatibility or production readiness.
+
+## Local backups and forgotten passcodes
+
+For an unlocked Chatmail profile, Advanced Settings → Export backup creates a
+backup of that selected profile. Choose a destination folder and optionally
+enter the same backup passphrase twice. Each attempt writes to a new
+`chatmail-backup-...` subfolder; the success message shows its location. Repeat
+for each Chatmail profile that needs a backup. Keep the app open until export
+finishes. Closing the dialog does not cancel an export already submitted. Its
+RPC stays alive through completion even if the originating session is released. Normal
+quit/restart stays blocked until Core replies; try quitting or restarting again
+after completion. Profile deletion and export cannot run together; retry after
+the pending operation finishes. Force termination or power loss can still
+interrupt export.
+
+A backup passphrase protects Core's database, including account credentials.
+Attachment files in the archive remain unencrypted. Store the whole backup
+securely; this is not whole-archive encryption. The backup passphrase is
+independent of the app's local passcode and must be kept for later recovery.
+
+A forgotten local passcode must preserve Chatmail profiles and the lock. Use
+the passcode or previously enabled system unlock. Otherwise, restore an
+existing backup in a fresh installation with separate application/profile data,
+keeping the original files untouched: choose Chatmail, I Already Have a Profile,
+then Restore from Backup, and enter its backup passphrase when applicable.
+The forgotten-passcode UI does not export locked profiles or automatically
+wipe/reset their storage. Native replay of the newest export/recovery dialogs
+remains pending; this section describes implemented source behavior.
+
 Telegram Desktop (`tdesktop/`) is a donor of native Qt UX. Chatmail Core
 (`context/core/`, https://github.com/chatmail/core) is the backend.
 `context/deltachat-desktop/` is a behavior reference only.

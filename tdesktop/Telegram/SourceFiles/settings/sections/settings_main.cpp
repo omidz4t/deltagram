@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_main.h"
 
+#include "delta/account_backend.h"
 #include "delta/delta_boxes.h"
 #include "delta/delta_bridge.h"
 #include "settings/settings_common_session.h"
@@ -20,6 +21,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "apiwrap.h"
 #include "base/call_delayed.h"
 #include "base/platform/base_platform_info.h"
+#include "base/weak_ptr.h"
 #include "boxes/language_box.h"
 #include "boxes/star_gift_box.h"
 #include "boxes/username_box.h"
@@ -232,15 +234,30 @@ Cover::Cover(
 	_qrButton.create(this, st::infoProfileLabeledButtonQr);
 	_qrButton->setAccessibleName(tr::lng_group_invite_context_qr(tr::now));
 	_qrButton->setClickedCallback([=, show = controller->uiShow()] {
-		Ui::DefaultShowFillPeerQrBoxCallback(show, _user);
+		const auto session = &_user->session();
+		if (Delta::UsesCoreBackend(session)) {
+			if (Delta::OwnsSession(session)) {
+				Delta::ShowInviteQr(_controller);
+			}
+			return;
+		}
+		if (Delta::UsesTelegramBackend(session)) {
+			Ui::DefaultShowFillPeerQrBoxCallback(show, _user);
+		}
 	});
-	Info::Profile::UsernamesValue(
-		_user
-	) | rpl::on_next([=](const auto &usernames) {
-		_qrButton->setVisible(!usernames.empty());
-		refreshNameGeometry(width());
-		refreshQrButtonGeometry(width());
-	}, _qrButton->lifetime());
+	if (Delta::UsesCoreBackend(&_user->session())) {
+		_qrButton->setVisible(Delta::OwnsSession(&_user->session()));
+	} else if (Delta::UsesTelegramBackend(&_user->session())) {
+		Info::Profile::UsernamesValue(
+			_user
+		) | rpl::on_next([=](const auto &usernames) {
+			_qrButton->setVisible(!usernames.empty());
+			refreshNameGeometry(width());
+			refreshQrButtonGeometry(width());
+		}, _qrButton->lifetime());
+	} else {
+		_qrButton->hide();
+	}
 }
 
 Cover::~Cover() = default;
@@ -268,18 +285,72 @@ void Cover::initViewers() {
 		refreshNameGeometry(width());
 	}, lifetime());
 
+	const auto session = &_user->session();
+	if (Delta::UsesTelegramBackend(session)) {
+		Info::Profile::PhoneValue(
+			_user
+		) | rpl::on_next([=](const TextWithEntities &value) {
+			_phoneText = value.text;
+			updatePhoneText();
+		}, lifetime());
+
+		_user->session().settings().phoneNumberHiddenValue(
+		) | rpl::on_next([=] {
+			updatePhoneText();
+		}, lifetime());
+
+		Info::Profile::UsernameValue(
+			_user
+		) | rpl::on_next([=](const TextWithEntities &value) {
+			_username->setMarkedText(tr::link(value.text.isEmpty()
+				? tr::lng_settings_username_add(tr::now)
+				: value.text));
+			refreshUsernameGeometry(width());
+		}, lifetime());
+
+		_username->overrideLinkClickHandler([=] {
+			if (_controller->showFrozenError()) {
+				return;
+			}
+			const auto username = _user->username();
+			if (username.isEmpty()) {
+				_controller->show(Box(UsernamesBox, _user));
+			} else {
+				QGuiApplication::clipboard()->setText(
+					_user->session().createInternalLinkFull(username));
+				_controller->showToast({
+					.text = { tr::lng_username_copied(tr::now) },
+					.iconLottie = u"toast/voip_invite"_q,
+					.iconLottieSize = st::toastLottieIconSize,
+				});
+			}
+		});
+		return;
+	}
+
 	_phoneText = QString();
 	_phone->hide();
-
 	_username->setText(QString());
 	refreshUsernameGeometry(width());
-	Delta::ListTransports(crl::guard(this, [=](QJsonArray addrs, QString) {
+	if (!Delta::UsesCoreBackend(session) || !Delta::OwnsSession(session)) {
+		return;
+	}
+	const auto controller = _controller;
+	const auto generation = Delta::AccountGeneration();
+	const auto current = Delta::CaptureAccountGuard();
+	Delta::ListTransports(session, crl::guard(this, [=](QJsonArray addrs, QString error) {
+		if ((current && !current())
+			|| generation != Delta::AccountGeneration()
+			|| !Delta::OwnsSession(session)
+			|| !error.isEmpty()) {
+			return;
+		}
 		const auto count = addrs.size();
 		_username->setMarkedText(Ui::Text::Link((count == 1)
 			? u"1 relay"_q
 			: u"%1 relays"_q.arg(count), 1));
-		_username->setLink(1, std::make_shared<LambdaClickHandler>([] {
-			Delta::ShowRelays();
+		_username->setLink(1, std::make_shared<LambdaClickHandler>([=] {
+			Delta::ShowRelays(controller);
 		}));
 		_username->show();
 		refreshUsernameGeometry(width());
@@ -381,22 +452,62 @@ private:
 
 };
 
-void ConnectivityBox(not_null<Ui::GenericBox*> box) {
+void ConnectivityBox(
+		not_null<Ui::GenericBox*> box,
+		not_null<Window::SessionController*> controller) {
+	const auto session = &controller->session();
 	box->setTitle(rpl::single(u"Connectivity"_q));
 	const auto view = box->addRow(
 		object_ptr<ConnectivityHtml>(box),
 		st::boxRowPadding);
+	if (!Delta::OwnsSession(session)) {
+		view->setHtml(u"Connectivity is not available."_q);
+		box->addButton(tr::lng_close(), [=] { box->closeBox(); });
+		return;
+	}
+	const auto window = base::make_weak(controller);
+	const auto weakSession = base::make_weak(session);
+	const auto generation = Delta::AccountGeneration();
+	const auto current = Delta::CaptureAccountGuard();
 	const auto reload = [=] {
-		Delta::FetchConnectivityHtml(crl::guard(view, [=](QString html) {
-			view->setHtml(html.isEmpty()
-				? u"Connectivity is not available."_q
-				: html);
-		}));
+		if (!window
+			|| !weakSession
+			|| (current && !current())
+			|| generation != Delta::AccountGeneration()
+			|| !Delta::OwnsSession(weakSession.get())) {
+			return;
+		}
+		Delta::FetchConnectivityHtml(
+			weakSession.get(),
+			crl::guard(view, [=](QString html) {
+				if (!window
+					|| !weakSession
+					|| (current && !current())
+					|| generation != Delta::AccountGeneration()
+					|| !Delta::OwnsSession(weakSession.get())) {
+					return;
+				}
+				view->setHtml(html.isEmpty()
+					? u"Connectivity is not available."_q
+					: html);
+			}));
 	};
 	reload();
 	Delta::Connectivity(
+		session
 	) | rpl::skip(1) | rpl::on_next([=](int) {
+		if (!window
+			|| !weakSession
+			|| (current && !current())
+			|| generation != Delta::AccountGeneration()
+			|| !Delta::OwnsSession(weakSession.get())) {
+			return;
+		}
 		reload();
+	}, box->lifetime());
+	Delta::AccountViewResets(
+	) | rpl::on_next([=](int) {
+		box->closeBox();
 	}, box->lifetime());
 	style::PaletteChanged(
 	) | rpl::on_next(reload, box->lifetime());
@@ -413,7 +524,7 @@ void BuildSectionButtons(SectionBuilder &builder) {
 			.title = tr::lng_settings_my_account(),
 			.icon = { &st::menuIconProfile },
 			.onClick = [=] {
-				if (Delta::Active()) {
+				if (Delta::UsesCoreBackend(session)) {
 					showOther(InformationId());
 				} else {
 					controller->showSection(
@@ -445,7 +556,7 @@ void BuildSectionButtons(SectionBuilder &builder) {
 		.keywords = { u"themes"_q, u"appearance"_q, u"stickers"_q },
 	});
 
-	{ // Folders
+	if (!Delta::UsesCoreBackend(session)) {
 		const auto preload = [=] {
 			session->data().chatsFilters().requestSuggested();
 		};
@@ -486,43 +597,50 @@ void BuildSectionButtons(SectionBuilder &builder) {
 		.keywords = { u"performance"_q, u"proxy"_q, u"experimental"_q },
 	});
 
-	builder.addButton({
-		.id = u"main/connectivity"_q,
-		.title = Delta::Connectivity() | rpl::map([](int value) {
-			QString state;
-			if (value >= 4000) {
-				state = u"Connected"_q;
-			} else if (value >= 3000) {
-				state = u"Updating"_q;
-			} else if (value >= 2000) {
-				state = u"Connecting"_q;
-			} else if (value >= 1000) {
-				state = u"Not connected"_q;
-			}
-			return state.isEmpty()
-				? u"Connectivity"_q
-				: u"Connectivity (%1)"_q.arg(state);
-		}),
-		.icon = { &st::menuIconReorder },
-		.onClick = [=] {
-			controller->show(Box(ConnectivityBox));
-		},
-		.keywords = { u"connectivity"_q, u"imap"_q, u"smtp"_q, u"network"_q },
-	});
+	if (Delta::UsesCoreBackend(session) && Delta::OwnsSession(session)) {
+		builder.addButton({
+			.id = u"main/connectivity"_q,
+			.title = Delta::Connectivity(session) | rpl::map([](int value) {
+				QString state;
+				if (value >= 4000) {
+					state = u"Connected"_q;
+				} else if (value >= 3000) {
+					state = u"Updating"_q;
+				} else if (value >= 2000) {
+					state = u"Connecting"_q;
+				} else if (value >= 1000) {
+					state = u"Not connected"_q;
+				}
+				return state.isEmpty()
+					? u"Connectivity"_q
+					: u"Connectivity (%1)"_q.arg(state);
+			}),
+			.icon = { &st::menuIconReorder },
+			.onClick = [=] {
+				if (!Delta::OwnsSession(session)) {
+					return;
+				}
+				controller->show(Box(ConnectivityBox, controller));
+			},
+			.keywords = { u"connectivity"_q, u"imap"_q, u"smtp"_q, u"network"_q },
+		});
 
-	builder.addButton({
-		.id = u"main/second-device"_q,
-		.title = rpl::single(u"Add Second Device"_q),
-		.icon = { &st::menuIconDevices },
-		.onClick = [=] { Delta::ShowSecondDevice(); },
-		.keywords = { u"backup"_q, u"qr"_q, u"device"_q, u"transfer"_q },
-	});
+		builder.addButton({
+			.id = u"main/second-device"_q,
+			.title = rpl::single(u"Add Second Device"_q),
+			.icon = { &st::menuIconDevices },
+			.onClick = [=] { Delta::ShowSecondDevice(controller); },
+			.keywords = { u"backup"_q, u"qr"_q, u"device"_q, u"transfer"_q },
+		});
+	}
 
 	builder.addSectionButton({
 		.title = tr::lng_settings_section_devices(),
 		.targetSection = CallsId(),
 		.icon = { &st::menuIconUnmute },
-		.keywords = { u"microphone"_q, u"speakers"_q, u"camera"_q },
+		.keywords = Delta::UsesCoreBackend(session)
+			? QStringList{ u"microphone"_q, u"speakers"_q, u"camera"_q }
+			: QStringList{ u"sessions"_q, u"calls"_q },
 	});
 
 	builder.addButton({
@@ -546,7 +664,9 @@ void BuildSectionButtons(SectionBuilder &builder) {
 		) | rpl::map([] { return Lang::GetInstance().nativeName(); }),
 		.onClick = [=] {
 			static auto Guard = base::binary_guard();
-			Guard = LanguageBox::Show(controller);
+			Guard = LanguageBox::Show(
+				controller,
+				&controller->session().account());
 		},
 		.keywords = { u"translate"_q, u"localization"_q, u"language"_q },
 	});
@@ -581,8 +701,9 @@ void BuildPremiumSection(SectionBuilder &builder) {
 	const auto controller = builder.controller();
 	const auto showOther = builder.showOther();
 
-	// Delta Tel has no Premium, Stars, Business or gifts.
-	return;
+	if (Delta::UsesCoreBackend(session)) {
+		return;
+	}
 	if (!session->premiumPossible()) {
 		return;
 	}
@@ -658,7 +779,9 @@ void BuildPremiumSection(SectionBuilder &builder) {
 }
 
 void BuildHelpSection(SectionBuilder &builder) {
-	return;
+	if (Delta::UsesCoreBackend(builder.session())) {
+		return;
+	}
 	builder.addDivider();
 	builder.addSkip();
 
@@ -816,13 +939,15 @@ void Main::setupContent() {
 
 	Ui::ResizeFitChild(this, content);
 
-	session->api().cloudPassword().reload();
-	session->api().reloadContactSignupSilent();
-	session->api().sensitiveContent().reload();
-	session->api().globalPrivacy().reload();
-	session->api().premium().reload();
-	session->data().cloudThemes().refresh();
-	session->faqSuggestions().request();
+	if (Delta::UsesTelegramBackend(session)) {
+		session->api().cloudPassword().reload();
+		session->api().reloadContactSignupSilent();
+		session->api().sensitiveContent().reload();
+		session->api().globalPrivacy().reload();
+		session->api().premium().reload();
+		session->data().cloudThemes().refresh();
+		session->faqSuggestions().request();
+	}
 }
 
 void Main::showFinished() {
@@ -896,9 +1021,13 @@ void SetupLanguageButton(
 	button->addClickHandler([=] {
 		const auto m = button->clickModifiers();
 		if ((m & Qt::ShiftModifier) && (m & Qt::AltModifier)) {
-			Lang::CurrentCloudManager().switchToLanguage({ u"#custom"_q });
+			Lang::CurrentCloudManager().switchToLanguage(
+				{ u"#custom"_q },
+				&window->account());
 		} else {
-			*guard = LanguageBox::Show(window->sessionController());
+			*guard = LanguageBox::Show(
+				window->sessionController(),
+				&window->account());
 		}
 	});
 }
@@ -1253,6 +1382,12 @@ Type MainId() {
 }
 
 void OpenFaq(base::weak_ptr<Window::SessionController> weak) {
+	if (const auto controller = weak.get()) {
+		if (Delta::UsesCoreBackend(&controller->session())) {
+			controller->showSettings(MainId());
+			return;
+		}
+	}
 	UrlClickHandler::Open(
 		tr::lng_settings_faq_link(tr::now),
 		QVariant::fromValue(ClickHandlerContext{
@@ -1261,6 +1396,10 @@ void OpenFaq(base::weak_ptr<Window::SessionController> weak) {
 }
 
 void OpenAskQuestionConfirm(not_null<Window::SessionController*> window) {
+	if (!Delta::UsesTelegramBackend(&window->session())) {
+		window->showSettings(MainId());
+		return;
+	}
 	const auto requestId = std::make_shared<mtpRequestId>();
 	const auto sure = [=](Fn<void()> close) {
 		if (*requestId) {

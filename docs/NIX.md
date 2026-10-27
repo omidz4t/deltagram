@@ -1,5 +1,13 @@
 # Nix and incremental builds
 
+Real Telegram accounts are now a release requirement alongside Core profiles.
+The build scripts currently use `TDESKTOP_API_TEST=ON`; a successful build with
+that setting is not production Telegram login validation. Production Telegram
+API configuration, native authentication/session persistence, and the donor
+feature exclusions must be reviewed before claiming Telegram release support.
+Keep credentials outside the source tree and logs. Core validation remains a
+separate requirement.
+
 `make init` installs the project-local Nix toolchain under ignored `data/nix`,
 fetches pinned sources into ignored `context/`, builds the dependency closure,
 and verifies shell entry. `./nix/develop.sh` opens the shell; `nix/enter.sh`
@@ -65,12 +73,33 @@ without Nix or installed Qt/GTK. These checks do not prove network messaging or
 compatibility with every graphics driver and Linux distribution.
 
 The dependency closure supplies tg_owt and tlottie from pinned nixpkgs.
-Telegram tde2e is excluded and conference attempts are refused; Chatmail Core
-handles messaging encryption. GitHub Actions builds and publishes experimental releases on `main`; see
+Telegram conference encryption uses tde2e from the donor's exact tdlib commit
+`51743dfd01dff6179e2d8f7095729caa4e2222e9`, built with `TD_E2E_ONLY=ON`.
+The dependency and native `td_tde2e` wrapper compile; the restored conference
+sources and live conference behavior still require native validation.
+Core profiles continue to use Chatmail Core for encryption and cannot start
+Telegram calls. GitHub Actions builds experimental releases on `main`; see
 [the release guide](RELEASING.md). Local release commands only create artifacts.
+
+GUI validation defaults to `DELTA_TEL_API_MODE=test`, the donor's limited test
+application credentials. That flag does not select Telegram's TestDC environment.
+Production configuration requires `DELTA_TEL_API_MODE=production` and private
+environment values `TDESKTOP_API_ID` / `TDESKTOP_API_HASH`; missing or malformed
+values fail before CMake. Do not put them in source or command arguments.
+Changing API mode reconfigures the existing CMake tree without deleting Ninja
+or ccache records. Production constants remain in the build cache and binary;
+those build outputs must be handled accordingly. Staging and publication check
+production build provenance bound to the binary and version; test-mode packages
+require an explicit validation-only opt-in and cannot pass publication checks.
 
 QR scanning uses the pinned ZXing decoder and Qt Multimedia packages from the
 Nix shell. Their include paths apply only to the scan implementation, avoiding
 changes to the whole GUI's precompiled header. Portable packaging includes the
 FFmpeg camera plugin and omits the alternate GStreamer media plugin. Local
 ccache uses the same precompiled-header settings as CI.
+
+PR compilation is serialized per ref with `cancel-in-progress: false`. New pushes
+can replace the pending revision while the active build continues. A pending
+workflow may have no reported check yet; inspect its Actions run state before
+assuming the trigger is missing. Preserve the active build and incremental cache
+rather than starting duplicate heavy builds to force a check to appear.

@@ -7,7 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_premium.h"
 
-#include "delta/delta_bridge.h"
+#include "delta/account_backend.h"
 
 #include "boxes/premium_preview_box.h"
 #include "boxes/sticker_set_box.h"
@@ -1777,7 +1777,9 @@ const auto kMeta = BuildHelper({
 	.parentId = MainId(),
 	.title = &tr::lng_premium_summary_title,
 	.icon = &st::menuIconPremium,
-	.available = [] { return !Delta::Active(); },
+	.available = [](not_null<::Main::Session*> session) {
+		return !Delta::UsesCoreBackend(session);
+	},
 }, [](SectionBuilder &builder) {
 	BuildPremiumSectionContent(builder, nullptr);
 });

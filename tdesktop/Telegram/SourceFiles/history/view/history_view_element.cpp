@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_element.h"
 
+#include "delta/delta_bridge.h"
+#include "delta/message_capabilities.h"
 #include "apiwrap.h"
 #include "api/api_transcribes.h"
 #include "history/view/history_view_service_message.h"
@@ -2317,6 +2319,14 @@ bool Element::computeIsAttachToPrevious(not_null<Element*> previous) {
 			&& sameReceiver()
 			&& sameAnchored();
 		if (possible) {
+			if (Delta::OwnsSession(&item->history()->session())
+				&& !Delta::CoreAuthorPresentationsAttach(
+					prev->from()->name(),
+					prev->backendAuthorOverride(),
+					item->from()->name(),
+					item->backendAuthorOverride())) {
+				return false;
+			}
 			const auto forwarded = item->Get<HistoryMessageForwarded>();
 			const auto prevForwarded = prev->Get<HistoryMessageForwarded>();
 			const auto peer = item->history()->peer;

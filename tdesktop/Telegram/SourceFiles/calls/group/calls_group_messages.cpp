@@ -15,6 +15,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/unixtime.h"
 #include "calls/group/ui/calls_group_stars_coloring.h"
 #include "calls/group/calls_group_call.h"
+#include "calls/group/calls_group_message_encryption.h"
 #include "data/data_channel.h"
 #include "data/data_group_call.h"
 #include "data/data_message_reactions.h"
@@ -128,11 +129,11 @@ void Messages::requestStarsStats() {
 }
 
 bool Messages::ready() const {
-	return _real && !_call->conference();
+	return _real && (!_call->conference() || _call->e2eEncryptDecrypt());
 }
 
 void Messages::send(TextWithTags text, int stars) {
-	if (_call->conference() || (text.empty() && !stars)) {
+	if (text.empty() && !stars) {
 		return;
 	} else if (!ready()) {
 		_pending.push_back({ std::move(text), stars });
@@ -186,7 +187,23 @@ void Messages::send(TextWithTags text, int stars) {
 		}).fail([=](const MTP::Error &, const MTP::Response &response) {
 			failed(randomId, response);
 		}).send();
+	} else {
+		const auto bytes = SerializeMessage({ randomId, serialized });
+		auto v = std::vector<std::uint8_t>(bytes.size());
+		bytes::copy(bytes::make_span(v), bytes::make_span(bytes));
 
+		const auto userId = peerToUser(from->id).bare;
+		const auto encrypt = _call->e2eEncryptDecrypt();
+		const auto encrypted = encrypt(v, int64_t(userId), true, 0);
+
+		_api->request(MTPphone_SendGroupCallEncryptedMessage(
+			_call->inputCall(),
+			MTP_bytes(bytes::make_span(encrypted))
+		)).done([=](const MTPBool &, const MTP::Response &response) {
+			sent(randomId, response);
+		}).fail([=](const MTP::Error &, const MTP::Response &response) {
+			failed(randomId, response);
+		}).send();
 	}
 
 	addStars(from, stars, true);
@@ -214,7 +231,39 @@ void Messages::received(const MTPDupdateGroupCallMessage &data) {
 }
 
 void Messages::received(const MTPDupdateGroupCallEncryptedMessage &data) {
-	// Telegram conference encryption is excluded from Deltagram.
+	if (!ready()) {
+		return;
+	}
+	const auto fromId = data.vfrom_id();
+	const auto &bytes = data.vencrypted_message().v;
+	auto v = std::vector<std::uint8_t>(bytes.size());
+	bytes::copy(bytes::make_span(v), bytes::make_span(bytes));
+
+	const auto userId = peerToUser(peerFromMTP(fromId)).bare;
+	const auto decrypt = _call->e2eEncryptDecrypt();
+	const auto decrypted = decrypt(v, int64_t(userId), false, 0);
+
+	const auto deserialized = DeserializeMessage(QByteArray::fromRawData(
+		reinterpret_cast<const char*>(decrypted.data()),
+		decrypted.size()));
+	if (!deserialized) {
+		LOG(("API Error: Can't parse decrypted message"));
+		return;
+	}
+	const auto realId = ++_conferenceIdAutoIncrement;
+	const auto randomId = deserialized->randomId;
+	if (!_conferenceIdByRandomId.emplace(randomId, realId).second) {
+		// Already received.
+		return;
+	}
+	received(
+		realId,
+		fromId,
+		deserialized->message,
+		base::unixtime::now(), // date
+		0, // stars
+		false,
+		true); // checkCustomEmoji
 }
 
 void Messages::deleted(const MTPDupdateDeleteGroupCallMessages &data) {

@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_message_reactions.h"
 
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "api/api_global_privacy.h"
@@ -732,7 +733,7 @@ void Reactions::preloadImageFor(const ReactionId &id) {
 	}
 	auto &set = _images.emplace(id).first->second;
 	set.effect = (id.custom() != 0);
-	if (Delta::Active() && !id.emoji().isEmpty()) {
+	if (Delta::UsesCoreBackend(&session()) && !id.emoji().isEmpty()) {
 		generateImage(set, id.emoji());
 		return;
 	}
@@ -1508,14 +1509,16 @@ std::optional<Reaction> Reactions::parse(const MTPAvailableEffect &entry) {
 }
 
 void Reactions::send(not_null<HistoryItem*> item, bool addToRecent) {
-	if (Delta::Active()) {
-		auto reactions = QJsonArray();
-		for (const auto &chosen : item->chosenReactions()) {
-			if (!chosen.emoji().isEmpty()) {
-				reactions.append(chosen.emoji());
+	if (Delta::UsesCoreBackend(&item->history()->session())) {
+		if (Delta::OwnsSession(&item->history()->session())) {
+			auto reactions = QJsonArray();
+			for (const auto &chosen : item->chosenReactions()) {
+				if (!chosen.emoji().isEmpty()) {
+					reactions.append(chosen.emoji());
+				}
 			}
+			Delta::SendReaction(int(item->id.bare), reactions);
 		}
-		Delta::SendReaction(int(item->id.bare), reactions);
 		return;
 	}
 	const auto id = item->fullId();

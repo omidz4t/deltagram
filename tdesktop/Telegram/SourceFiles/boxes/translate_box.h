@@ -13,6 +13,10 @@ class History;
 class PeerData;
 struct LanguageId;
 
+namespace Main {
+class Session;
+} // namespace Main
+
 namespace Ui {
 
 class BoxContent;
@@ -25,7 +29,9 @@ void TranslateBox(
 	TextWithEntities text,
 	bool hasCopyRestriction);
 
-[[nodiscard]] bool SkipTranslate(TextWithEntities textWithEntities);
+[[nodiscard]] bool SkipTranslate(
+	TextWithEntities textWithEntities,
+	not_null<Main::Session*> session);
 
 [[nodiscard]] object_ptr<BoxContent> EditSkipTranslationLanguages();
 [[nodiscard]] object_ptr<BoxContent> ChooseTranslateToBox(

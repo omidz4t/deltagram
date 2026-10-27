@@ -34,6 +34,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_session.h"
 #include "base/global_shortcuts.h"
 #include "base/random.h"
+#include "tde2e/tde2e_api.h"
+#include "tde2e/tde2e_integration.h"
 #include "webrtc/webrtc_video_track.h"
 #include "webrtc/webrtc_create_adm.h"
 #include "webrtc/webrtc_environment.h"
@@ -57,6 +59,7 @@ constexpr auto kFixManualLargeVideoDuration = 5 * crl::time(1000);
 constexpr auto kFixSpeakingLargeVideoDuration = 3 * crl::time(1000);
 constexpr auto kFullAsMediumsCount = 4; // 1 Full is like 4 Mediums.
 constexpr auto kMaxMediumQualities = 16; // 4 Fulls or 16 Mediums.
+constexpr auto kShortPollChainBlocksPerRequest = 50;
 
 [[nodiscard]] const Data::GroupCallParticipant *LookupParticipant(
 		not_null<GroupCall*> call,
@@ -679,19 +682,21 @@ GroupCall::GroupCall(
 		}, _lifetime);
 	}
 
-	if (!_sharedCall && (startInfo.migrating || startInfo.show)) {
+	setupMediaDevices();
+	setupOutgoingVideo();
+	if (_sharedCall && conference()) {
+		setupConferenceCall();
+		initConferenceE2E();
+	} else if (!_sharedCall && (startInfo.migrating || startInfo.show)) {
+		initConferenceE2E();
+	}
+	if (startInfo.migrating || (startInfo.show && !_sharedCall)) {
+		if (!startInfo.muted) {
+			setMuted(MuteState::Active);
+		}
 		_startConferenceInfo = std::make_shared<StartConferenceInfo>(
 			std::move(startInfo));
 	}
-	if (conference()) {
-		crl::on_main(this, [=] {
-			Ui::Toast::Show(tr::lng_confcall_not_accessible(tr::now));
-			hangup();
-		});
-		return;
-	}
-	setupMediaDevices();
-	setupOutgoingVideo();
 
 	if (_id || (!_sharedCall && _startConferenceInfo)) {
 		initialJoin();
@@ -739,12 +744,48 @@ void GroupCall::processConferenceStart(StartConferenceInfo conference) {
 }
 
 GroupCall::~GroupCall() {
+	_e2e = nullptr;
 	destroyScreencast();
 	destroyController();
 	if (!_rtmp) {
 		Core::App().mediaDevices().setCaptureMuteTracker(this, false);
 	}
 	_messages->undoScheduledPaidOnDestroy();
+}
+
+void GroupCall::initConferenceE2E() {
+	if (!_e2eEncryptDecrypt) {
+		_e2eEncryptDecrypt = std::make_shared<TdE2E::EncryptDecrypt>();
+	}
+
+	for (auto &state : _subchains) {
+		_api.request(base::take(state.requestId)).cancel();
+		state = SubChainState();
+	}
+	_e2e = nullptr;
+	_pendingOutboundBlock = QByteArray();
+
+	const auto tde2eUserId = TdE2E::MakeUserId(_peer->session().user());
+	_e2e = std::make_unique<TdE2E::Call>(tde2eUserId);
+
+	_e2e->subchainRequests(
+	) | rpl::on_next([=](TdE2E::Call::SubchainRequest request) {
+		requestSubchainBlocks(request.subchain, request.height);
+	}, _e2e->lifetime());
+
+	_e2e->sendOutboundBlock(
+	) | rpl::on_next([=](QByteArray &&block) {
+		sendOutboundBlock(std::move(block));
+	}, _e2e->lifetime());
+
+	_e2e->failures() | rpl::on_next([=] {
+		LOG(("TdE2E: Got failure, scheduling rejoin!"));
+		crl::on_main(this, [=] { startRejoin(); });
+	}, _e2e->lifetime());
+
+	_e2e->registerEncryptDecrypt(_e2eEncryptDecrypt);
+
+	_emojiHash = _e2e->emojiHashValue();
 }
 
 void GroupCall::setupConferenceCall() {
@@ -756,11 +797,60 @@ void GroupCall::setupConferenceCall() {
 	}, _lifetime);
 }
 
+void GroupCall::trackParticipantsWithAccess() {
+	if (!_sharedCall || !_e2e) {
+		return;
+	}
+
+	_e2e->participantsSetValue(
+	) | rpl::on_next([=](const TdE2E::ParticipantsSet &set) {
+		auto users = base::flat_set<UserId>();
+		users.reserve(set.list.size());
+		for (const auto &id : set.list) {
+			users.emplace(UserId(id.v));
+		}
+		_sharedCall->setParticipantsWithAccess(std::move(users));
+	}, _e2e->lifetime());
+}
+
 void GroupCall::removeConferenceParticipants(
 		const base::flat_set<UserId> userIds,
 		bool removingStale) {
-	Ui::Toast::Show(tr::lng_confcall_not_accessible(tr::now));
-	hangup();
+	Expects(_e2e != nullptr);
+	Expects(!userIds.empty());
+
+	auto inputs = QVector<MTPlong>();
+	inputs.reserve(userIds.size());
+	auto ids = base::flat_set<TdE2E::UserId>();
+	ids.reserve(userIds.size());
+	for (const auto &id : userIds) {
+		inputs.push_back(MTP_long(peerToUser(id).bare));
+		ids.emplace(TdE2E::MakeUserId(id));
+	}
+	const auto block = _e2e->makeRemoveBlock(ids);
+	if (block.data.isEmpty()) {
+		return;
+	}
+	using Flag = MTPphone_DeleteConferenceCallParticipants::Flag;
+	_api.request(MTPphone_DeleteConferenceCallParticipants(
+		MTP_flags(removingStale ? Flag::f_only_left : Flag::f_kick),
+		inputCall(),
+		MTP_vector<MTPlong>(std::move(inputs)),
+		MTP_bytes(block.data)
+	)).done([=](const MTPUpdates &result) {
+		_peer->session().api().applyUpdates(result);
+	}).fail([=](const MTP::Error &error) {
+		const auto type = error.type();
+		if (type == u"GROUPCALL_FORBIDDEN"_q) {
+			LOG(("Call Info: "
+				"Rejoin after error '%1' in delete confcall participants"
+				).arg(type));
+			startRejoin();
+		} else {
+			LOG(("Call Error: Could not remove confcall participants: %1"
+				).arg(type));
+		}
+	}).send();
 }
 
 bool GroupCall::isSharingScreen() const {
@@ -1458,16 +1548,14 @@ void GroupCall::markTrackPaused(const VideoEndpoint &endpoint, bool paused) {
 
 void GroupCall::startRejoin() {
 	if (_joinState.action != JoinAction::None || _createRequestId) {
-		// A join action is already in progress.
+		// Don't reset _e2e in that case, if rejoin() is a no-op.
 		return;
 	}
 	for (const auto &[task, part] : _broadcastParts) {
 		_api.request(part.requestId).cancel();
 	}
 	if (conference()) {
-		Ui::Toast::Show(tr::lng_confcall_not_accessible(tr::now));
-		hangup();
-		return;
+		initConferenceE2E();
 	}
 	setState(State::Joining);
 	rejoin();
@@ -1502,12 +1590,6 @@ void GroupCall::saveDefaultJoinAs(not_null<PeerData*> as) {
 }
 
 void GroupCall::rejoin(not_null<PeerData*> as) {
-	if (conference()) {
-		Ui::Toast::Show(tr::lng_confcall_not_accessible(tr::now));
-		hangup();
-		return;
-	}
-
 	if (state() != State::Joining
 		&& state() != State::Joined
 		&& state() != State::Connecting) {
@@ -1543,7 +1625,16 @@ void GroupCall::rejoin(not_null<PeerData*> as) {
 			};
 			LOG(("Call Info: Join payload received, joining with ssrc: %1."
 				).arg(_joinState.payload.ssrc));
-			sendJoinRequest();
+			if (!_sharedCall && _startConferenceInfo) {
+				startConference();
+			} else if (conference()
+				&& _sharedCall
+				&& !_sharedCall->blockchainMayBeEmpty()
+				&& !_e2e->hasLastBlock0()) {
+				refreshLastBlockAndJoin();
+			} else {
+				sendJoinRequest();
+			}
 		});
 	});
 }
@@ -1554,10 +1645,12 @@ void GroupCall::sendJoinRequest() {
 		checkNextJoinAction();
 		return;
 	}
-	if (conference()) {
+	const auto joinBlock = _e2e ? _e2e->makeJoinBlock().data : QByteArray();
+	if (_e2e && joinBlock.isEmpty()) {
 		_joinState.finish();
-		Ui::Toast::Show(tr::lng_confcall_not_accessible(tr::now));
+		LOG(("Call Error: Could not generate join block."));
 		hangup();
+		Ui::Toast::Show(u"Could not generate join block."_q);
 		return;
 	}
 	const auto wasMuteState = muted();
@@ -1567,14 +1660,15 @@ void GroupCall::sendJoinRequest() {
 		? Flag::f_muted
 		: Flag(0))
 		| (_joinHash.isEmpty() ? Flag(0) : Flag::f_invite_hash)
-		| (wasVideoStopped ? Flag::f_video_stopped : Flag(0));
+		| (wasVideoStopped ? Flag::f_video_stopped : Flag(0))
+		| (_e2e ? (Flag::f_public_key | Flag::f_block) : Flag());
 	_api.request(MTPphone_JoinGroupCall(
 		MTP_flags(flags),
 		inputCallSafe(),
 		joinAs()->input(),
 		MTP_string(_joinHash),
-		MTPint256(),
-		MTP_bytes(QByteArray()),
+		(_e2e ? TdE2E::PublicKeyToMTP(_e2e->myKey()) : MTPint256()),
+		MTP_bytes(joinBlock),
 		MTP_dataJSON(MTP_bytes(_joinState.payload.json))
 	)).done([=](
 			const MTPUpdates &result,
@@ -1586,6 +1680,98 @@ void GroupCall::sendJoinRequest() {
 			wasVideoStopped);
 	}).fail([=](const MTP::Error &error) {
 		joinFail(error.type());
+	}).send();
+}
+
+void GroupCall::refreshLastBlockAndJoin() {
+	Expects(_e2e != nullptr);
+
+	if (state() != State::Joining) {
+		_joinState.finish();
+		checkNextJoinAction();
+		return;
+	}
+	_api.request(MTPphone_GetGroupCallChainBlocks(
+		inputCallSafe(),
+		MTP_int(0),
+		MTP_int(-1),
+		MTP_int(1)
+	)).done([=](const MTPUpdates &result) {
+		if (result.type() != mtpc_updates) {
+			_joinState.finish();
+			LOG(("Call Error: Bad result in GroupCallChainBlocks."));
+			hangup();
+			Ui::Toast::Show(u"Bad Updates in GroupCallChainBlocks."_q);
+			return;
+		}
+		_e2e->refreshLastBlock0({});
+		const auto &data = result.c_updates();
+		for (const auto &update : data.vupdates().v) {
+			if (update.type() != mtpc_updateGroupCallChainBlocks) {
+				continue;
+			}
+			const auto &data = update.c_updateGroupCallChainBlocks();
+			const auto &blocks = data.vblocks().v;
+			if (!blocks.isEmpty()) {
+				_e2e->refreshLastBlock0(TdE2E::Block{ blocks.back().v });
+				break;
+			}
+		}
+		sendJoinRequest();
+	}).fail([=](const MTP::Error &error) {
+		_joinState.finish();
+		const auto &type = error.type();
+		LOG(("Call Error: Could not get last block, error: %1").arg(type));
+		hangup();
+		Ui::Toast::Show(error.type());
+	}).send();
+}
+
+void GroupCall::startConference() {
+	Expects(_e2e != nullptr && _startConferenceInfo != nullptr);
+
+	const auto joinBlock = _e2e->makeJoinBlock().data;
+	Assert(!joinBlock.isEmpty());
+
+	const auto wasMuteState = muted();
+	const auto wasVideoStopped = !isSharingCamera();
+	using Flag = MTPphone_CreateConferenceCall::Flag;
+	const auto flags = Flag::f_join
+		| Flag::f_public_key
+		| Flag::f_block
+		| Flag::f_params
+		| ((wasMuteState != MuteState::Active) ? Flag::f_muted : Flag(0))
+		| (wasVideoStopped ? Flag::f_video_stopped : Flag(0));
+	_createRequestId = _api.request(MTPphone_CreateConferenceCall(
+		MTP_flags(flags),
+		MTP_int(base::RandomValue<int32>()),
+		TdE2E::PublicKeyToMTP(_e2e->myKey()),
+		MTP_bytes(joinBlock),
+		MTP_dataJSON(MTP_bytes(_joinState.payload.json))
+	)).done([=](
+			const MTPUpdates &result,
+			const MTP::Response &response) {
+		_createRequestId = 0;
+		_sharedCall = _peer->owner().sharedConferenceCallFind(result);
+		if (!_sharedCall) {
+			joinFail(u"Call not found!"_q);
+			return;
+		}
+		applyInputCall(_sharedCall->input());
+		_realChanges.fire_copy(_sharedCall.get());
+
+		initialJoinRequested();
+		joinDone(
+			TimestampInMsFromMsgId(response.outerMsgId),
+			result,
+			wasMuteState,
+			wasVideoStopped,
+			true);
+	}).fail([=](const MTP::Error &error) {
+		_createRequestId = 0;
+		LOG(("Call Error: Could not create, error: %1"
+			).arg(error.type()));
+		hangup();
 	}).send();
 }
 
@@ -1617,9 +1803,17 @@ void GroupCall::joinDone(
 		Core::App().mediaDevices().setCaptureMuted(nowMuted);
 	}
 
+	for (auto &state : _subchains) {
+		// Accept initial join blocks.
+		_api.request(base::take(state.requestId)).cancel();
+		state.inShortPoll = true;
+	}
 	_messages->setApplyingInitial(true);
 	_peer->session().api().applyUpdates(result);
 	_messages->setApplyingInitial(false);
+	for (auto &state : _subchains) {
+		state.inShortPoll = false;
+	}
 
 	if (justCreated) {
 		subscribeToReal(_sharedCall.get());
@@ -1631,6 +1825,7 @@ void GroupCall::joinDone(
 			*_startConferenceInfo);
 	}
 
+	trackParticipantsWithAccess();
 	applyQueuedSelfUpdates();
 	checkFirstTimeJoined();
 	_screenJoinState.nextActionPending = true;
@@ -1649,6 +1844,12 @@ void GroupCall::joinDone(
 			real->reloadIfStale();
 		}
 	}
+	if (_e2e) {
+		_e2e->joined();
+		if (!_pendingOutboundBlock.isEmpty()) {
+			sendOutboundBlock(base::take(_pendingOutboundBlock));
+		}
+	}
 	if (const auto once = base::take(_startConferenceInfo)) {
 		processConferenceStart(*once);
 	}
@@ -1658,6 +1859,16 @@ void GroupCall::joinDone(
 }
 
 void GroupCall::joinFail(const QString &error) {
+	if (_e2e) {
+		if (error.startsWith(u"CONF_WRITE_CHAIN_INVALID"_q)) {
+			if (_id) {
+				refreshLastBlockAndJoin();
+			} else {
+				hangup();
+			}
+			return;
+		}
+	}
 	_joinState.finish();
 	LOG(("Call Error: Could not join, error: %1").arg(error));
 
@@ -1671,6 +1882,62 @@ void GroupCall::joinFail(const QString &error) {
 		|| error == u"GROUPCALL_INVALID"_q)
 		? tr::lng_confcall_not_accessible(tr::now)
 		: error);
+}
+
+void GroupCall::requestSubchainBlocks(int subchain, int height) {
+	Expects(subchain >= 0 && subchain < kSubChainsCount);
+
+	auto &state = _subchains[subchain];
+	_api.request(base::take(state.requestId)).cancel();
+	state.requestId = _api.request(MTPphone_GetGroupCallChainBlocks(
+		inputCall(),
+		MTP_int(subchain),
+		MTP_int(height),
+		MTP_int(kShortPollChainBlocksPerRequest)
+	)).done([=](const MTPUpdates &result) {
+		auto &state = _subchains[subchain];
+		state.requestId = 0;
+		state.inShortPoll = true;
+		_peer->session().api().applyUpdates(result);
+		state.inShortPoll = false;
+		for (const auto &data : base::take(state.pending)) {
+			applySubChainUpdate(subchain, data.blocks, data.next);
+		}
+		_e2e->subchainBlocksRequestFinished(subchain);
+	}).fail([=](const MTP::Error &error) {
+		auto &state = _subchains[subchain];
+		state.requestId = 0;
+		_e2e->subchainBlocksRequestFinished(subchain);
+		if (error.type() == u"GROUPCALL_FORBIDDEN"_q) {
+			LOG(("Call Info: Rejoin after error '%1' in get chain blocks."
+				).arg(error.type()));
+			startRejoin();
+		}
+	}).send();
+}
+
+void GroupCall::sendOutboundBlock(QByteArray block) {
+	_pendingOutboundBlock = QByteArray();
+	_api.request(MTPphone_SendConferenceCallBroadcast(
+		inputCall(),
+		MTP_bytes(block)
+	)).done([=](const MTPUpdates &result) {
+		_peer->session().api().applyUpdates(result);
+	}).fail([=](const MTP::Error &error) {
+		const auto type = error.type();
+		if (type == u"GROUPCALL_FORBIDDEN"_q) {
+			_pendingOutboundBlock = block;
+			LOG(("Call Info: Rejoin after error '%1' in send confcall block."
+				).arg(type));
+			startRejoin();
+		} else if (type == u"BLOCK_INVALID"_q
+			|| type.startsWith(u"CONF_WRITE_CHAIN_INVALID"_q)) {
+			LOG(("Call Error: Could not broadcast block: %1").arg(type));
+		} else {
+			LOG(("Call Error: Got '%1' in send confcall block.").arg(type));
+			sendOutboundBlock(block);
+		}
+	}).send();
 }
 
 void GroupCall::checkNextJoinAction() {
@@ -2294,7 +2561,43 @@ void GroupCall::handleUpdate(const MTPDupdateGroupCallParticipants &data) {
 }
 
 void GroupCall::handleUpdate(const MTPDupdateGroupCallChainBlocks &data) {
-	// Telegram conference encryption is excluded from Deltagram.
+	const auto callId = data.vcall().match([](
+			const MTPDinputGroupCall &data) {
+		return data.vid().v;
+	}, [](const auto &) -> CallId {
+		Unexpected("slug/msg in GroupCall::handleUpdate.");
+	});
+	if (_id != callId || !_e2e) {
+		return;
+	}
+	const auto subchain = data.vsub_chain_id().v;
+	if (subchain < 0 || subchain >= kSubChainsCount) {
+		return;
+	}
+	auto &entry = _subchains[subchain];
+	const auto &blocks = data.vblocks().v;
+	const auto next = data.vnext_offset().v;
+	if (entry.requestId) {
+		Assert(!entry.inShortPoll);
+		entry.pending.push_back({ blocks, next });
+	} else {
+		applySubChainUpdate(subchain, blocks, next);
+	}
+}
+
+void GroupCall::applySubChainUpdate(
+		int subchain,
+		const QVector<MTPbytes> &blocks,
+		int next) {
+	Expects(subchain >= 0 && subchain < kSubChainsCount);
+
+	const auto &entry = _subchains[subchain];
+	auto raw = std::vector<TdE2E::Block>();
+	raw.reserve(blocks.size());
+	for (const auto &block : blocks) {
+		raw.push_back({ block.v });
+	}
+	_e2e->apply(subchain, next, raw, entry.inShortPoll);
 }
 
 void GroupCall::applyQueuedSelfUpdates() {
@@ -2819,6 +3122,7 @@ bool GroupCall::tryCreateController() {
 			});
 			return result;
 		},
+		.e2eEncryptDecrypt = e2eEncryptDecrypt(),
 	};
 	if (Logs::DebugEnabled()) {
 		auto callLogFolder = cWorkingDir() + u"DebugLogs"_q;
@@ -2871,6 +3175,7 @@ bool GroupCall::tryCreateScreencast() {
 		.videoCapture = _screenCapture,
 		.videoContentType = tgcalls::VideoContentType::Screencast,
 		.videoCodecPreferences = lookupVideoCodecPreferences(),
+		.e2eEncryptDecrypt = e2eEncryptDecrypt(),
 	};
 
 	LOG(("Call Info: Creating group screen instance"));
@@ -3919,6 +4224,13 @@ void GroupCall::pushToTalkCancel() {
 
 void GroupCall::setNotRequireARGB32() {
 	_requireARGB32 = false;
+}
+
+std::function<std::vector<uint8_t>(
+		std::vector<uint8_t> const &,
+		int64_t, bool,
+		int32_t)> GroupCall::e2eEncryptDecrypt() const {
+	return _e2eEncryptDecrypt ? _e2eEncryptDecrypt->callback() : nullptr;
 }
 
 void GroupCall::sendMessage(TextWithTags message) {

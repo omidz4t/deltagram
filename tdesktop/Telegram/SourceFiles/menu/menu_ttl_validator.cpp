@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "menu/menu_ttl_validator.h"
 
 #include "apiwrap.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "data/data_channel.h"
 #include "data/data_chat.h"
@@ -67,8 +68,8 @@ Args TTLValidator::createArgs() const {
 	auto callback = [=](
 			TimeId period,
 			Fn<void()>) {
-		if (Delta::Active()) {
-			show->showToast(u"Auto-delete controls are not available in Deltagram."_q);
+		if (!Delta::UsesTelegramBackend(&peer->session())) {
+			show->showToast(u"Auto-delete controls are not available for Chatmail profiles."_q);
 			return;
 		}
 		auto &api = peer->session().api();
@@ -114,7 +115,7 @@ Args TTLValidator::createArgs() const {
 }
 
 bool TTLValidator::can() const {
-	if (Delta::Active()) {
+	if (!Delta::UsesTelegramBackend(&_peer->session())) {
 		return false;
 	}
 	return (_peer->isUser()
@@ -142,7 +143,7 @@ const style::icon *TTLValidator::icon() const {
 }
 
 void TTLValidator::showBox() const {
-	if (Delta::Active()) {
+	if (!Delta::UsesTelegramBackend(&_peer->session())) {
 		return;
 	}
 	if (Main::MakeSessionShow(_show, &_peer->session())->showFrozenError()) {

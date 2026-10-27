@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_session.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "main/main_session.h"
@@ -913,7 +914,9 @@ not_null<UserData*> Session::processUser(const MTPUser &data) {
 			result->setLoadedStatus(PeerData::LoadedStatus::Minimal);
 		}
 	} else if (!result->isLoaded()
-		&& (!result->isSelf() || !result->phone().isEmpty() || Delta::Active())) {
+		&& (!result->isSelf()
+			|| !result->phone().isEmpty()
+			|| Delta::UsesCoreBackend(&session()))) {
 		// Core profiles have no Telegram phone number. Their complete self
 		// identity must still be usable by Saved Messages and search results.
 		result->setLoadedStatus(PeerData::LoadedStatus::Normal);
@@ -3057,7 +3060,9 @@ bool Session::updateExistingMessage(const MTPDmessage &data) {
 		return false;
 	}
 	existing->applySentMessage(data);
-	Delta::ApplyMessageData(existing);
+	if (Delta::OwnsSession(&session())) {
+		Delta::ApplyMessageData(existing);
+	}
 	const auto result = (existing->mainView() != nullptr);
 	if (result) {
 		stickers().checkSavedGif(existing);
@@ -3618,7 +3623,7 @@ HistoryItem *Session::addNewMessage(
 		data,
 		localFlags,
 		type);
-	if (result) {
+	if (result && Delta::OwnsSession(&session())) {
 		Delta::ApplyMessageData(result);
 	}
 	if (type == NewMessageType::Unread) {

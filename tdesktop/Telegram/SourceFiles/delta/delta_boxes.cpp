@@ -8,6 +8,7 @@ This file is part of Delta Tel, a Telegram Desktop based Delta Chat client.
 #include "boxes/peer_list_controllers.h"
 #include "data/data_thread.h"
 #include "data/data_peer.h"
+#include "data/data_user.h"
 #include "data/data_photo.h"
 #include "data/data_peer_id.h"
 #include "data/data_session.h"
@@ -21,8 +22,12 @@ This file is part of Delta Tel, a Telegram Desktop based Delta Chat client.
 #include "styles/style_dialogs.h"
 #include <QtGui/QPainterPath>
 #include "delta/delta_bridge.h"
+#include "delta/group_info.h"
+#include "delta/core_profile_actions.h"
+#include "delta/media_identity.h"
 #include "rpl/variable.h"
 #include "core/ui_integration.h"
+#include "core/file_utilities.h"
 #include "main/main_session.h"
 #include "window/window_session_controller.h"
 #include "storage/storage_account.h"
@@ -35,6 +40,7 @@ This file is part of Delta Tel, a Telegram Desktop based Delta Chat client.
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/fields/input_field.h"
+#include "ui/widgets/fields/password_input.h"
 #include "ui/wrap/slide_wrap.h"
 #include "styles/style_layers.h"
 #include "ui/widgets/labels.h"
@@ -49,6 +55,7 @@ This file is part of Delta Tel, a Telegram Desktop based Delta Chat client.
 #include "window/section_memento.h"
 #include "window/section_widget.h"
 #include "info/info_layer_widget.h"
+#include "info/info_memento.h"
 #include "ui/layers/layer_widget.h"
 #include <QtGui/QKeyEvent>
 
@@ -254,7 +261,20 @@ public:
 		return menu;
 	}
 	void rowClicked(not_null<PeerListRow*> row) override {
-		if (_pick) { _pick(static_cast<ContactListRow*>(row.get())->data); return; }
+		if (_pick) {
+			if (_busy) return;
+			_busy = true;
+			auto pick = _pick;
+			const auto contact = static_cast<ContactListRow*>(row.get())->data;
+			const auto guard = std::weak_ptr<int>(_alive);
+			const auto current = CaptureAccountGuard();
+			QTimer::singleShot(0, [this, pick = std::move(pick), contact, guard, current] {
+				if (guard.expired()) return;
+				_busy = false;
+				if (current && current()) pick(contact);
+			});
+			return;
+		}
 		if (_selectMembers) {
 			const auto checked = !row->checked();
 			delegate()->peerListSetRowChecked(row, checked);
@@ -263,13 +283,18 @@ public:
 		if (_busy) return;
 		_busy = true;
 		const auto guard = std::weak_ptr<int>(_alive);
+		const auto current = CaptureAccountGuard();
 		OpenContact(static_cast<ContactListRow*>(row.get())->data, [=](int id, QString error) {
-			if (guard.expired()) return;
+			if (guard.expired() || !current || !current()) return;
 			_busy = false;
 			if (!error.isEmpty()) { setDescriptionText(error); return; }
 			// Closing the list destroys this controller and its callback.
 			auto done = _done;
-			QTimer::singleShot(0, [done = std::move(done), id] { done(id); });
+			// The list or profile may disappear between the reply and this tick.
+			QTimer::singleShot(0, [done = std::move(done), id, guard, current] {
+				if (guard.expired() || !current || !current()) return;
+				done(id);
+			});
 		});
 	}
 private:
@@ -391,6 +416,9 @@ private:
 } // namespace
 
 void ShowChannelSubscribers(not_null<Main::Session*> session, int userId, Fn<void()> done) {
+	if (!OwnsSession(session)) {
+		return;
+	}
 	auto controller = std::make_unique<ChannelSubscribersController>(session, userId);
 	Ui::show(Box<PeerListBox>(std::move(controller), [=](not_null<PeerListBox*> box) {
 		const auto weak = QPointer<PeerListBox>(box.get());
@@ -445,8 +473,12 @@ void FillChannelInfo(
 	const auto session = &controller->session();
 	const auto status = box->add(object_ptr<Ui::FlatLabel>(box, u"Loading…"_q, st::aboutLabel), st::boxRowPadding);
 	const auto weak = QPointer<Ui::VerticalLayout>(box.get());
+	if (!OwnsSession(session)) {
+		status->setText(u"This channel cannot be opened."_q);
+		return;
+	}
 	ChannelRequest(userId, u"get_full_chat_by_id"_q, {}, [=](QJsonValue value, QString error) {
-		if (!weak) return;
+		if (!weak || !OwnsSession(session)) return;
 		if (!error.isEmpty()) { status->setText(error); return; }
 		const auto info = value.toObject();
 		const auto nameValue = box->lifetime().make_state<QString>(info.value(u"name"_q).toString());
@@ -670,6 +702,186 @@ void FillChannelInfo(
 	});
 }
 
+void FillGroupInfo(
+		not_null<Ui::VerticalLayout*> box,
+		not_null<Window::SessionController*> controller,
+		int userId,
+		Fn<void()> close) {
+	const auto session = &controller->session();
+	const auto status = box->add(object_ptr<Ui::FlatLabel>(box, u"Loading…"_q, st::aboutLabel), st::boxRowPadding);
+	const auto weak = QPointer<Ui::VerticalLayout>(box.get());
+	const auto current = CaptureAccountGuard();
+	if (!OwnsSession(session)
+		|| !current
+		|| userId <= 9
+		|| !CoreGroupChatId(userId)) {
+		status->setText(kGroupInfoUnavailable);
+		return;
+	}
+	ChannelRequest(userId, u"get_full_chat_by_id"_q, {}, [=](QJsonValue value, QString error) {
+		if (!weak || !OwnsSession(session) || !current || !current()) return;
+		if (!error.isEmpty()) { status->setText(error); return; }
+		const auto parsed = CoreGroupChatFromJson(value.toObject(), uint64(userId));
+		if (parsed.kind == CoreGroupRead::NotGroup) {
+			status->setText(kGroupInfoNotGroup);
+			return;
+		}
+		if (parsed.kind != CoreGroupRead::Group) {
+			status->setText(kGroupInfoUnreadable);
+			return;
+		}
+		const auto group = parsed.group;
+		status->setText(QString());
+		const auto nameValue = box->lifetime().make_state<QString>(group.name);
+		const auto header = box->add(object_ptr<Ui::FixedHeightWidget>(box, 190), style::margins());
+		const auto peer = session->data().peer(peerFromUser(UserId(userId)));
+		const auto photo = Ui::CreateChild<Ui::UserpicButton>(header, peer, st::infoProfileCover.photo);
+		const auto photoPath = box->lifetime().make_state<QString>(group.profileImage);
+		photo->setClickedCallback([=] {
+			auto reader = QImageReader(*photoPath);
+			reader.setAutoTransform(true);
+			const auto image = reader.read();
+			if (image.isNull()) return;
+			const auto id = peer->userpicPhotoId();
+			const auto fullPhoto = session->data().photo(
+				(id && id != PeerData::kUnknownPhotoId)
+					? id
+					: PhotoId(0x7000000000000000ULL | uint64(userId)));
+			const auto ready = Images::FromImageInMemory(image, "JPG");
+			fullPhoto->updateImages({}, ready, ready, ready, {}, {}, 0);
+			controller->openPhoto(fullPhoto, peer);
+		});
+		const auto nameStyle = header->lifetime().make_state<style::FlatLabel>(st::infoProfileCover.name);
+		nameStyle->align = style::al_center;
+		const auto statusStyle = header->lifetime().make_state<style::FlatLabel>(st::infoProfileCover.status);
+		statusStyle->align = style::al_center;
+		const auto memberCount = int(group.contactIds.size());
+		const auto roleText = (memberCount == 1)
+			? u"1 member"_q
+			: u"%1 members"_q.arg(memberCount);
+		const auto name = Ui::CreateChild<Ui::FlatLabel>(header, nameValue->isEmpty() ? u"Group"_q : *nameValue, *nameStyle);
+		const auto role = Ui::CreateChild<Ui::FlatLabel>(header, roleText, *statusStyle);
+		photo->show();
+		name->show();
+		role->show();
+		header->widthValue() | rpl::on_next([=](int width) {
+			photo->moveToLeft((width - photo->width()) / 2, 18);
+			name->resizeToWidth(std::max(0, width - 40));
+			role->resizeToWidth(std::max(0, width - 40));
+			name->moveToLeft(20, 112);
+			role->moveToLeft(20, 140);
+		}, header->lifetime());
+		const auto actions = box->add(object_ptr<Ui::FixedHeightWidget>(box, 76), style::margins());
+		const auto buttons = actions->lifetime().make_state<std::vector<ChannelActionButton*>>();
+		const auto layoutActions = [=] {
+			if (buttons->empty()) return;
+			const auto gap = 8;
+			const auto available = std::max(0, actions->width() - 36);
+			const auto width = std::max(0, (available - gap * (int(buttons->size()) - 1)) / int(buttons->size()));
+			for (auto i = 0; i != int(buttons->size()); ++i) {
+				(*buttons)[i]->setGeometry(18 + i * (width + gap), 0, width, 56);
+			}
+		};
+		actions->widthValue() | rpl::on_next([=] { layoutActions(); }, actions->lifetime());
+		const auto addQuickAction = [=](QString text, const style::icon &icon, Fn<void()> action, bool first = false) {
+			const auto button = Ui::CreateChild<ChannelActionButton>(actions, std::move(text), icon);
+			button->setClickedCallback(std::move(action));
+			if (first) buttons->insert(buttons->begin(), button); else buttons->push_back(button);
+			layoutActions();
+			return button;
+		};
+		box->add(object_ptr<Ui::BoxContentDivider>(box), style::margins());
+		const auto about = box->add(object_ptr<Ui::FlatLabel>(box, QString(), st::aboutLabel), style::margins(23, 18, 23, 4));
+		about->setSelectable(true);
+		box->add(object_ptr<Ui::FlatLabel>(box, u"Description"_q, st::infoProfileStatus), style::margins(23, 0, 23, 18));
+		const auto view = Settings::AddButtonWithIcon(box, rpl::single(u"VIEW GROUP"_q), st::infoMainButton);
+		view->setClickedCallback([=] { controller->showPeerHistory(peer->id); });
+		const auto encryption = Settings::AddButtonWithIcon(
+			box, rpl::single(u"Encryption info"_q), st::infoProfileButton);
+		encryption->setClickedCallback([=] {
+			if (!weak || !current || !current()) return;
+			ShowCoreChatEncryptionInfo(controller, userId);
+		});
+		box->add(object_ptr<Ui::BoxContentDivider>(box), style::margins());
+		ChannelRequest(userId, u"get_chat_description"_q, {}, [=](QJsonValue text, QString failure) {
+			if (!weak || !current || !current()) return;
+			if (failure.isEmpty()) {
+				about->setMarkedText(TextUtilities::ParseEntities(text.toString(), TextParseLinks));
+			} else {
+				about->setText(failure);
+			}
+		});
+		if (group.muted.has_value()) {
+			const auto muted = box->lifetime().make_state<bool>(*group.muted);
+			const auto busy = box->lifetime().make_state<bool>(false);
+			const auto mute = addQuickAction(*muted ? u"Unmute"_q : u"Mute"_q,
+				*muted ? st::menuIconUnmute : st::menuIconMute, nullptr, true);
+			mute->setClickedCallback([=] {
+				if (*busy) return;
+				*busy = true;
+				ChannelRequest(userId, u"set_chat_mute_duration"_q, { QJsonObject{ { u"kind"_q, *muted ? u"NotMuted"_q : u"Forever"_q } } }, [=](QJsonValue, QString failure) {
+					if (!weak || !current || !current()) return;
+					*busy = false;
+					if (!failure.isEmpty()) { Ui::show(Ui::MakeInformBox(failure)); return; }
+					*muted = !*muted;
+					mute->setContent(*muted ? u"Unmute"_q : u"Mute"_q,
+						*muted ? st::menuIconUnmute : st::menuIconMute);
+				});
+			});
+		}
+		addQuickAction(u"View"_q, st::menuIconChatBubble, [=] {
+			controller->showPeerHistory(peer->id);
+		});
+		box->add(object_ptr<Ui::FlatLabel>(box, u"Members"_q, st::infoProfileStatus), style::margins(23, 18, 23, 8));
+		if (group.contactIds.empty()) {
+			box->add(object_ptr<Ui::FlatLabel>(box, u"No members."_q, st::aboutLabel), st::boxRowPadding);
+		}
+		for (const auto contactId : group.contactIds) {
+			const auto kind = CoreGroupClassifyMember(contactId);
+			const auto title = box->lifetime().make_state<rpl::variable<QString>>(
+				CoreGroupMemberPlaceholder(contactId));
+			const auto button = Settings::AddButtonWithIcon(
+				box,
+				title->value(),
+				st::infoProfileButton,
+				{ .icon = &st::menuIconProfile, .type = Settings::IconType::Simple });
+			if (kind == CoreGroupMemberKind::Peer
+				|| kind == CoreGroupMemberKind::Self
+				|| kind == CoreGroupMemberKind::Reserved) {
+				AccountRequest(u"get_contact"_q, { contactId }, [=](QJsonValue value, QString failure) {
+					if (!weak || !current || !current() || !failure.isEmpty()) return;
+					const auto parsed = CoreGroupMemberFromContact(
+						QJsonObject{ { u"result"_q, value } },
+						contactId);
+					if (parsed && !parsed->name.isEmpty()) {
+						*title = parsed->name;
+					}
+				});
+			}
+			button->setClickedCallback([=] {
+				InspectGroupMember(userId, contactId, [=](ContactRow contact, uint64 profileUserId, QString failure) {
+					if (!weak || !current || !current()) return;
+					if (!failure.isEmpty()) {
+						Ui::show(Ui::MakeInformBox(failure));
+						return;
+					}
+					if (CoreGroupClassifyMember(contact.id) == CoreGroupMemberKind::Self
+						|| !profileUserId) {
+						controller->showPeerInfo(session->user());
+						return;
+					}
+					if (!RegisterContactForProfile(contact)) {
+						Ui::show(Ui::MakeInformBox(kGroupMemberUnreadable));
+						return;
+					}
+					controller->showPeerInfo(session->data().user(UserId(profileUserId)));
+				});
+			});
+		}
+		(void)close;
+	});
+}
+
 class ChannelInfoMemento;
 
 class ChannelInfoSection final : public Window::SectionWidget {
@@ -800,14 +1012,299 @@ std::shared_ptr<Window::SectionMemento> ChannelInfoSection::createMemento() {
 	return std::make_shared<ChannelInfoMemento>(_userId);
 }
 
+class GroupInfoMemento;
+
+class GroupInfoSection final : public Window::SectionWidget {
+public:
+	GroupInfoSection(
+		QWidget *parent,
+		not_null<Window::SessionController*> controller,
+		int userId,
+		Fn<void()> close = nullptr,
+		Window::Column column = Window::Column::Second)
+	: Window::SectionWidget(parent, controller)
+	, _userId(userId)
+	, _inLayer(bool(close))
+	, _column(column)
+	, _close(close ? std::move(close) : Fn<void()>([=] { controller->showBackFromStack(); }))
+	, _scroll(this, st::defaultScrollArea) {
+		const auto back = Ui::CreateChild<Ui::IconButton>(this, st::infoTopBarBack);
+		back->setClickedCallback(_close);
+		back->moveToLeft(0, 0);
+		const auto title = Ui::CreateChild<Ui::FlatLabel>(this, u"Group Info"_q, st::boxTitle);
+		title->moveToLeft(64, 17);
+		const auto content = _scroll->setOwnedWidget(object_ptr<Ui::VerticalLayout>(this));
+		FillGroupInfo(content.data(), controller, userId, crl::guard(this, [=] {
+			_close();
+		}));
+		sizeValue() | rpl::on_next([=](QSize size) {
+			_scroll->setGeometry(0, st::infoTopBarHeight, size.width(), std::max(0, size.height() - st::infoTopBarHeight));
+			content->resizeToWidth(size.width());
+			if (!_inLayer
+					&& _column != Window::Column::Third
+					&& isVisible()) {
+				InvokeQueued(this, [=] { adaptToLayer(); });
+			}
+		}, lifetime());
+	}
+	bool showInternal(not_null<Window::SectionMemento*> memento, const Window::SectionShow &params) override;
+	std::shared_ptr<Window::SectionMemento> createMemento() override;
+	bool floatPlayerHandleWheelEvent(QEvent *e) override { return false; }
+	QRect floatPlayerAvailableRect() override { return QRect(mapToGlobal(QPoint()), size()); }
+protected:
+	void paintEvent(QPaintEvent *e) override {
+		if (animatingShow()) {
+			Window::SectionWidget::paintEvent(e);
+			return;
+		}
+		Painter p(this);
+		p.fillRect(e->rect(), st::windowBg);
+	}
+	void keyPressEvent(QKeyEvent *e) override {
+		if (e->key() == Qt::Key_Escape) {
+			_close();
+		} else {
+			Window::SectionWidget::keyPressEvent(e);
+		}
+	}
+private:
+	void adaptToLayer();
+	int _userId;
+	bool _inLayer = false;
+	Window::Column _column = Window::Column::Second;
+	Fn<void()> _close;
+	object_ptr<Ui::ScrollArea> _scroll;
+};
+
+class GroupInfoLayer final : public Ui::LayerWidget {
+public:
+	GroupInfoLayer(not_null<Window::SessionController*> controller, int userId)
+	: Ui::LayerWidget(nullptr)
+	, _controller(controller)
+	, _userId(userId)
+	, _content(this, controller, userId, [=] { closeLayer(); }) {
+		_content->show();
+	}
+	void parentResized() override;
+private:
+	not_null<Window::SessionController*> _controller;
+	int _userId;
+	bool _moving = false;
+	object_ptr<GroupInfoSection> _content;
+};
+
+class GroupInfoMemento final : public Window::SectionMemento {
+public:
+	explicit GroupInfoMemento(int userId) : userId(userId) {}
+	object_ptr<Ui::LayerWidget> createLayer(not_null<Window::SessionController*> controller,
+			const QRect &geometry) override {
+		return geometry.width() >= Info::LayerWidget::MinimalSupportedWidth()
+			? object_ptr<GroupInfoLayer>(controller, userId) : nullptr;
+	}
+	object_ptr<Window::SectionWidget> createWidget(QWidget *parent,
+			not_null<Window::SessionController*> controller,
+			Window::Column column, const QRect &geometry) override {
+		auto result = object_ptr<GroupInfoSection>(
+			parent,
+			controller,
+			userId,
+			nullptr,
+			column);
+		result->setGeometry(geometry);
+		return result;
+	}
+	int userId;
+};
+
+void GroupInfoSection::adaptToLayer() {
+	// WHY: Third-column restore must keep history; layer conversion pops the stack.
+	if (_inLayer
+			|| _column == Window::Column::Third
+			|| !isVisible()
+			|| window()->width() < Info::LayerWidget::MinimalSupportedWidth()) {
+		return;
+	}
+	_inLayer = true;
+	const auto navigation = controller();
+	const auto memento = createMemento();
+	navigation->showBackFromStack();
+	navigation->showSection(memento, Window::SectionShow(
+		Window::SectionShow::Way::Forward, anim::type::instant));
+}
+
+void GroupInfoLayer::parentResized() {
+	if (_moving || !parentWidget()) return;
+	const auto size = parentWidget()->size();
+	if (size.width() < Info::LayerWidget::MinimalSupportedWidth()) {
+		_moving = true;
+		InvokeQueued(this, [=] {
+			_controller->hideSpecialLayer(anim::type::instant);
+		});
+		_controller->showSection(std::make_shared<GroupInfoMemento>(_userId),
+			Window::SectionShow(Window::SectionShow::Way::Forward,
+				anim::type::instant, anim::activation::background));
+		return;
+	}
+	const auto width = std::min(420, size.width() - 2 * st::infoMinimalLayerMargin);
+	const auto height = std::max(0, size.height() - 2 * st::infoMinimalLayerMargin);
+	setGeometry((size.width() - width) / 2, (size.height() - height) / 2, width, height);
+	_content->setGeometry(rect());
+}
+
+bool GroupInfoSection::showInternal(not_null<Window::SectionMemento*> memento,
+		const Window::SectionShow &params) {
+	const auto group = dynamic_cast<GroupInfoMemento*>(memento.get());
+	return group && group->userId == _userId;
+}
+
+std::shared_ptr<Window::SectionMemento> GroupInfoSection::createMemento() {
+	return std::make_shared<GroupInfoMemento>(_userId);
+}
+
 } // namespace
 
 void ShowChannelInfo(not_null<Window::SessionController*> controller, int userId,
 		const Window::SectionShow &params) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
 	controller->showSection(std::make_shared<ChannelInfoMemento>(userId), params);
 }
 
+void ShowGroupInfo(not_null<Window::SessionController*> controller, int userId,
+		const Window::SectionShow &params) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
+	controller->showSection(std::make_shared<GroupInfoMemento>(userId), params);
+}
+
+std::shared_ptr<Window::SectionMemento> MakeGroupInfoMemento(int chatId) {
+	return std::make_shared<GroupInfoMemento>(chatId);
+}
+
+std::shared_ptr<Window::SectionMemento> GroupInfoMementoForPeer(
+		not_null<PeerData*> peer) {
+	if (!OwnsSession(&peer->session()) || !peer->isUser()) {
+		return nullptr;
+	}
+	const auto userId = peerToUser(peer->id).bare;
+	if (IsChannel(userId)) {
+		return nullptr;
+	}
+	const auto chat = CoreChatUserId(userId);
+	if (!chat || !IsGroup(uint64(*chat))) {
+		return nullptr;
+	}
+	return MakeGroupInfoMemento(*chat);
+}
+
+bool UnresolvedCoreGroupPeer(not_null<PeerData*> peer) {
+	if (!OwnsSession(&peer->session()) || !peer->isUser() || peer->isSelf()) {
+		return false;
+	}
+	const auto userId = peerToUser(peer->id).bare;
+	if (IsSenderUserId(userId)
+			|| IsSystemUser(userId)
+			|| IsChannel(userId)
+			|| IsDirectChat(userId)
+			|| ContactForPeer(userId)) {
+		return false;
+	}
+	const auto chat = CoreChatUserId(userId);
+	return chat && CoreGroupChatId(*chat) && !IsGroup(uint64(*chat));
+}
+
+bool TryShowGroupInfo(
+		not_null<Window::SessionController*> controller,
+		not_null<PeerData*> peer,
+		const Window::SectionShow &params) {
+	if (!OwnsSession(&controller->session())
+		|| &peer->session() != &controller->session()
+		|| !peer->isUser()
+		|| peer->isSelf()) {
+		return false;
+	}
+	const auto userId = peerToUser(peer->id).bare;
+	if (IsSenderUserId(userId) || IsSystemUser(userId) || IsChannel(userId)) {
+		return false;
+	}
+	if (const auto chat = CoreChatUserId(userId)
+		; chat && IsGroup(uint64(*chat))) {
+		ShowGroupInfo(controller, *chat, params);
+		return true;
+	}
+	if (IsDirectChat(userId) || ContactForPeer(userId)) {
+		return false;
+	}
+	const auto chat = CoreChatUserId(userId);
+	if (!chat || !CoreGroupChatId(*chat)) {
+		return false;
+	}
+	const auto current = CaptureAccountGuard();
+	const auto chatId = *chat;
+	const auto peerId = peer->id;
+	ChannelRequest(
+		chatId,
+		u"get_full_chat_by_id"_q,
+		{},
+		crl::guard(controller, [=](QJsonValue value, QString error) {
+			if (!OwnsSession(&controller->session())
+				|| !current
+				|| !current()) {
+				return;
+			}
+			const auto fail = [=](const QString &text) {
+				controller->showToast(text);
+			};
+			if (!error.isEmpty()) {
+				fail(error);
+				return;
+			}
+			if (!value.isObject()) {
+				fail(kGroupInfoUnreadable);
+				return;
+			}
+			const auto object = value.toObject();
+			if (!CoreJsonIdMatches(object, uint64(chatId))) {
+				fail(kGroupInfoUnreadable);
+				return;
+			}
+			const auto type = CoreJsonKnownChatType(
+				object.value(u"chatType"_q));
+			const auto selfTalk = object.value(u"isSelfTalk"_q);
+			if ((selfTalk.isBool() && selfTalk.toBool())
+					|| (type && *type == CoreChatType::Single)
+					|| IsDirectChat(uint64(chatId))) {
+				controller->showSection(
+					std::make_shared<Info::Memento>(
+						controller->session().data().peer(peerId)),
+					params);
+				return;
+			}
+			if ((type && (*type == CoreChatType::OutBroadcast
+						|| *type == CoreChatType::InBroadcast))
+					|| IsChannel(uint64(chatId))) {
+				ShowChannelInfo(controller, chatId, params);
+				return;
+			}
+			if ((type && *type == CoreChatType::Group)
+					|| IsGroup(uint64(chatId))
+					|| CoreGroupChatFromJson(
+						object,
+						uint64(chatId)).kind == CoreGroupRead::Group) {
+				ShowGroupInfo(controller, chatId, params);
+				return;
+			}
+			fail(type ? kGroupInfoNotGroup : kGroupInfoUnreadable);
+		}));
+	return true;
+}
+
 void ShowChannelInvite(not_null<Main::Session*> session, int userId) {
+	if (!OwnsSession(session)) {
+		return;
+	}
 	Ui::show(Box([=](not_null<Ui::GenericBox*> box) {
 		box->setTitle(rpl::single(u"Invite to Channel"_q));
 		const auto canvas = box->addRow(object_ptr<Ui::FixedHeightWidget>(box, 280), st::boxRowPadding);
@@ -867,6 +1364,9 @@ void ShowChannelInvite(not_null<Main::Session*> session, int userId) {
 }
 
 void ChooseContactToSend(not_null<Main::Session*> session, int userId) {
+	if (!OwnsSession(session)) {
+		return;
+	}
 	const auto holder = std::make_shared<QPointer<PeerListBox>>();
 	const auto busy = std::make_shared<bool>(false);
 	auto controller = std::make_unique<ContactListController>(session, Fn<void(int)>(), false,
@@ -887,6 +1387,9 @@ void ChooseContactToSend(not_null<Main::Session*> session, int userId) {
 }
 
 void ShowJoinInvite(not_null<Window::SessionController*> controller, const QString &url) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
 	controller->show(Box([=](not_null<Ui::GenericBox*> box) {
 		box->setTitle(rpl::single(u"Invitation"_q));
 		const auto status = box->addRow(object_ptr<Ui::FlatLabel>(box, u"Checking invitation…"_q, st::aboutLabel), st::boxRowPadding);
@@ -935,6 +1438,9 @@ void ShowJoinInvite(not_null<Window::SessionController*> controller, const QStri
 }
 
 void ShowSharedContact(not_null<Window::SessionController*> controller, int messageId) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
 	const auto card = SharedContactData(messageId);
 	controller->show(Box([=](not_null<Ui::GenericBox*> box) {
 		box->setTitle(tr::lng_contact_details_title());
@@ -996,6 +1502,9 @@ void ShowSharedContact(not_null<Window::SessionController*> controller, int mess
 
 void ChooseGroupMembers(not_null<Main::Session*> session,
 		Fn<void(std::vector<int>, Fn<void(QString)>)> create) {
+	if (!OwnsSession(session)) {
+		return;
+	}
 	auto controller = std::make_unique<ContactListController>(session, Fn<void(int)>(), true);
 	const auto raw = controller.get();
 	Ui::show(Box<PeerListBox>(std::move(controller), [=](not_null<PeerListBox*> box) {
@@ -1016,17 +1525,28 @@ void ChooseGroupMembers(not_null<Main::Session*> session,
 	}), Ui::LayerOption::KeepOther);
 }
 
-void ShowContacts(not_null<Main::Session*> session, Fn<void(int)> done) {
+void ShowContacts(
+		not_null<Window::SessionController*> controller,
+		Fn<void(int)> done) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
+	const auto session = &controller->session();
 	const auto holder = std::make_shared<QPointer<PeerListBox>>();
-	auto controller = std::make_unique<ContactListController>(session, [=](int id) {
+	auto list = std::make_unique<ContactListController>(session, [=](int id) {
 		if (*holder) (*holder)->closeBox();
+		if (!OwnsSession(&controller->session())) {
+			return;
+		}
 		done(id);
 	});
-	const auto raw = controller.get();
-	Ui::show(Box<PeerListBox>(std::move(controller), [=](not_null<PeerListBox*> box) {
+	const auto raw = list.get();
+	controller->show(Box<PeerListBox>(std::move(list), [=](not_null<PeerListBox*> box) {
 		*holder = box.get();
 		box->addButton(tr::lng_close(), [=] { box->closeBox(); });
-		box->addLeftButton(tr::lng_profile_add_contact(), [=] { ShowInviteQr(); });
+		box->addLeftButton(tr::lng_profile_add_contact(), [=] {
+			ShowInviteQr(controller);
+		});
 		const auto sort = box->lifetime().make_state<QPointer<Ui::IconButton>>();
 		*sort = box->addTopButton(st::contactsSortButton, [=] {
 			const auto alphabet = raw->toggleSort();
@@ -1090,8 +1610,13 @@ void AskChoice(
 	}));
 }
 
-void ShowInviteQr() {
-	Ui::show(Box([=](not_null<Ui::GenericBox*> box) {
+void ShowInviteQr(not_null<Window::SessionController*> controller) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
+	const auto current = CaptureAccountGuard();
+	const auto window = base::make_weak(controller);
+	controller->show(Box([=](not_null<Ui::GenericBox*> box) {
 		box->setTitle(rpl::single(u"QR Invite Code"_q));
 		const auto tabs = box->addRow(
 			object_ptr<Ui::FixedHeightWidget>(box, 48),
@@ -1286,13 +1811,23 @@ void ShowInviteQr() {
 				field->showError();
 				return;
 			}
+			if (!window
+				|| (current && !current())
+				|| !OwnsSession(&controller->session())) {
+				return;
+			}
 			*joining = true;
 			cameraTimeout->stop();
 			camera->stop();
 			canvasWrap->toggle(false, anim::type::instant);
 			status->setText(u"Joining…"_q);
 			JoinInviteQr(qr, [=](QString error) {
-				if (!weak) return;
+				if (!weak
+					|| !window
+					|| (current && !current())
+					|| !OwnsSession(&controller->session())) {
+					return;
+				}
 				*joining = false;
 				if (!error.isEmpty()) {
 					status->setText(error);
@@ -1332,7 +1867,12 @@ void ShowInviteQr() {
 				QString code,
 				QString svg,
 				QString error) {
-			if (!weak) return;
+			if (!weak
+				|| !window
+				|| (current && !current())
+				|| !OwnsSession(&controller->session())) {
+				return;
+			}
 			if (!error.isEmpty()) {
 				*caption = error;
 				if (!*scanning) status->setText(error);
@@ -1354,8 +1894,13 @@ void ShowInviteQr() {
 	}));
 }
 
-void ShowSecondDevice() {
-	Ui::show(Box([=](not_null<Ui::GenericBox*> box) {
+void ShowSecondDevice(not_null<Window::SessionController*> controller) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
+	const auto current = CaptureAccountGuard();
+	const auto window = base::make_weak(controller);
+	controller->show(Box([=](not_null<Ui::GenericBox*> box) {
 		struct State {
 			rpl::variable<bool> busy = false;
 			int generation = 0;
@@ -1396,12 +1941,21 @@ void ShowSecondDevice() {
 		const auto weak = base::make_weak(box);
 		const auto start = box->addButton(rpl::single(u"Continue"_q), [=] {
 			if (state->busy.current()) return;
+			if (!window
+				|| (current && !current())
+				|| !OwnsSession(&controller->session())) {
+				return;
+			}
 			state->busy = true;
 			const auto generation = ++state->generation;
 			status->setText(u"Preparing account…"_q);
 			state->cancel = StartSecondDevice(
 				[=](QString svg, QString error) {
-					if (!weak || generation != state->generation) {
+					if (!weak
+						|| !window
+						|| generation != state->generation
+						|| (current && !current())
+						|| !OwnsSession(&controller->session())) {
 						return;
 					}
 					if (!error.isEmpty() || svg.isEmpty()) {
@@ -1425,7 +1979,11 @@ void ShowSecondDevice() {
 						u"Install Delta Chat on the other device, use the same network, then tap Scan QR Code."_q);
 				},
 				[=](QString error) {
-					if (!weak || generation != state->generation) {
+					if (!weak
+						|| !window
+						|| generation != state->generation
+						|| (current && !current())
+						|| !OwnsSession(&controller->session())) {
 						return;
 					}
 					++state->generation;
@@ -1458,8 +2016,16 @@ void ShowSecondDevice() {
 	}));
 }
 
-void ShowRelayEditor(QJsonObject transport, Fn<void()> refreshed) {
-	Ui::show(Box([=](not_null<Ui::GenericBox*> box) {
+void ShowRelayEditor(
+		not_null<Window::SessionController*> controller,
+		QJsonObject transport,
+		Fn<void()> refreshed) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
+	const auto current = CaptureAccountGuard();
+	const auto window = base::make_weak(controller);
+	controller->show(Box([=](not_null<Ui::GenericBox*> box) {
 		const auto addr = transport.value(u"addr"_q).toString();
 		box->setTitle(rpl::single(u"Edit Relay"_q));
 		const auto weak = base::make_weak(box);
@@ -1537,8 +2103,16 @@ void ShowRelayEditor(QJsonObject transport, Fn<void()> refreshed) {
 		box->addLeftButton(
 			rpl::single(u"Delete"_q),
 			[=] {
+				if (!window
+					|| (current && !current())
+					|| !OwnsSession(&controller->session())) {
+					return;
+				}
 				DeleteTransport(addr, [=](QString error) {
-					if (!weak) {
+					if (!weak
+						|| !window
+						|| (current && !current())
+						|| !OwnsSession(&controller->session())) {
 						return;
 					}
 					if (!error.isEmpty()) {
@@ -1578,9 +2152,17 @@ void ShowRelayEditor(QJsonObject transport, Fn<void()> refreshed) {
 			put(smtpUser->getLastText(), u"smtpUser"_q, false);
 			put(smtpPassword->getLastText(), u"smtpPassword"_q, false);
 			put(smtpSecurity->getLastText(), u"smtpSecurity"_q, false);
+			if (!window
+				|| (current && !current())
+				|| !OwnsSession(&controller->session())) {
+				return;
+			}
 			status->setText(u"Saving…"_q);
 			UpdateTransport(next, [=](QString error) {
-				if (!weak) {
+				if (!weak
+					|| !window
+					|| (current && !current())
+					|| !OwnsSession(&controller->session())) {
 					return;
 				}
 				if (!error.isEmpty()) {
@@ -1597,8 +2179,13 @@ void ShowRelayEditor(QJsonObject transport, Fn<void()> refreshed) {
 	}));
 }
 
-void ShowRelays() {
-	Ui::show(Box([=](not_null<Ui::GenericBox*> box) {
+void ShowRelays(not_null<Window::SessionController*> controller) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
+	const auto current = CaptureAccountGuard();
+	const auto window = base::make_weak(controller);
+	controller->show(Box([=](not_null<Ui::GenericBox*> box) {
 		box->setTitle(rpl::single(u"Relays"_q));
 		const auto list = box->addRow(
 			object_ptr<Ui::VerticalLayout>(box),
@@ -1619,8 +2206,11 @@ void ShowRelays() {
 		const auto weak = base::make_weak(box);
 		const auto reload = std::make_shared<Fn<void()>>();
 		*reload = [=] {
-			ListTransports([=](QJsonArray transports, QString error) {
-				if (!weak) {
+			ListTransports(&controller->session(), [=](QJsonArray transports, QString error) {
+				if (!weak
+					|| !window
+					|| (current && !current())
+					|| !OwnsSession(&controller->session())) {
 					return;
 				}
 				for (const auto &row : *rows) {
@@ -1645,8 +2235,16 @@ void ShowRelays() {
 						st::settingsButtonNoIcon));
 					rows->push_back(button);
 					button->setClickedCallback([=] {
-						ShowRelayEditor(transport, [=] {
-							if (weak) {
+						if (!window
+							|| (current && !current())
+							|| !OwnsSession(&controller->session())) {
+							return;
+						}
+						ShowRelayEditor(controller, transport, [=] {
+							if (weak
+								&& window
+								&& (!current || current())
+								&& OwnsSession(&controller->session())) {
 								(*reload)();
 							}
 						});
@@ -1661,9 +2259,17 @@ void ShowRelays() {
 				field->showError();
 				return;
 			}
+			if (!window
+				|| (current && !current())
+				|| !OwnsSession(&controller->session())) {
+				return;
+			}
 			status->setText(u"Adding relay…"_q);
 			AddTransportFromQr(qr, [=](QString error) {
-				if (!weak) {
+				if (!weak
+					|| !window
+					|| (current && !current())
+					|| !OwnsSession(&controller->session())) {
 					return;
 				}
 				if (!error.isEmpty()) {
@@ -1828,6 +2434,9 @@ std::unique_ptr<AppsBrowser> AppsWindow;
 } // namespace
 
 void ShowApps(not_null<Main::Session*> session) {
+	if (!OwnsSession(session)) {
+		return;
+	}
 	auto url = AppPickerUrl().trimmed();
 	if (url.isEmpty()) {
 		url = QString::fromUtf8(kDefaultAppPickerUrl);
@@ -1841,8 +2450,109 @@ void ShowApps(not_null<Main::Session*> session) {
 	AppsWindow->open(url);
 }
 
-void ShowAppPickerUrl() {
-	Ui::show(Box([=](not_null<Ui::GenericBox*> box) {
+void ShowBackupExport(not_null<Window::SessionController*> controller) {
+	if (!OwnsSession(&controller->session())) return;
+	const auto current = CaptureAccountGuard();
+	const auto owner = base::make_weak(controller);
+	controller->show(Box([=](not_null<Ui::GenericBox*> box) {
+		box->setTitle(tr::lng_delta_backup_export_title());
+		box->setMaxHeight(st::boxMaxListHeight);
+		const auto closed = std::make_shared<bool>(false);
+		box->boxClosing() | rpl::on_next([=] { *closed = true; }, box->lifetime());
+		AccountViewResets() | rpl::on_next([=](int) { box->closeBox(); }, box->lifetime());
+		const auto valid = [=] {
+			return !*closed && owner && current && current()
+				&& OwnsSession(&owner->session());
+		};
+		box->addRow(object_ptr<Ui::FlatLabel>(box,
+			tr::lng_delta_backup_export_about(), st::boxLabel));
+		const auto destination = box->lifetime().make_state<QString>();
+		const auto busy = box->lifetime().make_state<bool>(false);
+		const auto folder = box->addRow(object_ptr<Ui::SettingsButton>(box,
+			tr::lng_delta_backup_export_folder(), st::settingsButtonNoIcon));
+		folder->setFocusPolicy(Qt::StrongFocus);
+		const auto status = box->addRow(object_ptr<Ui::FlatLabel>(box,
+			QString(), st::boxLabel));
+		status->setSelectable(true);
+		const auto addPassword = [&](rpl::producer<QString> placeholder) {
+			const auto row = box->addRow(object_ptr<Ui::RpWidget>(box));
+			row->resize(row->width(), st::defaultInputField.heightMin);
+			const auto field = Ui::CreateChild<Ui::PasswordInput>(
+				row, st::defaultInputField, std::move(placeholder));
+			field->setInputMethodHints(Qt::ImhSensitiveData
+				| Qt::ImhNoPredictiveText | Qt::ImhHiddenText);
+			row->widthValue() | rpl::on_next([=](int width) {
+				field->resize(width, field->height());
+			}, field->lifetime());
+			return field;
+		};
+		const auto password = addPassword(tr::lng_delta_backup_passphrase_placeholder());
+		const auto repeat = addPassword(tr::lng_delta_backup_export_repeat());
+		folder->setClickedCallback([=] {
+			if (!valid() || *busy) return;
+			FileDialog::GetFolder(box.get(), tr::lng_delta_backup_export_folder(tr::now),
+				*destination, crl::guard(box, [=](QString &&path) {
+					if (!valid() || path.isEmpty()) return;
+					*destination = path;
+					status->setText(path);
+				}));
+		});
+		const auto button = box->lifetime().make_state<QPointer<Ui::RoundButton>>();
+		const auto submit = [=] {
+			if (!valid() || *busy) return;
+			if (destination->isEmpty()) {
+				status->setText(tr::lng_delta_backup_export_folder(tr::now));
+				folder->setFocus(Qt::OtherFocusReason);
+				return;
+			}
+			const auto secret = password->getLastText();
+			if (secret != repeat->getLastText()) {
+				repeat->showError();
+				status->setText(tr::lng_delta_backup_export_mismatch(tr::now));
+				return;
+			}
+			*busy = true;
+			folder->setDisabled(true);
+			password->setDisabled(true);
+			repeat->setDisabled(true);
+			if (*button) (*button)->setDisabled(true);
+			status->setText(tr::lng_delta_backup_export_progress(tr::now));
+			ExportProfileBackup(&owner->session(), *destination, secret,
+				crl::guard(box, [=](QString directory, QString error) {
+					if (!valid()) return;
+					if (error.isEmpty()) {
+						password->setText(QString());
+						repeat->setText(QString());
+						status->setText(tr::lng_delta_backup_export_done(tr::now)
+							+ u"\n"_q + directory);
+						return;
+					}
+					// Preserve masked values on failure; retry must not silently
+					// change a passphrase-protected export into a plain one.
+					*busy = false;
+					folder->setDisabled(false);
+					password->setDisabled(false);
+					repeat->setDisabled(false);
+					if (*button) (*button)->setDisabled(false);
+					status->setText(error + (directory.isEmpty()
+						? QString() : u"\n"_q + directory));
+				}));
+		};
+		QObject::connect(password, &Ui::PasswordInput::submitted, password,
+			[=](Qt::KeyboardModifiers) { repeat->setFocusFast(); });
+		QObject::connect(repeat, &Ui::PasswordInput::submitted, repeat,
+			[=](Qt::KeyboardModifiers) { submit(); });
+		box->setFocusCallback([=] { folder->setFocus(Qt::OtherFocusReason); });
+		*button = box->addButton(tr::lng_delta_backup_export_title(), submit);
+		box->addButton(tr::lng_close(), [=] { box->closeBox(); });
+	}));
+}
+
+void ShowAppPickerUrl(not_null<Window::SessionController*> controller) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
+	controller->show(Box([=](not_null<Ui::GenericBox*> box) {
 		box->setTitle(rpl::single(u"App picker URL"_q));
 		box->addRow(
 			object_ptr<Ui::FlatLabel>(
@@ -2071,6 +2781,9 @@ void ShowCreateGroup(Fn<void(int)> done) {
 
 void ConfirmContactBlocking(not_null<Window::SessionController*> controller,
 		int contactId, QString name, bool blocked, Fn<void()> changed) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
 	const auto current = CaptureAccountGuard();
 	controller->show(Ui::MakeConfirmBox({
 		.text = blocked
@@ -2092,6 +2805,9 @@ void ConfirmContactBlocking(not_null<Window::SessionController*> controller,
 }
 
 void ChooseContactToBlock(not_null<Window::SessionController*> controller, Fn<void()> changed) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
 	const auto current = CaptureAccountGuard();
 	const auto holder = std::make_shared<QPointer<PeerListBox>>();
 	auto list = std::make_unique<ContactListController>(&controller->session(), nullptr, false,
@@ -2105,7 +2821,17 @@ void ChooseContactToBlock(not_null<Window::SessionController*> controller, Fn<vo
 	}), Ui::LayerOption::KeepOther);
 }
 
+bool CanManageContactBlocking(uint64 userId) {
+	if (const auto contact = ContactForPeer(userId)) {
+		return contact->id > 9;
+	}
+	return CoreIdFitsInt(userId) && IsDirectChat(userId) && !IsSystemUser(userId);
+}
+
 void ManageContactBlocking(not_null<Window::SessionController*> controller, uint64 userId) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
 	const auto current = CaptureAccountGuard();
 	const auto inspect = crl::guard(controller, [=](int id) {
 		if (!current || !current() || id <= 9) return;
@@ -2122,7 +2848,7 @@ void ManageContactBlocking(not_null<Window::SessionController*> controller, uint
 	});
 	if (const auto contact = ContactForPeer(userId)) {
 		inspect(contact->id);
-	} else if (IsDirectChat(userId) && !IsSystemUser(int(userId))) {
+	} else if (CoreIdFitsInt(userId) && IsDirectChat(userId) && !IsSystemUser(userId)) {
 		ChannelRequest(int(userId), u"get_full_chat_by_id"_q, {},
 			crl::guard(controller, [=](QJsonValue value, QString error) {
 				if (!current || !current()) return;
@@ -2140,6 +2866,9 @@ void ManageContactBlocking(not_null<Window::SessionController*> controller, uint
 }
 
 void ShowSavedReplies(not_null<Window::SessionController*> controller) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
 	const auto current = CaptureAccountGuard();
 	LoadSavedReplies(crl::guard(controller, [=](std::vector<SavedReply> replies, QString error) {
 		if (!current || !current()) return;
@@ -2221,6 +2950,9 @@ void ShowSavedReplies(not_null<Window::SessionController*> controller) {
 }
 
 void ShowMessageInfo(not_null<Window::SessionController*> controller, int messageId) {
+	if (!OwnsSession(&controller->session())) {
+		return;
+	}
 	controller->show(Box([=](not_null<Ui::GenericBox*> box) {
 		box->setTitle(rpl::single(u"Message info"_q));
 		box->setMaxHeight(style::ConvertScale(480));

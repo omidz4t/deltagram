@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "platform/platform_main_window.h"
+#include "main/account_backend.h"
 #include "ui/layers/layer_widget.h"
 
 #include <QtCore/QStringList>
@@ -24,6 +25,10 @@ enum class EnterPoint : uchar;
 } // namespace Intro
 
 class DeltaOnboarding;
+
+namespace Delta {
+class BackendChoice;
+} // namespace Delta
 
 namespace Window {
 class MediaPreviewWidget;
@@ -133,6 +138,7 @@ protected:
 
 private:
 	void applyInitialWorkMode();
+	void applyBackendChoice(Main::AccountBackend backend);
 	void ensureLayerCreated();
 	void destroyLayer();
 	void raiseMediaPreview();
@@ -145,6 +151,8 @@ private:
 	object_ptr<Window::SetupEmailLockWidget> _setupEmailLock = { nullptr };
 	object_ptr<Intro::Widget> _intro = { nullptr };
 	object_ptr<DeltaOnboarding> _onboarding = { nullptr };
+	object_ptr<Delta::BackendChoice> _backendChoice = { nullptr };
+	bool _backendChoiceBusy = false;
 	object_ptr<MainWidget> _main = { nullptr };
 	base::unique_qptr<Ui::LayerStackWidget> _layer;
 	rpl::variable<bool> _boxShown = false;

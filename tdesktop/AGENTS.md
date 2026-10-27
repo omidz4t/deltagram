@@ -1,18 +1,24 @@
 # Agent Guide for Telegram Desktop
 
-This checkout is the UI donor for Delta Tel, a native Qt client on Chatmail
-Core. Product direction, the architecture recon, and the MVP slices live in
-the parent `docs/` directory:
+This checkout provides the native Qt UI and Telegram backend for Delta Tel.
+Core profiles use Chatmail Core exclusively; real Telegram accounts retain the
+donor authentication, MTProto transport, persistence, and features. Route by
+explicit owning account/session backend, never by process-global Core bridge
+presence. The user's real-Telegram requirement supersedes the original
+Core-only migration scope in the historical documents below.
+
+Product direction, the architecture recon, and the MVP slices live in the
+parent `docs/` directory:
 
 - `../docs/ONBOARDING.md` — goal, boundaries, and coding rules
 - `../docs/ARCHITECTURE-RECON.md` — current coupling and the minimum cut
 - `../docs/MVP-PLAN.md` — ordered slices; do not skip ahead of them
 - `../docs/NIX.md` — cached Nix shell and incremental build
 
-Do not emulate MTProto. Do not add fake `MTP*` objects to satisfy existing
-call sites. New messaging behavior goes through a generic model and
-`deltachat-rpc-server` (JSON Lines on stdio). The style, rpl, and platform
-rules below still apply to code that stays.
+Do not emulate MTProto for Core. New Core messaging behavior goes through the
+generic backend and `deltachat-rpc-server` (JSON Lines on stdio); do not add fake
+`MTP*` objects to satisfy Core call sites. Telegram paths keep the donor's real
+protocol implementation. The style, rpl, and platform rules below apply to both.
 
 This guide defines repository-wide instructions for coding agents working with the Telegram Desktop codebase.
 

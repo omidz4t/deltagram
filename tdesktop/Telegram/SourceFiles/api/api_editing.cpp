@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "api/api_editing.h"
 
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "base/unixtime.h"
 
@@ -316,7 +317,8 @@ mtpRequestId EditMessage(
 			inputMedia);
 	}
 
-	if (Delta::Active() && !IsClientMsgId(item->id)) {
+	if (Delta::UsesCoreBackend(&item->history()->session())
+		&& !IsClientMsgId(item->id)) {
 		const auto text = textWithEntities.text;
 		const auto session = &item->history()->session();
 		const auto fullId = item->fullId();

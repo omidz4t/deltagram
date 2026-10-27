@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_filters_menu.h"
 
 #include "menu/menu_mark_as_read.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "data/data_changes.h"
 #include <QImageReader>
@@ -19,6 +20,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_peer_menu.h"
 #include "window/window_filters_favorite.h"
 #include "main/main_session.h"
+#include "main/main_domain.h"
 #include "base/event_filter.h"
 #include "base/options.h"
 #include "core/application.h"
@@ -62,7 +64,17 @@ base::options::toggle ProfilesSidebar({
 	.id = kOptionProfilesSidebar,
 	.name = "Show profiles instead of folders",
 	.description = "Show profile avatars in the left sidebar. Click a profile to switch accounts.",
-	.scope = [] { return Delta::Active(); },
+	.scope = [] {
+		if (!Core::IsAppLaunched()) {
+			return false;
+		}
+		for (const auto &[index, account] : Core::App().domain().accounts()) {
+			if (Delta::UsesCoreBackend(account.get())) {
+				return true;
+			}
+		}
+		return false;
+	},
 });
 
 class ProfileShortcut final : public Ui::RippleButton {
@@ -174,8 +186,8 @@ public:
 
 } // namespace
 
-bool ProfilesSidebarEnabled() {
-	return Delta::Active() && ProfilesSidebar.value();
+bool ProfilesSidebarEnabled(not_null<Main::Session*> session) {
+	return Delta::UsesCoreBackend(session) && ProfilesSidebar.value();
 }
 
 FiltersMenu::FiltersMenu(
@@ -235,7 +247,7 @@ void FiltersMenu::setup() {
 		_container->move(0, 0);
 	}, _outer.lifetime());
 
-	if (ProfilesSidebarEnabled()) {
+	if (ProfilesSidebarEnabled(&_session->session())) {
 		_menu.setClickedCallback([=] { _session->widget()->showMainMenu(); });
 		_session->session().changes().peerUpdates(
 			_session->session().user(),
@@ -439,6 +451,9 @@ bool FiltersMenu::listFocused() const {
 }
 
 void FiltersMenu::refreshProfiles() {
+	if (!Delta::OwnsSession(&_session->session())) {
+		return;
+	}
 	const auto revision = ++_profilesRevision;
 	Delta::ListProfiles(crl::guard(&_outer, [=](QJsonArray accounts) {
 		if (revision != _profilesRevision) {

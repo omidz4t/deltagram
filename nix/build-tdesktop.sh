@@ -6,6 +6,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/nix/paths.sh"
+source "$ROOT/nix/telegram-api-config.sh"
 BUILD_DIR="${CMAKE_BUILD_DIR:-$DELTA_TEL_DATA/tdesktop-out}"
 mkdir -p "$BUILD_DIR" "${CCACHE_DIR:-$DELTA_TEL_DATA/ccache}"
 
@@ -15,22 +16,14 @@ if [[ ! -f "$ROOT/tdesktop/cmake/CMakeLists.txt" ]]; then
   exit 1
 fi
 
-cmake_args=(
-  -S "$ROOT/tdesktop"
-  -B "$BUILD_DIR"
-  -G Ninja
-  -DCMAKE_BUILD_TYPE=Debug
-  -DCMAKE_C_COMPILER_LAUNCHER=ccache
-  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-  -DDESKTOP_APP_USE_PACKAGED=ON
-  -DTDESKTOP_API_TEST=ON
-  -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON
+delta_tel_init_telegram_api "$BUILD_DIR"
+delta_tel_cmake_configure "$BUILD_DIR" \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+  -DDESKTOP_APP_USE_PACKAGED=ON \
+  -DDESKTOP_APP_DISABLE_CRASH_REPORTS=ON \
   -DDESKTOP_APP_DISABLE_AUTOUPDATE=ON
-)
-
-if [[ ! -f "$BUILD_DIR/build.ninja" ]]; then
-  cmake "${cmake_args[@]}"
-fi
 
 # scripts/semantic-release.py updates versions before release preparation.
 cmake --build "$BUILD_DIR" --target Telegram -j "${NIX_BUILD_CORES:-$(nproc)}"

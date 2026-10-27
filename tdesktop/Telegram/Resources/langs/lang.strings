@@ -30,6 +30,34 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_enable_notifications_from_tray" = "Enable notifications";
 "lng_open_from_tray" = "Open Telegram";
 "lng_deltagram_open_from_tray" = "Open Deltagram";
+"lng_delta_accept" = "Accept";
+"lng_delta_block" = "Block";
+"lng_delta_delete" = "Delete";
+"lng_delta_delete_group_request" = "This deletes the group conversation \"{name}\". Group members are not blocked.";
+"lng_delta_delete_chat_request" = "This removes the conversation \"{name}\". The conversation is blocked and hidden.";
+"lng_full_message_show" = "Show full message";
+"lng_full_message_title" = "Full message";
+"lng_full_message_loading" = "Loading...";
+"lng_full_message_unavailable" = "This message cannot be shown in full.";
+"lng_full_message_unreadable" = "The full message could not be read.";
+"lng_full_message_empty" = "The full message is empty.";
+"lng_full_message_malformed" = "The full message could not be displayed.";
+"lng_full_message_limited" = "Images and formatting may look different from the original message.";
+"lng_full_message_plain" = "The original images and formatting could not be shown. The message text is below.";
+"lng_full_message_link_denied" = "This link cannot be opened.";
+"lng_delta_account_choice_title" = "Choose an account type";
+"lng_delta_telegram_intro_title" = "Sign in to Telegram";
+"lng_delta_telegram_intro_about" = "Use your Telegram account\nin Deltagram.";
+"lng_delta_account_choice_about" = "Chatmail keeps a local profile on this device. Telegram signs in to a Telegram account.";
+"lng_delta_account_choice_core" = "Chatmail";
+"lng_delta_account_choice_telegram" = "Telegram";
+"lng_delta_account_persist_failed" = "This account type could not be saved. Try again.";
+"lng_delta_account_core_keys_denied" = "This account already has Telegram login data, so it cannot be used for Chatmail.";
+"lng_delta_account_change_denied" = "This account type cannot be changed.";
+"lng_delta_account_session_denied" = "This account is already signed in.";
+"lng_delta_account_core_required" = "Chatmail profiles can be added only from a Chatmail account.";
+"lng_delta_account_core_busy" = "A Chatmail profile is already open in this app.";
+"lng_delta_account_start_failed" = "This account could not be started. Try again.";
 "lng_minimize_to_tray" = "Minimize to Tray";
 "lng_quit_from_tray" = "Quit Telegram";
 "lng_deltagram_quit_from_tray" = "Quit Deltagram";
@@ -661,6 +689,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_languages_count#one" = "{count} language";
 "lng_languages_count#other" = "{count} languages";
 "lng_sure_save_language" = "Telegram will restart in order to change the language";
+"lng_delta_sure_save_language" = "The app will restart to change the language.";
 "lng_settings_update_automatically" = "Update automatically";
 "lng_settings_install_beta" = "Install beta versions";
 "lng_settings_current_version" = "Version {version}";
@@ -1184,15 +1213,19 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_local_storage_clear_selected" = "Clear selected";
 "lng_local_storage_clearing" = "Clearing...";
 "lng_local_storage_device_telegram" = "Telegram cache";
+"lng_delta_local_storage_device_cache" = "App cache";
 "lng_local_storage_device_other" = "Other data";
 "lng_local_storage_device_free" = "Free";
 "lng_local_storage_device_total" = "Total";
 "lng_local_storage_device_usage" = "Telegram uses {percent} of your device storage.";
+"lng_delta_local_storage_device_usage" = "This cache uses {percent} of your device storage.";
 "lng_local_storage_clearing_about" = "Please keep this window open while the cache is being cleared.";
 "lng_local_storage_cleared" = "{size} freed on your device!";
 "lng_local_storage_about" = "All media will stay in the Telegram cloud and can be re-downloaded if you need them again.";
+"lng_delta_local_storage_about" = "Clearing this cache does not delete your original message files.";
 "lng_local_storage_manage_title" = "Manage limits";
 "lng_local_storage_max_size_about" = "If your cache size exceeds this limit, the oldest unused media will be removed from the device.";
+"lng_delta_local_storage_max_size_about" = "If this cache exceeds the limit, the oldest unused cache files are removed.";
 
 "lng_passcode_remove_button" = "Remove";
 
@@ -8781,3 +8814,21 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_folder_archive_status" = "ZIP archive";
 
 // Keys finished
+
+"lng_delta_passcode_preserve_chatmail" = "Your Chatmail profiles and local messages are preserved. Unlock with your passcode or previously enabled system unlock. If you cannot unlock, restore an existing Chatmail backup in a fresh installation. Logging out will not reset this lock.";
+"lng_delta_passcode_preserve_unknown" = "The locked account types could not be confirmed. To protect local Chatmail messages, this lock cannot be reset by logging out. Use your passcode or previously enabled system unlock. Otherwise, use a fresh installation to sign in to Telegram or restore an existing Chatmail backup.";
+
+"lng_delta_backup_passphrase_title" = "Restore from Backup";
+"lng_delta_backup_passphrase_about" = "If this backup is encrypted, enter its backup passphrase. Leave the field blank for an unencrypted backup. This is the backup passphrase, which may differ from your local app passcode.";
+"lng_delta_backup_passphrase_placeholder" = "Backup passphrase (optional)";
+"lng_delta_backup_restore_continue" = "Restore";
+
+"lng_delta_backup_export_title" = "Export backup";
+"lng_delta_backup_export_about" = "Export the selected Chatmail profile. The backup includes messages, credentials and attachment files. An optional passphrase protects only the database; attachments stay unencrypted. Keep the backup and passphrase safe.";
+"lng_delta_backup_export_folder" = "Choose backup folder";
+"lng_delta_backup_export_repeat" = "Repeat backup passphrase";
+"lng_delta_backup_export_mismatch" = "The backup passphrases do not match.";
+"lng_delta_backup_export_progress" = "Exporting backup… Keep Deltagram open. Closing this dialog does not cancel the export.";
+"lng_delta_backup_export_done" = "Backup exported to:";
+
+"lng_delta_backup_export_wait" = "A backup export is still running. Wait for it to finish, then try quitting or restarting again.";

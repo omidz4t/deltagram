@@ -3013,16 +3013,19 @@ std::unique_ptr<Ui::DropdownMenu> MakeAttachBotsMenu(
 			attach(false);
 		}, &st::menuIconFile);
 	}
-	if (Delta::Active() && Data::CanSendAnyOf(peer, ChatRestriction::SendOther, false)) {
+	if (Delta::OwnsSession(&controller->session())
+		&& Data::CanSendAnyOf(peer, ChatRestriction::SendOther, false)) {
 		++minimal;
 		const auto userId = int(peerToUser(peer->id).bare);
 		raw->addAction(u"Send Contact"_q, crl::guard(controller, [=] {
 			Delta::ChooseContactToSend(&controller->session(), userId);
 		}), &st::menuIconProfile);
 	}
-	raw->addAction(u"Apps"_q, [=] {
-		Delta::ShowApps(&controller->session());
-	}, &st::menuIconBot);
+	if (Delta::OwnsSession(&controller->session())) {
+		raw->addAction(u"Apps"_q, [=] {
+			Delta::ShowApps(&controller->session());
+		}, &st::menuIconBot);
+	}
 	if (peer->canCreateTodoLists(false)) {
 		++minimal;
 		raw->addAction(tr::lng_todo_menu_item(tr::now), [=] {

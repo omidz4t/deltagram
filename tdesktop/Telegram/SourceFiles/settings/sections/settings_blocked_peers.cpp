@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "settings/sections/settings_blocked_peers.h"
 
 #include "settings/settings_common_session.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "delta/delta_boxes.h"
 
@@ -89,7 +90,16 @@ Blocked::Blocked(
 , _container(Ui::CreateChild<Ui::VerticalLayout>(this)) {
 
 	setupContent();
-	if (Delta::Active()) return;
+	if (Delta::UsesCoreBackend(&controller->session())) {
+		Delta::AccountViewResets() | rpl::on_next([=](int) {
+			++_coreRevision;
+			_container->clear();
+			_container->add(object_ptr<Ui::FlatLabel>(_container,
+				u"Profile changed. Refresh to load blocked contacts."_q,
+				st::aboutLabel), st::boxRowPadding);
+		}, lifetime());
+		return;
+	}
 
 	{
 		auto padding = st::changePhoneIconPadding;
@@ -139,7 +149,7 @@ base::weak_qptr<Ui::RpWidget> Blocked::createPinnedToTop(
 		{ &st::menuIconBlockSettings });
 	_blockUserButton = blockButton;
 	blockButton->addClickHandler([=] {
-		if (Delta::Active()) {
+		if (Delta::UsesCoreBackend(&controller()->session())) {
 			Delta::ChooseContactToBlock(controller(), crl::guard(this, [=] { refreshCore(); }));
 		} else {
 			BlockedBoxController::BlockNewPeer(controller());
@@ -147,7 +157,7 @@ base::weak_qptr<Ui::RpWidget> Blocked::createPinnedToTop(
 	});
 
 	Ui::AddSkip(content);
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&controller()->session())) {
 		const auto refresh = AddButtonWithIcon(content, rpl::single(u"Refresh"_q), st::settingsButton, {});
 		refresh->addClickHandler([=] { refreshCore(); });
 		Ui::AddDividerText(content, rpl::single(u"Blocked contacts in this profile. Select a contact to unblock them."_q));
@@ -187,7 +197,7 @@ base::weak_qptr<Ui::RpWidget> Blocked::createPinnedToTop(
 
 void Blocked::setupContent() {
 	using namespace rpl::mappers;
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&controller()->session())) {
 		widthValue() | rpl::on_next([=](int width) {
 			_container->resizeToWidth(width);
 		}, _container->lifetime());
@@ -328,10 +338,24 @@ void Blocked::setupContent() {
 void Blocked::refreshCore() {
 	const auto revision = ++_coreRevision;
 	_container->clear();
+	const auto session = &controller()->session();
+	if (!Delta::OwnsSession(session)) {
+		_container->add(object_ptr<Ui::FlatLabel>(_container,
+			u"Blocked contacts are not available."_q,
+			st::aboutLabel), st::boxRowPadding);
+		return;
+	}
+	const auto current = Delta::CaptureAccountGuard();
+	const auto generation = Delta::AccountGeneration();
 	_container->add(object_ptr<Ui::FlatLabel>(_container,
 		u"Loading blocked contacts…"_q, st::aboutLabel), st::boxRowPadding);
 	Delta::ListBlockedContacts(crl::guard(this, [=](std::vector<Delta::BlockedContact> contacts, QString error) {
-		if (revision != _coreRevision) return;
+		if (revision != _coreRevision
+			|| (current && !current())
+			|| generation != Delta::AccountGeneration()
+			|| !Delta::OwnsSession(session)) {
+			return;
+		}
 		_container->clear();
 		if (!error.isEmpty() || contacts.empty()) {
 			_container->add(object_ptr<Ui::FlatLabel>(_container,
@@ -343,6 +367,12 @@ void Blocked::refreshCore() {
 			const auto button = AddButtonWithIcon(_container,
 				rpl::single(contact.name), st::settingsButton, { &st::menuIconUnblock });
 			button->addClickHandler([=] {
+				if (revision != _coreRevision
+					|| (current && !current())
+					|| generation != Delta::AccountGeneration()
+					|| !Delta::OwnsSession(session)) {
+					return;
+				}
 				Delta::ConfirmContactBlocking(controller(), contact.id, contact.name, false,
 					crl::guard(this, [=] { refreshCore(); }));
 			});

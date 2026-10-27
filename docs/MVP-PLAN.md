@@ -1,5 +1,28 @@
 # MVP plan
 
+## Expanded release requirements (2026-10-26)
+
+The slices below describe the original Core MVP. The user now also requires
+real Telegram accounts, so completing those slices is insufficient for release.
+The same application must retain donor Telegram authentication, MTProto,
+account storage, and features while keeping Core profiles isolated.
+
+Required integration and validation:
+
+- Persist explicit backend identity per account without changing the donor
+  account-map format or losing existing Telegram authorization.
+- Keep unresolved and Core accounts off Telegram transport; bind backend
+  identity before creating transport sessions or publishing session UI.
+- Restore Telegram login and account management, and route every Core hook by
+  its owning session rather than global bridge presence.
+- Verify mixed-session message/peer id collisions, settings, translation,
+  notifications, unread counts, and account switching.
+- Validate Telegram authentication and session persistence on the native build,
+  plus the existing Core regression fixtures and packaged executable.
+
+These requirements remain open. Passing Core tests does not close the Telegram
+or mixed-backend gates.
+
 Prove: launch the Qt client, open a Delta account, show the chat list, open a
 chat, show plain text, send plain text, apply an incoming event, update
 unread. No `MTP*` objects on that path.

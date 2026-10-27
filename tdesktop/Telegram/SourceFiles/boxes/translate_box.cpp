@@ -488,12 +488,17 @@ void TranslateBox(
 	});
 }
 
-bool SkipTranslate(TextWithEntities textWithEntities) {
+bool SkipTranslate(
+		TextWithEntities textWithEntities,
+		not_null<Main::Session*> session) {
 	const auto &text = textWithEntities.text;
 	if (text.isEmpty()) {
 		return true;
 	}
 	if (!Core::App().settings().translateButtonEnabled()) {
+		return true;
+	}
+	if (!IsTranslateBackendAvailable(session)) {
 		return true;
 	}
 	constexpr auto kFirstChunk = size_t(100);

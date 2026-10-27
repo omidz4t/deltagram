@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "api/api_peer_search.h"
 #include "base/timer.h"
+#include "delta/search_failure.h"
 #include "dialogs/dialogs_key.h"
 #include "window/section_widget.h"
 #include "ui/controls/swipe_handler_data.h"
@@ -181,6 +182,8 @@ private:
 	void requestMessages(bool fromStart);
 	void requestDeltaMessages(bool fromStart);
 	void loadDeltaSearchPage(bool fromStart);
+	void failDeltaSearch();
+	void retryDeltaSearch();
 	[[nodiscard]] not_null<SearchProcessState*> currentSearchProcess();
 
 	[[nodiscard]] bool computeSearchWithPostsPreview() const;
@@ -447,9 +450,7 @@ private:
 	SearchProcessState _searchProcess;
 	uint64 _deltaSearchGeneration = 0;
 	int _deltaSearchAccountGeneration = 0;
-	QVector<int> _deltaSearchIds;
-	int _deltaSearchOffset = 0;
-	bool _deltaSearchLoading = false;
+	Delta::CoreSearchPager _deltaSearch;
 	SearchProcessState _migratedProcess;
 	SearchProcessState _postsProcess;
 	int _historiesRequest = 0; // Not real mtpRequestId.

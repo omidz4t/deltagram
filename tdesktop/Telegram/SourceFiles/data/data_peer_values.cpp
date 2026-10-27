@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_peer_values.h"
 
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "lang/lang_keys.h"
 #include "data/data_channel.h"
@@ -53,7 +54,7 @@ int OnlinePhraseChangeInSeconds(LastseenStatus status, TimeId now) {
 }
 
 std::optional<QString> OnlineTextSpecial(not_null<UserData*> user) {
-	if (Delta::Active()) {
+	if (Delta::OwnsSession(&user->session())) {
 		if (const auto line = Delta::StatusSubtitle(peerToUser(user->id).bare)) {
 			return *line;
 		}
@@ -244,8 +245,11 @@ inline auto DefaultRestrictionValue(
 				? rpl::single(true)
 				: AmPremiumValue(&user->session());
 		}) | rpl::flatten_latest();
-		if (Delta::Active()) {
-			allowedAny = rpl::combine(std::move(allowedAny), Delta::ChannelWriteAccess(peerToUser(peer->id).bare),
+		if (Delta::UsesCoreBackend(&user->session())
+			&& Delta::OwnsSession(&user->session())) {
+			allowedAny = rpl::combine(
+				std::move(allowedAny),
+				Delta::ChannelWriteAccess(peerToUser(peer->id).bare),
 				[](bool allowed, bool publish) { return allowed && publish; });
 		}
 		if (other) {

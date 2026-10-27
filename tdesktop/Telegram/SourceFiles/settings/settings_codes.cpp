@@ -20,6 +20,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_cloud_manager.h"
 #include "lang/lang_instance.h"
 #include "core/application.h"
+#include "delta/account_backend.h"
 #include "mtproto/web_proxy/web_proxy_transport.h"
 #include "mtproto/mtp_instance.h"
 #include "mtproto/mtproto_dc_options.h"
@@ -76,8 +77,8 @@ using SessionController = Window::SessionController;
 }
 
 auto GenerateCodes() {
-	auto codes = std::map<QString, Fn<void(SessionController*)>>();
-	codes.emplace(u"debugmode"_q, [](SessionController *window) {
+	auto codes = std::map<QString, Fn<void(SessionController*, Main::Account*)>>();
+	codes.emplace(u"debugmode"_q, [](SessionController *window, Main::Account*) {
 		QString text = Logs::DebugEnabled()
 			? u"Do you want to disable DEBUG logs?"_q
 			: u"Do you want to enable DEBUG logs?\n\nAll network events will be logged."_q;
@@ -85,21 +86,21 @@ auto GenerateCodes() {
 			Core::App().switchDebugMode();
 		} }));
 	});
-	codes.emplace(u"viewlogs"_q, [](SessionController *window) {
+	codes.emplace(u"viewlogs"_q, [](SessionController *window, Main::Account*) {
 		File::ShowInFolder(cWorkingDir() + "log.txt");
 	});
 	if (!Core::UpdaterDisabled()) {
-		codes.emplace(u"testupdate"_q, [](SessionController *window) {
+		codes.emplace(u"testupdate"_q, [](SessionController *window, Main::Account*) {
 			Core::UpdateChecker().test();
 		});
 	}
-	codes.emplace(u"loadlang"_q, [](SessionController *window) {
-		Lang::CurrentCloudManager().switchToLanguage({ u"#custom"_q });
+	codes.emplace(u"loadlang"_q, [](SessionController *window, Main::Account *account) {
+		Lang::CurrentCloudManager().switchToLanguage({ u"#custom"_q }, account);
 	});
-	codes.emplace(u"crashplease"_q, [](SessionController *window) {
+	codes.emplace(u"crashplease"_q, [](SessionController *window, Main::Account*) {
 		Unexpected("Crashed in Settings!");
 	});
-	codes.emplace(u"moderate"_q, [](SessionController *window) {
+	codes.emplace(u"moderate"_q, [](SessionController *window, Main::Account*) {
 		auto text = Core::App().settings().moderateModeEnabled() ? u"Disable moderate mode?"_q : u"Enable moderate mode?"_q;
 		Ui::show(Ui::MakeConfirmBox({ text, [=] {
 			Core::App().settings().setModerateModeEnabled(!Core::App().settings().moderateModeEnabled());
@@ -107,44 +108,45 @@ auto GenerateCodes() {
 			Ui::hideLayer();
 		} }));
 	});
-	codes.emplace(u"getdifference"_q, [](SessionController *window) {
-		if (window) {
-			window->session().updates().getDifference();
+	codes.emplace(u"getdifference"_q, [](SessionController*, Main::Account *account) {
+		if (!Delta::UsesTelegramBackend(account)) {
+			return;
+		}
+		if (const auto session = account->maybeSession()) {
+			session->updates().getDifference();
 		}
 	});
-	codes.emplace(u"loadcolors"_q, [](SessionController *window) {
+	codes.emplace(u"loadcolors"_q, [](SessionController *window, Main::Account*) {
 		FileDialog::GetOpenPath(Core::App().getFileDialogParent(), "Open palette file", "Palette (*.tdesktop-palette)", [](const FileDialog::OpenResult &result) {
 			if (!result.paths.isEmpty()) {
 				Window::Theme::Apply(result.paths.front());
 			}
 		});
 	});
-	codes.emplace(u"endpoints"_q, [](SessionController *window) {
+	codes.emplace(u"endpoints"_q, [](SessionController*, Main::Account *account) {
+		if (!Delta::UsesTelegramBackend(account)) {
+			return;
+		}
 		if (!Core::App().domain().started()) {
 			return;
 		}
-		const auto weak = window
-			? base::make_weak(&window->session().account())
-			: nullptr;
+		const auto weak = base::make_weak(account);
 		FileDialog::GetOpenPath(Core::App().getFileDialogParent(), "Open DC endpoints", "DC Endpoints (*.tdesktop-endpoints)", [weak](const FileDialog::OpenResult &result) {
-			if (!result.paths.isEmpty()) {
-				const auto loadFor = [&](not_null<Main::Account*> account) {
-					if (!account->mtp().dcOptions().loadFromFile(result.paths.front())) {
-						Ui::show(Ui::MakeInformBox("Could not load endpoints"
-							" :( Errors in 'log.txt'."));
-					}
-				};
-				if (const auto strong = weak.get()) {
-					loadFor(strong);
-				} else {
-					for (const auto &pair : Core::App().domain().accounts()) {
-						loadFor(pair.account.get());
-					}
+			if (result.paths.isEmpty()) {
+				return;
+			}
+			if (const auto strong = weak.get()) {
+				if (!strong->mtp().dcOptions().loadFromFile(result.paths.front())) {
+					Ui::show(Ui::MakeInformBox("Could not load endpoints"
+						" :( Errors in 'log.txt'."));
 				}
 			}
 		});
 	});
-	codes.emplace(u"testmode"_q, [](SessionController *window) {
+	codes.emplace(u"testmode"_q, [](SessionController*, Main::Account *account) {
+		if (!Delta::UsesTelegramBackend(account)) {
+			return;
+		}
 		auto &domain = Core::App().domain();
 		if (domain.started()
 			&& (domain.accounts().size() == 1)
@@ -160,16 +162,16 @@ auto GenerateCodes() {
 				: "Switched to the production environment.");
 		}
 	});
-	codes.emplace(u"folders"_q, [](SessionController *window) {
+	codes.emplace(u"folders"_q, [](SessionController *window, Main::Account*) {
 		if (window) {
 			window->showSettings(Settings::FoldersId());
 		}
 	});
-	codes.emplace(u"registertg"_q, [](SessionController *window) {
+	codes.emplace(u"registertg"_q, [](SessionController *window, Main::Account*) {
 		Core::Application::RegisterUrlScheme();
 		Ui::Toast::Show("Forced custom scheme register.");
 	});
-	codes.emplace(u"numberbuttons"_q, [](SessionController *window) {
+	codes.emplace(u"numberbuttons"_q, [](SessionController *window, Main::Account*) {
 		using namespace base::options;
 		auto &option = lookup<bool>(kOptionFastButtonsMode);
 		const auto now = !option.value();
@@ -178,7 +180,7 @@ auto GenerateCodes() {
 			? u"Fast buttons mode enabled."_q
 			: u"Fast buttons mode disabled."_q);
 	});
-	codes.emplace(u"externalweb"_q, [](SessionController *window) {
+	codes.emplace(u"externalweb"_q, [](SessionController *window, Main::Account*) {
 		const auto disabled = MTP::WebProxy::Transport::ToggleWebviewDisabled();
 		Ui::Toast::Show(disabled
 			? u"WebView transport blocked."_q
@@ -195,7 +197,7 @@ auto GenerateCodes() {
 		u"call_end"_q,
 	};
 	for (auto &key : audioKeys) {
-		codes.emplace(key, [=](SessionController *window) {
+		codes.emplace(key, [=](SessionController *window, Main::Account*) {
 			FileDialog::GetOpenPath(Core::App().getFileDialogParent(), "Open audio file", audioFilters, [=](const FileDialog::OpenResult &result) {
 				if (!result.paths.isEmpty()) {
 					auto track = Media::Audio::Current().createTrack();
@@ -213,12 +215,12 @@ auto GenerateCodes() {
 			});
 		});
 	}
-	codes.emplace(u"sounds_reset"_q, [](SessionController *window) {
+	codes.emplace(u"sounds_reset"_q, [](SessionController *window, Main::Account*) {
 		Core::App().settings().clearSoundOverrides();
 		Core::App().saveSettingsDelayed();
 		Ui::show(Ui::MakeInformBox("All sound overrides were reset."));
 	});
-	codes.emplace(u"unpacklog"_q, [](SessionController *window) {
+	codes.emplace(u"unpacklog"_q, [](SessionController *window, Main::Account*) {
 		FileDialog::GetOpenPath(Core::App().getFileDialogParent(), "Open crash log file", "Crash dump (*.txt)", [=](const FileDialog::OpenResult &result) {
 			if (result.paths.isEmpty()) {
 				return;
@@ -262,14 +264,14 @@ auto GenerateCodes() {
 			});
 		});
 	});
-	codes.emplace(u"testchatcolors"_q, [](SessionController *window) {
+	codes.emplace(u"testchatcolors"_q, [](SessionController *window, Main::Account*) {
 		const auto now = !Data::CloudThemes::TestingColors();
 		Data::CloudThemes::SetTestingColors(now);
 		Ui::Toast::Show(now ? "Testing chat theme colors!" : "Not testing..");
 	});
 
 #ifdef Q_OS_MAC
-	codes.emplace(u"customicon"_q, [](SessionController *window) {
+	codes.emplace(u"customicon"_q, [](SessionController *window, Main::Account*) {
 		const auto iconFilters = u"Icon files (*.icns *.png);;"_q + FileDialog::AllFilesFilter();
 		const auto change = [](const QString &path) {
 			const auto success = path.isEmpty()
@@ -296,9 +298,15 @@ auto GenerateCodes() {
 
 } // namespace
 
-void CodesFeedString(SessionController *window, const QString &text) {
+void CodesFeedString(
+		SessionController *window,
+		const QString &text,
+		Main::Account *account) {
 	static const auto codes = GenerateCodes();
 	static auto secret = QString();
+	const auto resolved = account
+		? account
+		: (window ? &window->session().account() : nullptr);
 
 	secret += text.toLower();
 	int size = secret.size(), from = 0;
@@ -307,7 +315,7 @@ void CodesFeedString(SessionController *window, const QString &text) {
 		auto found = false;
 		for (const auto &[key, method] : codes) {
 			if (piece == key) {
-				method(window);
+				method(window, resolved);
 				from = size;
 				found = true;
 				break;

@@ -717,6 +717,10 @@ Type LocalPasscodeCheckId() {
 	return LocalPasscodeCheck::Id();
 }
 
+Type LocalPasscodeChangeId() {
+	return LocalPasscodeChange::Id();
+}
+
 Type LocalPasscodeManageId() {
 	return LocalPasscodeManage::Id();
 }

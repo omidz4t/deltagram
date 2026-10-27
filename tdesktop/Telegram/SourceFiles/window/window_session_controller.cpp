@@ -15,8 +15,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/peers/edit_peer_info_box.h"
 #include "boxes/peers/replace_boost_box.h"
 #include "boxes/add_contact_box.h"
+#include "delta/account_backend.h"
 #include "delta/delta_boxes.h"
 #include "delta/delta_bridge.h"
+#include "delta/media_identity.h"
 #include "settings/settings_builder.h"
 #include "boxes/delete_messages_box.h"
 #include "boxes/star_gift_auction_box.h"
@@ -1394,9 +1396,15 @@ void SessionNavigation::showThread(
 void SessionNavigation::showPeerInfo(
 		not_null<PeerData*> peer,
 		const SectionShow &params) {
-	if (peer->isUser() && Delta::IsChannel(peerToUser(peer->id).bare)) {
-		Delta::ShowChannelInfo(parentController(), int(peerToUser(peer->id).bare), params);
-		return;
+	if (Delta::UsesCoreBackend(_session)
+		&& Delta::OwnsSession(_session)) {
+		if (peer->isUser() && Delta::IsChannel(peerToUser(peer->id).bare)) {
+			Delta::ShowChannelInfo(parentController(), int(peerToUser(peer->id).bare), params);
+			return;
+		}
+		if (Delta::TryShowGroupInfo(parentController(), peer, params)) {
+			return;
+		}
 	}
 	//if (Adaptive::ThreeColumn()
 	//	&& !Core::App().settings().thirdSectionInfoEnabled()) {
@@ -1491,7 +1499,10 @@ void SessionNavigation::showByInitialId(
 void SessionNavigation::showSettings(
 		Settings::Type type,
 		const SectionShow &params) {
-	if (Delta::Active() && !Settings::Builder::SearchRegistry::Instance().sectionAvailable(type)) {
+	if (Delta::UsesCoreBackend(_session)
+		&& !Settings::Builder::SearchRegistry::Instance().sectionAvailable(
+			type,
+			_session)) {
 		type = Settings::MainId();
 	}
 	showSection(
@@ -1677,7 +1688,7 @@ SessionController::SessionController(
 	}, lifetime());
 
 	const auto processFiltersMenu = [this] {
-		if (ProfilesSidebarEnabled()) {
+		if (ProfilesSidebarEnabled(&SessionNavigation::session())) {
 			content()->toggleFiltersMenu(false);
 			toggleFiltersMenu(true);
 		} else if (SessionNavigation::session().data().chatsFilters().has()) {
@@ -3174,6 +3185,40 @@ void SessionController::showPeerHistory(
 		PeerId peerId,
 		const SectionShow &params,
 		MsgId msgId) {
+	if (Delta::UsesCoreBackend(&session())
+		&& Delta::OwnsSession(&session())
+		&& peerId
+		&& peerIsUser(peerId)) {
+		const auto userId = peerToUser(peerId).bare;
+		if (const auto contact = Delta::ContactForPeer(userId)) {
+			const auto generation = Delta::AccountGeneration();
+			const auto copied = *contact;
+			Delta::OpenContact(copied, crl::guard(this, [=](
+					int chatId,
+					QString error) {
+				if (generation != Delta::AccountGeneration()) {
+					return;
+				}
+				if (!error.isEmpty()) {
+					showToast(error);
+					return;
+				}
+				if (!Delta::CoreIdFitsInt(uint64(chatId))) {
+					showToast(u"This conversation could not be opened."_q);
+					return;
+				}
+				content()->showHistory(
+					peerFromUser(UserId(chatId)),
+					params,
+					msgId);
+			}));
+			return;
+		}
+		if (Delta::IsSenderUserId(userId)) {
+			showToast(u"This conversation could not be opened."_q);
+			return;
+		}
+	}
 	if (const auto peer = session().data().peerLoaded(peerId)) {
 		if (const auto channel = peer->asChannel()) {
 			if (channel->isCommunity()) {
@@ -3354,7 +3399,13 @@ void SessionController::setActiveChatsFilter(
 }
 
 void SessionController::showAddContact() {
-	Delta::ShowInviteQr();
+	if (Delta::UsesCoreBackend(&session())) {
+		if (Delta::OwnsSession(&session())) {
+			Delta::ShowInviteQr(this);
+		}
+		return;
+	}
+	_window->show(Box<AddContactBox>(&session()));
 }
 
 void SessionController::showNewGroup() {
@@ -4097,6 +4148,10 @@ void SessionController::showStarGiftAuction(uint64 giftId) {
 }
 
 void SessionController::showCloudPassword(const QString &highlight) {
+	if (Delta::UsesCoreBackend(&session())) {
+		showSettings(Settings::PrivacySecurityId());
+		return;
+	}
 	if (!highlight.isEmpty()) {
 		setHighlightControlId(highlight);
 	}

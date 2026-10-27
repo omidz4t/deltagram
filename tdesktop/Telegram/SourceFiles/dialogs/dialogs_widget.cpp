@@ -77,7 +77,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/components/recent_peers.h"
 #include "data/components/sponsored_messages.h"
 #include "data/data_session.h"
+#include "delta/account_backend.h"
 #include "delta/delta_boxes.h"
+#include "delta/search_failure.h"
 #include "delta/delta_bridge.h"
 #include "data/data_channel.h"
 #include "data/data_chat.h"
@@ -626,7 +628,10 @@ Widget::Widget(
 	}, lifetime());
 
 	_qrButton->setClickedCallback([=] {
-		Delta::ShowInviteQr();
+		if (Delta::UsesCoreBackend(&session())
+			&& Delta::OwnsSession(&session())) {
+			Delta::ShowInviteQr(controller);
+		}
 	});
 	_search->changes(
 	) | rpl::on_next([=] {
@@ -718,6 +723,10 @@ Widget::Widget(
 			searchTopics();
 		}
 	});
+	_inner->searchRetryRequests(
+	) | rpl::on_next([=] {
+		retryDeltaSearch();
+	}, lifetime());
 	_inner->setLoadMoreCallback([=] {
 		const auto state = _inner->state();
 		const auto process = currentSearchProcess();
@@ -816,19 +825,21 @@ Widget::Widget(
 
 	setupFrozenAccountBar();
 	setupTopBarSuggestions();
-	Delta::AccountViewResets() | rpl::on_next([=] {
-		_searchTimer.cancel();
-		cancelSearch({ .forceFullCancel = true });
-		_searchProcess.cache.clear();
-		_migratedProcess.cache.clear();
-		_postsProcess.cache.clear();
-		_searchProcess.queries.clear();
-		_migratedProcess.queries.clear();
-		_postsProcess.queries.clear();
-		_singleMessageSearch.clear();
-		_peerSearch.clear();
-		_searchQuery.clear();
-	}, lifetime());
+	if (Delta::UsesCoreBackend(&session())) {
+		Delta::AccountViewResets() | rpl::on_next([=] {
+			_searchTimer.cancel();
+			cancelSearch({ .forceFullCancel = true });
+			_searchProcess.cache.clear();
+			_migratedProcess.cache.clear();
+			_postsProcess.cache.clear();
+			_searchProcess.queries.clear();
+			_migratedProcess.queries.clear();
+			_postsProcess.queries.clear();
+			_singleMessageSearch.clear();
+			_peerSearch.clear();
+			_searchQuery.clear();
+		}, lifetime());
+	}
 #ifdef _DEBUG
 	setupTopBarSuggestionTestHotkeys();
 #endif // _DEBUG
@@ -3215,7 +3226,7 @@ bool Widget::search(bool inCache, SearchRequestDelay delay) {
 		process->full = false;
 		_migratedProcess.full = false;
 		cancelSearchRequest();
-		if (Delta::Active()) {
+		if (Delta::UsesCoreBackend(&session())) {
 			requestDeltaMessages(true);
 		} else if (inPeer) {
 			const auto topic = searchInTopic();
@@ -3280,6 +3291,8 @@ bool Widget::search(bool inCache, SearchRequestDelay delay) {
 			requestMessages(true);
 		}
 		_inner->searchRequested(true);
+	} else if (Delta::UsesCoreBackend(&session()) && _deltaSearch.failed) {
+		retryDeltaSearch();
 	} else {
 		_inner->searchRequested(false);
 	}
@@ -3426,11 +3439,12 @@ void Widget::searchMore() {
 	const auto process = currentSearchProcess();
 	if (process->requestId
 		|| _historiesRequest
-		|| _deltaSearchLoading
+		|| _deltaSearch.loading
+		|| _deltaSearch.failed
 		|| _searchTimer.isActive()) {
 		return;
 	} else if (!process->full) {
-		if (Delta::Active()) {
+		if (Delta::UsesCoreBackend(&session())) {
 			requestDeltaMessages(false);
 		} else if (const auto peer = searchInPeer()) {
 			auto &histories = session().data().histories();
@@ -3579,7 +3593,7 @@ void Widget::requestPublicPosts(bool fromStart) {
 }
 
 void Widget::requestMessages(bool fromStart) {
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&session())) {
 		requestDeltaMessages(fromStart);
 		return;
 	}
@@ -3647,51 +3661,81 @@ void Widget::requestDeltaMessages(bool fromStart) {
 		loadDeltaSearchPage(false);
 		return;
 	}
+	_inner->searchRequested(true);
 	const auto generation = ++_deltaSearchGeneration;
 	const auto accountGeneration = Delta::AccountGeneration();
 	_deltaSearchAccountGeneration = accountGeneration;
 	const auto query = _searchQuery;
 	const auto peer = searchInPeer();
 	const auto userId = peer ? int(peerToUser(peer->id).bare) : 0;
-	_deltaSearchIds.clear();
-	_deltaSearchOffset = 0;
-	_deltaSearchLoading = true;
+	_deltaSearch.reset();
+	_deltaSearch.begin();
 	Delta::FindMessageIds(userId, query, crl::guard(this, [=](
 			QVector<int> ids, QString error) {
-		if (generation != _deltaSearchGeneration
-			|| accountGeneration != Delta::AccountGeneration()
-			|| query != _searchState.query.trimmed()) {
+		if (!Delta::CoreSearchCallbackLive(
+				generation,
+				_deltaSearchGeneration,
+				accountGeneration,
+				Delta::AccountGeneration(),
+				query,
+				_searchState.query.trimmed())) {
 			return;
 		}
-		_deltaSearchLoading = false;
-		if (!error.isEmpty()) controller()->showToast(error);
-		_deltaSearchIds = std::move(ids);
+		const auto ui = _deltaSearch.finishIds(std::move(ids), error);
+		if (ui == Delta::CoreSearchUi::FailedInitial) {
+			// WHY: LoadSearchResults({}) is a successful empty page.
+			failDeltaSearch();
+			return;
+		}
+		if (ui == Delta::CoreSearchUi::SuccessEmpty) {
+			const auto type = SearchRequestType{
+				.start = true,
+				.peer = (searchInPeer() != nullptr),
+			};
+			searchApplyEmpty(type, &_searchProcess);
+			return;
+		}
 		loadDeltaSearchPage(true);
 	}));
 }
 
 void Widget::loadDeltaSearchPage(bool fromStart) {
-	if (_deltaSearchLoading) return;
+	if (_deltaSearch.loading) {
+		return;
+	} else if (_deltaSearchAccountGeneration != Delta::AccountGeneration()) {
+		requestDeltaMessages(true);
+		return;
+	}
 	const auto accountGeneration = _deltaSearchAccountGeneration;
-	if (accountGeneration != Delta::AccountGeneration()) return;
 	const auto generation = _deltaSearchGeneration;
 	const auto query = _searchQuery;
-	const auto ids = _deltaSearchIds.mid(_deltaSearchOffset, 50);
+	const auto ids = _deltaSearch.pageIds();
+	if (ids.isEmpty()) {
+		return;
+	}
 	const auto type = SearchRequestType{
-		.start = fromStart,
+		.start = fromStart || (_deltaSearch.offset == 0),
 		.peer = (searchInPeer() != nullptr),
 	};
-	_deltaSearchLoading = true;
+	_deltaSearch.begin();
 	Delta::LoadSearchResults(ids, crl::guard(this, [=](
 			QVector<MTPMessage> messages,
-			QVector<MTPUser> users) {
-		if (generation != _deltaSearchGeneration
-			|| accountGeneration != Delta::AccountGeneration()
-			|| query != _searchState.query.trimmed()) {
+			QVector<MTPUser> users,
+			QString error) {
+		if (!Delta::CoreSearchCallbackLive(
+				generation,
+				_deltaSearchGeneration,
+				accountGeneration,
+				Delta::AccountGeneration(),
+				query,
+				_searchState.query.trimmed())) {
 			return;
 		}
-		_deltaSearchOffset += ids.size();
-		_deltaSearchLoading = false;
+		const auto ui = _deltaSearch.finishPage(int(ids.size()), error);
+		if (Delta::CoreSearchUiFailed(ui)) {
+			failDeltaSearch();
+			return;
+		}
 		searchReceived(
 			type,
 			MTP_messages_messages(
@@ -3701,13 +3745,37 @@ void Widget::loadDeltaSearchPage(bool fromStart) {
 				MTP_vector<MTPUser>(users)),
 			&_searchProcess,
 			false,
-			_deltaSearchIds.size(),
-			_deltaSearchOffset < _deltaSearchIds.size());
+			int(_deltaSearch.ids.size()),
+			_deltaSearch.hasMore());
 	}));
 }
 
+void Widget::failDeltaSearch() {
+	_inner->showSearchFailure();
+}
+
+void Widget::retryDeltaSearch() {
+	if (!Delta::UsesCoreBackend(&session()) || _deltaSearch.loading) {
+		return;
+	} else if (_deltaSearchAccountGeneration != Delta::AccountGeneration()) {
+		requestDeltaMessages(true);
+		return;
+	}
+	if (_deltaSearch.retryStage() == Delta::CoreSearchStage::FindIds
+		|| _deltaSearch.ids.isEmpty()) {
+		requestDeltaMessages(true);
+		return;
+	}
+	if (_deltaSearch.offset == 0) {
+		_inner->searchRequested(true);
+	} else {
+		_inner->clearSearchFailure();
+	}
+	loadDeltaSearchPage(_deltaSearch.offset == 0);
+}
+
 auto Widget::currentSearchProcess() -> not_null<SearchProcessState*> {
-	if (Delta::Active()) return &_searchProcess;
+	if (Delta::UsesCoreBackend(&session())) return &_searchProcess;
 	return (_searchState.tab == ChatSearchTab::PublicPosts)
 		? &_postsProcess
 		: &_searchProcess;
@@ -4693,7 +4761,8 @@ void Widget::updateControlsGeometry() {
 	_qrButton->moveToLeft(
 		filterLeft + searchWidth + qrGap - qrIconInset,
 		qrTop);
-	_qrButton->setVisible(!searchEngaged);
+	_qrButton->setVisible(!searchEngaged
+		&& Delta::UsesCoreBackend(&session()));
 	_search->setGeometryToLeft(
 		filterLeft,
 		filterTop,
@@ -5056,9 +5125,8 @@ void Widget::scrollToEntry(const RowDescriptor &entry) {
 
 void Widget::cancelSearchRequest() {
 	++_deltaSearchGeneration;
-	_deltaSearchLoading = false;
-	_deltaSearchIds.clear();
-	_deltaSearchOffset = 0;
+	_deltaSearch.reset();
+	_inner->searchCancelled();
 	session().api().request(base::take(_searchProcess.requestId)).cancel();
 	session().api().request(base::take(_migratedProcess.requestId)).cancel();
 	session().api().request(base::take(_postsProcess.requestId)).cancel();

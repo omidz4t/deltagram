@@ -31,6 +31,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session.h"
 #include "storage/storage_account.h"
 #include "apiwrap.h"
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "delta/prepared_attachment.h"
 #include "delta/compose_batch.h"
@@ -262,14 +263,20 @@ void Uploader::processDocumentProgress(FullMsgId itemId) {
 
 void Uploader::processPhotoFailed(FullMsgId itemId) {
 	if (const auto item = session().data().message(itemId)) {
-		if (Delta::Active() && item->isSending()) item->sendFailed();
+		if (Delta::UsesCoreBackend(&item->history()->session())
+			&& item->isSending()) {
+			item->sendFailed();
+		}
 		sendProgressUpdate(item, Api::SendProgressType::UploadPhoto, -1);
 	}
 }
 
 void Uploader::processDocumentFailed(FullMsgId itemId) {
 	if (const auto item = session().data().message(itemId)) {
-		if (Delta::Active() && item->isSending()) item->sendFailed();
+		if (Delta::UsesCoreBackend(&item->history()->session())
+			&& item->isSending()) {
+			item->sendFailed();
+		}
 		const auto media = item->media();
 		const auto document = media ? media->document() : nullptr;
 		const auto sendAction = (document && document->isVoiceMessage())
@@ -391,13 +398,13 @@ void Uploader::upload(
 				file->videoCover->photoThumbs);
 		}
 	}
-	if (Delta::Active() && preparing) {
+	if (Delta::UsesCoreBackend(&session()) && preparing) {
 		_queue.push_back({ itemId, file });
 		_queue.back().preparing = true;
 		startTranscode(itemId);
 		return;
 	}
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&session())) {
 		deliverDelta(itemId, file);
 		return;
 	}
@@ -593,7 +600,7 @@ void Uploader::finishTranscode(
 	entry.setDocSize(size);
 
 	_documentProgress.fire_copy(itemId);
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&session())) {
 		const auto ready = file;
 		_queue.erase(i);
 		deliverDelta(itemId, ready);
@@ -783,7 +790,7 @@ void Uploader::notifyFailed(const Entry &entry) {
 	}
 	const auto type = entry.file->type;
 	if (type == SendMediaType::Photo) {
-		if (Delta::Active()) {
+		if (Delta::UsesCoreBackend(&session())) {
 			session().data().photo(entry.file->id)->uploadingData = nullptr;
 		}
 		_photoFailed.fire_copy(entry.itemId);
@@ -796,7 +803,9 @@ void Uploader::notifyFailed(const Entry &entry) {
 			document->uploadingData->preparing = false;
 			document->status = FileUploadFailed;
 		}
-		if (Delta::Active()) document->uploadingData = nullptr;
+		if (Delta::UsesCoreBackend(&session())) {
+			document->uploadingData = nullptr;
+		}
 		_documentFailed.fire_copy(entry.itemId);
 	} else if (type == SendMediaType::SecondaryFile) {
 		_secondaryFileFailed.fire_copy(entry.itemId);

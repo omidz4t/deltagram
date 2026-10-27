@@ -122,20 +122,34 @@ void ReplyStore::write(int account, SavedReply reply, std::function<void(bool, Q
 	});
 }
 
-void ReplyStore::submit(int account, int chat, QString text, Done done) {
+void ReplyStore::persist(int account, int chat, QString text, Persisted done) {
 	if (account <= 0 || chat <= 0 || text.trimmed().isEmpty()) {
-		if (done) done(0, u"This notification reply has no conversation or text."_s);
+		if (done) done({}, u"This notification reply has no conversation or text."_s);
 		return;
 	}
 	auto reply = SavedReply{QUuid::createUuid().toString(QUuid::Id128), chat, std::move(text)};
 	const auto key = Key(account, reply.id);
-	if (!begin(key, done)) return;
+	if (!begin(key, [&](int, QString error) { if (done) done({}, std::move(error)); })) return;
 	_unsaved[key] = reply;
 	if (_changed) _changed();
 	write(account, reply, [=, this](bool durable, QString error) {
 		if (durable) _unsaved.erase(key);
-		if (!error.isEmpty()) finish(key, 0, std::move(error), done);
-		else attempt(account, reply, done);
+		auto saved = error.isEmpty()
+			? std::optional<SavedReply>(reply)
+			: std::nullopt;
+		finish(key, 0, {}, nullptr);
+		if (done) done(std::move(saved), std::move(error));
+	});
+}
+
+void ReplyStore::submit(int account, int chat, QString text, Done done) {
+	persist(account, chat, std::move(text), [=, this](std::optional<SavedReply> saved, QString error) {
+		if (!saved) {
+			if (done) done(0, std::move(error));
+			return;
+		}
+		if (!begin(Key(account, saved->id), done)) return;
+		attempt(account, *saved, done);
 	});
 }
 

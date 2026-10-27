@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/reactions/history_view_reactions_selector.h"
 
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 #include "chat_helpers/emoji_picker_overlay.h"
 #include "ui/abstract_button.h"
@@ -1443,7 +1444,7 @@ AttachSelectorResult AttachSelectorToMenu(
 		Fn<void(ChosenReaction)> chosen,
 		TextWithEntities about,
 		IconFactory iconFactory) {
-	if (Delta::Active()) {
+	if (Delta::UsesCoreBackend(&item->history()->session())) {
 		if (!item->canReact() || item->isService()) {
 			return AttachSelectorResult::Skipped;
 		}

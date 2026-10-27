@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history_item_components.h"
 
+#include "delta/account_backend.h"
 #include "delta/delta_bridge.h"
 
 #include "api/api_text_entities.h"
@@ -704,7 +705,8 @@ void HistoryMessageReply::itemRemoved(
 		not_null<HistoryItem*> removed) {
 	if (resolvedMessage.get() == removed) {
 		clearData(holder);
-		if (Delta::Active() && !_fields.quote.empty()) {
+		if (Delta::UsesCoreBackend(&holder->history()->session())
+			&& !_fields.quote.empty()) {
 			// Core's quote belongs to the reply and survives its original.
 			// Keep it visible when an already resolved original is removed.
 			_displaying = 1;

@@ -9,8 +9,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "spellcheck/platform/platform_language.h"
 
-#include <QtCore/QStandardPaths>
+#include <QtCore/QPointer>
 #include <QtCore/QProcess>
+#include <QtCore/QStandardPaths>
 #include <QtGui/QTextDocument>
 #include <ksandbox.h>
 
@@ -47,34 +48,86 @@ public:
 			Ui::TranslateProviderRequest request,
 			LanguageId to,
 			Fn<void(Ui::TranslateProviderResult)> done) override {
+		const auto unknown = Ui::TranslateProviderResult{
+			.error = Ui::TranslateProviderError::Unknown,
+		};
+		const auto command = Command();
+		if (command.isEmpty()) {
+			done(unknown);
+			return;
+		}
 		const auto from = Platform::Language::Recognize(request.text.text);
 		const auto process = QPointer(new QProcess(this));
-		process->setProgram(Command());
+		process->setProgram(command);
 		process->setArguments(
 			QStringList{ u"-i"_q, u"-b"_q, u"-t"_q, to.twoLetterCode() }
 				+ (from.known()
 					? QStringList{ u"-s"_q, from.twoLetterCode() }
 					: QStringList()));
-		connect(process, &QProcess::finished, this, [=] {
-			_document.setHtml(process->readAllStandardOutput());
-			const auto text = _document.toPlainText();
-			done(!text.isEmpty()
+		struct State {
+			bool finished = false;
+			Fn<void(Ui::TranslateProviderResult)> done;
+		};
+		const auto state = std::make_shared<State>(State{
+			.done = std::move(done),
+		});
+		const auto self = QPointer<TranslateProvider>(this);
+		const auto finish = [state, process, self](
+				Ui::TranslateProviderResult result) {
+			if (state->finished) {
+				return;
+			}
+			state->finished = true;
+			if (process) {
+				process->disconnect();
+				process->setParent(nullptr);
+				process->deleteLater();
+			}
+			if (!self) {
+				return;
+			}
+			auto callback = std::move(state->done);
+			callback(std::move(result));
+		};
+		// WHY: FailedToStart does not emit finished, so this path must complete.
+		connect(process, &QProcess::errorOccurred, this, [=](
+				QProcess::ProcessError error) {
+			if (error == QProcess::FailedToStart) {
+				finish(unknown);
+			}
+		});
+		connect(process, &QProcess::finished, this, [=](
+				int exitCode,
+				QProcess::ExitStatus exitStatus) {
+			if (exitStatus != QProcess::NormalExit || exitCode != 0) {
+				finish(unknown);
+				return;
+			}
+			if (!process) {
+				finish(unknown);
+				return;
+			}
+			auto document = QTextDocument();
+			document.setHtml(process->readAllStandardOutput());
+			const auto text = document.toPlainText();
+			finish(!text.isEmpty()
 				? Ui::TranslateProviderResult{
 					.text = TextWithEntities{ .text = text },
 				}
-				: Ui::TranslateProviderResult{
-					.error = Ui::TranslateProviderError::Unknown,
-				}
-			);
-			delete process;
+				: unknown);
 		});
 		KSandbox::startHostProcess(*process);
+		if (state->finished || !process) {
+			return;
+		}
+		if (process->state() == QProcess::NotRunning) {
+			finish(unknown);
+			return;
+		}
 		process->write(request.text.text.toUtf8());
 		process->closeWriteChannel();
 	}
 
-private:
-	QTextDocument _document;
 };
 
 } // namespace

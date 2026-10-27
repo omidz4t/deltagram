@@ -13,10 +13,17 @@ class PeerData;
 struct MsgId;
 
 namespace Main {
+class Account;
 class Session;
 } // namespace Main
 
 namespace Ui {
+
+[[nodiscard]] bool IsTranslateBackendAvailable(Main::Account *account);
+[[nodiscard]] bool IsTranslateBackendAvailable(
+	not_null<Main::Account*> account);
+[[nodiscard]] bool IsTranslateBackendAvailable(
+	not_null<Main::Session*> session);
 
 [[nodiscard]] std::unique_ptr<TranslateProvider> CreateTranslateProvider(
 	not_null<Main::Session*> session);

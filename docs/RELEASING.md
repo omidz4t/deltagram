@@ -22,6 +22,20 @@ The first release is **v0.1.0**. Subsequent versions use the rules above and the
 latest merged release tag. Documentation-only commits do not create releases.
 Pull requests run checks and builds without publication.
 
+Public releases require the repository Actions secrets `TDESKTOP_API_ID` and
+`TDESKTOP_API_HASH` for the project's own
+[Telegram application](https://core.telegram.org/api/obtaining_api_id).
+Telegram's sample application ID is limited to testing and must not be shipped
+to end users. Pull-request and validation builds use test mode without those
+production secrets. Missing production inputs stop a publish build.
+
+A successful GUI build records its API mode, binary SHA256 and version in
+`deltagram.build-provenance.json`; CI also records its input commit. Staging
+verifies that evidence against the binary, version file and CMake API-mode flag
+before replacing packaging output. The publish job verifies it again before
+creating or changing a release. The evidence contains no API ID/hash, and the
+CMake cache is not uploaded.
+
 The workflow prepares version metadata and changelogs in its workspace, builds
 Core and the Qt client, checks RPC, verifies the portable executable, and creates
 packages. It publishes a draft only after uploading all assets, then marks the
@@ -29,6 +43,7 @@ release as an experimental prerelease. Failed builds do not publish a release.
 
 Assets include `deltagram.stripped`, the portable `deltagram` executable, Debian,
 RPM and Arch packages, release notes, checksums and a matching source archive.
+The non-secret GUI build-provenance JSON accompanies those assets.
 Use `deltagram-VERSION-source.tar.gz` for the exact prepared build sources;
 GitHub's default source archives reflect the tagged input commit, whose checked-in
 version can differ from a later version generated during CI.
@@ -46,6 +61,13 @@ gh workflow run build.yml --repo omidz4t/deltagram -f publish=true
 Set `publish=false` to run checks and compile without creating a release. Runs
 on the same branch are queued to avoid overlapping release publication. Compiler,
 Cargo and Nix caches are reused; GUI compilation uses four jobs.
+
+Local release commands likewise require `DELTA_TEL_API_MODE=production` and the
+two API values in a private environment. Do not put their values in source,
+command arguments or logs. Explicit validation-only packages can be made with
+`bash nix/release.sh --allow-test-api` (or `all --allow-test-api` for every
+package format). Those packages retain test-mode provenance and cannot pass the
+production publish checks. API test mode does not select Telegram TestDCs.
 
 ## Local version preparation
 

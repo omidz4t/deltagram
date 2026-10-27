@@ -133,7 +133,7 @@ public:
 	[[nodiscard]] bool premiumCanBuy() const;
 
 	[[nodiscard]] bool isTestMode() const;
-	[[nodiscard]] uint64 uniqueId() const; // userId() with TestDC shift.
+	[[nodiscard]] uint64 uniqueId() const; // userId, TestDC bit, backend prefix.
 	[[nodiscard]] UserId userId() const;
 	[[nodiscard]] PeerId userPeerId() const;
 	[[nodiscard]] not_null<UserData*> user() const {
